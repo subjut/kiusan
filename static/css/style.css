@@ -59,6 +59,14 @@ header h1{
     width:33%;
 }
 
+.choose-box a {
+    text-decoration: none;
+}
+
+.choose-box a:hover {
+    text-transform: uppercase;
+}
+
 /* Footer */
 footer {
     padding: 20px;
