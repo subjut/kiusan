@@ -1,46 +1,15 @@
-<!DOCTYPE html>
-<!--[if lt IE 7]>      <html class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
-<!--[if IE 7]>         <html class="no-js lt-ie9 lt-ie8"> <![endif]-->
-<!--[if IE 8]>         <html class="no-js lt-ie9"> <![endif]-->
-<!--[if gt IE 8]><!--> <html class="no-js"> <!--<![endif]-->
-    <head>
-        <meta charset="utf-8">
-        <meta http-equiv="X-UA-Compatible" content="IE=edge">
-        <title>kiusan | 1 on 1 Form</title>
-        <meta name="description" content="Scheduling and Sign-up done right!">
-        <meta name="keywords" content="scheduling, sign-up, decide, survey">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <link rel="stylesheet" href="./css/style.css">
-    </head>
-    <body>
-        <!--[if lt IE 7]>
-            <p class="browsehappy">You are using an <strong>outdated</strong> browser. Please <a href="#">upgrade your browser</a> to improve your experience.</p>
-        <![endif]-->
-        <header>
-            <div class="container">
-                <h1>kiusan</h1>
-            </div>
-        </header>
-        <div class="container">
-            <form method="POST">
-                <label for="1-title">Title:</label><br>
-                <input type="text" id="1-title" name="1-title"><br>
-                <label for="1-email">Title:</label><br>
-                <input type="text" id="1-email" name="1-email"><br>
-                <label for="1-description">Description:</label><br>
-                <textarea id="1-description" name="1-description" rows="5"></textarea><br>
-                <input type="checkbox" id="1-multiple-signup" name="1-multiple-signup" value="1-multiple-signup">
-                <label for="1-multiple-signup">People can sign up to multiple time slots</label><br>
-                <input type="submit" value="1-submit">
-            </form>
-        </div>
-
-
-
-
-        <footer>
-            <p>&copy; subjut | <a href="https://github.com/subjut/kiusan">Code & Contact</a></p>
-        </footer>
-        <!-- <script src="" async defer></script> -->
-    </body>
-</html>
+<div class="container">
+	<form method="POST">
+		<label for="title">Title:</label><br>
+		<input type="text" id="title" name="title"><br>
+		<label for="email">Email:</label><br>
+		<input type="text" id="1-email" name="email"><br>
+		<label for="description">Description:</label><br>
+		<textarea id="description" name="description" rows="5" cols="40"></textarea><br>
+		<input type="checkbox" id="usersHidden" name="usersHidden" value="usersHidden">
+		<label for="usersHidden">Users are hidden from each other</label><br>
+		<input type="checkbox" id="multiple-signup" name="multiple-signup" value="multiple-signup">
+		<label for="multiple-signup">People can only sign up to one time slot</label><br>
+		<input type="submit" value="submit">
+	</form>
+</div>

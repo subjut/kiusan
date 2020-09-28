@@ -6,12 +6,13 @@ import (
 	"github.com/gofiber/template/html"
 )
 
-// type OneForm struct {
-// 	Title          string
-// 	Description    string
-// 	Email          string
-// 	MultipleSignup bool
-// }
+type MeetingForm struct {
+	Title       string
+	Description string
+	Email       string
+	HideUsers   bool
+	SingeSignup bool
+}
 
 func main() {
 	// We use html template engine
@@ -32,12 +33,36 @@ func main() {
 	// Logging middleware
 	app.Use(logger.New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		// Render index
-		return c.Render("index", fiber.Map{
-			"pagetitle": "kiusan | Hi!",
-		}, "layouts/home")
-	})
+	// Make sure syle files are available
+	app.Static("/", "./static/css")
+
+	app.Get("/", homeHandler)
+	app.Get("/1-1-form", formHandler)
+	app.Post("/1-1-form", formPostHandler)
 
 	_ = app.Listen(":8080")
+}
+
+func homeHandler(c *fiber.Ctx) error {
+	return c.Render("index", fiber.Map{
+		"pagetitle": "kiusan | Hi!",
+	}, "layouts/home")
+}
+
+func formHandler(c *fiber.Ctx) error {
+	return c.Render("1-1-form", fiber.Map{
+		"pagetitle": "kiusan | Meeting Form!",
+	}, "layouts/home")
+}
+
+func formPostHandler(c *fiber.Ctx) error {
+	form := new(MeetingForm)
+
+	if err := c.BodyParser(form); err != nil {
+		return c.Status(400).SendString(err.Error())
+	}
+
+	return c.Render("1-1-form", fiber.Map{
+		"pagetitle": "kiusan | Meeting Form!",
+	}, "layouts/home")
 }
