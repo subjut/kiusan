@@ -2,8 +2,8 @@ package main
 
 import (
 	"crypto/rand"
-	"encoding/base64"
 	"log"
+	"math/big"
 	"os"
 	"os/signal"
 	"time"
@@ -29,6 +29,12 @@ type Users struct {
 	Dates []time.Time
 }
 
+// Used for random URL generator
+const urlSafeLetters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+
+const meetingDb = "meetings"
+const userDb = "users"
+
 func main() {
 	// We use html template engine
 	engine := html.New("./static", ".html")
@@ -42,7 +48,8 @@ func main() {
 
 	// Create app
 	app := fiber.New(fiber.Config{
-		Views: engine,
+		Views:       engine,
+		ReadTimeout: 10 * time.Second, // Don't keep cons alive for too long
 	})
 
 	// Logging middleware
@@ -54,6 +61,7 @@ func main() {
 	app.Get("/", homeHandler)
 	app.Get("/1-1-form", formHandler)
 	app.Post("/1-1-form", formPostHandler)
+	app.Get("/meet/+", meetingDisplayHandler)
 
 	// Start the server and listen to http connections
 	_ = app.Listen(":8080")
@@ -67,6 +75,7 @@ func main() {
 	log.Println("Shutdown Server ...")
 	// Shut down server
 	app.Shutdown()
+
 	// Closing all open dbs
 	if err := pudge.CloseAll(); err != nil {
 		log.Fatal("Database Shutdown:", err)
@@ -90,40 +99,50 @@ func formHandler(c *fiber.Ctx) error {
 func formPostHandler(c *fiber.Ctx) error {
 	form := new(Meeting)
 
+	// Get the form data
 	if err := c.BodyParser(form); err != nil {
 		return c.Status(400).SendString(err.Error())
 	}
 
 	//// Feed form into database
 	// Open database
-	db, err := pudge.Open("meetings", nil)
+	db, err := pudge.Open(meetingDb, nil)
 	if err != nil {
 		log.Printf("Error opening meetings database", err)
 	}
 
 	// Create random URL safe string for key
-	bytes, _ := GenerateRandomBytes(12)
-	urlKey := base64.URLEncoding.EncodeToString(bytes)
+	urlKey, _ := getRandomUrl(16)
 
-	pudge.Set("meetings", urlKey, &form)
-
-	return c.Render("1-1-form", fiber.Map{
-		"pagetitle": "kiusan | Meeting Form!",
-	}, "layouts/home")
-}
-
-// This is adapted from https://gist.github.com/dopey/c69559607800d2f2f90b1b1ed4e550fb
-// GenerateRandomBytes returns securely generated random bytes.
-// It will return an error if the system's secure random
-// number generator fails to function correctly, in which
-// case the caller should not continue.
-func GenerateRandomBytes(n int) ([]byte, error) {
-	b := make([]byte, n)
-	_, err := rand.Read(b)
-	// Note that err == nil only if we read len(b) bytes.
+	err = db.Set(urlKey, &form)
 	if err != nil {
-		return nil, err
+		return c.Status(500).SendString(err.Error())
 	}
 
-	return b, nil
+	// Redirect to meeting display
+	return c.Redirect("/meet/" + urlKey)
+
+	// return c.Render("1-1-form", fiber.Map{
+	// 	"pagetitle": "kiusan | Meeting Form!",
+	// }, "layouts/home")
+}
+
+func meetingDisplayHandler(c *fiber.Ctx) error {
+	return c.SendString(c.Params("+"))
+}
+
+// getRandomUrl returns a secure and URL safe string of length length
+// adapted from https://gist.github.com/denisbrodbeck/635a644089868a51eccd6ae22b2eb800
+func getRandomUrl(length int) (string, error) {
+	result := ""
+	for {
+		if len(result) >= length {
+			return result, nil
+		}
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(urlSafeLetters))))
+		if err != nil {
+			return "", err
+		}
+		result = result + string(urlSafeLetters[num.Int64()])
+	}
 }
