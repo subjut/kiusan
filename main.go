@@ -9,33 +9,50 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/favicon"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/template/html"
 	"github.com/recoilme/pudge"
+
+	"github.com/subjut/kiusan/database"
 )
-
-type Meeting struct {
-	Title       string
-	Description string
-	Email       string
-	HideUsers   bool
-	SingeSignup bool
-	Dates       []time.Time
-	Users       *Users
-}
-
-type Users struct {
-	Name  string
-	Dates []time.Time
-}
 
 // Used for random URL generator
 const urlSafeLetters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 
-const meetingDb = "meetings"
-const userDb = "users"
+// initDbs initializes all databases used in kiusan
+func initDbs() {
+	var err error
+	database.DB, err = pudge.Open(database.MeetingDb, nil)
+	if err != nil {
+		log.Fatalf("Could not initialize databases: %s", err)
+	}
+}
+
+func initRoutes(app *fiber.App) {
+	// Make sure syle files and favicons are available
+	app.Static("/", "./static/css")
+	app.Static("/", "./static/favicon")
+
+	// Normal routes
+	app.Get("/", homeHandler)
+	app.Get("/1-1-form", formHandler)
+	app.Post("/1-1-form", formPostHandler)
+
+	// Meeting page route; gobbles up random meeting url
+	app.Get("/meet/+", meetingDisplayHandler)
+
+	// 404 Handler
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(404) // => 404 "Not Found"
+	})
+}
 
 func main() {
+	// Initialize databases
+	initDbs()
+	defer pudge.CloseAll()
+
 	// We use html template engine
 	engine := html.New("./static", ".html")
 
@@ -52,16 +69,16 @@ func main() {
 		ReadTimeout: 10 * time.Second, // Don't keep cons alive for too long
 	})
 
+	// Serve favicon.ico from memory instead of disk
+	app.Use(favicon.New(favicon.Config{
+		File: "./static/favicon/favicon.ico",
+	}))
+
 	// Logging middleware
 	app.Use(logger.New())
 
-	// Make sure syle files are available
-	app.Static("/", "./static/css")
-
-	app.Get("/", homeHandler)
-	app.Get("/1-1-form", formHandler)
-	app.Post("/1-1-form", formPostHandler)
-	app.Get("/meet/+", meetingDisplayHandler)
+	// Set up all routes
+	initRoutes(app)
 
 	// Start the server and listen to http connections
 	_ = app.Listen(":8080")
@@ -84,6 +101,10 @@ func main() {
 	log.Println("Server exiting")
 }
 
+func notFoundHandler(c *fiber.Ctx) error {
+	return c.SendStatus(404)
+}
+
 func homeHandler(c *fiber.Ctx) error {
 	return c.Render("index", fiber.Map{
 		"pagetitle": "kiusan | Hi!",
@@ -97,7 +118,7 @@ func formHandler(c *fiber.Ctx) error {
 }
 
 func formPostHandler(c *fiber.Ctx) error {
-	form := new(Meeting)
+	form := new(database.Meeting)
 
 	// Get the form data
 	if err := c.BodyParser(form); err != nil {
@@ -105,33 +126,50 @@ func formPostHandler(c *fiber.Ctx) error {
 	}
 
 	//// Feed form into database
-	// Open database
-	db, err := pudge.Open(meetingDb, nil)
-	if err != nil {
-		log.Printf("Error opening meetings database", err)
+	// Make sure we don't have it yet
+	var urlKey string
+	for newKeyNotfound := true; newKeyNotfound; {
+		// Create random URL safe string for key
+		urlKey, _ = getRandomUrl(16)
+
+		dbHasKey, _ := database.DB.Has(urlKey)
+		if !dbHasKey {
+			newKeyNotfound = false
+		}
 	}
 
-	// Create random URL safe string for key
-	urlKey, _ := getRandomUrl(16)
-
-	err = db.Set(urlKey, &form)
+	err := database.DB.Set(urlKey, &form)
 	if err != nil {
 		return c.Status(500).SendString(err.Error())
 	}
 
 	// Redirect to meeting display
 	return c.Redirect("/meet/" + urlKey)
-
-	// return c.Render("1-1-form", fiber.Map{
-	// 	"pagetitle": "kiusan | Meeting Form!",
-	// }, "layouts/home")
 }
 
 func meetingDisplayHandler(c *fiber.Ctx) error {
-	return c.SendString(c.Params("+"))
+	urlKey := c.Params("+")
+
+	// Check if the meeting is in the database
+	dbHasKey, _ := database.DB.Has(urlKey)
+	if !dbHasKey {
+		_ = notFoundHandler(c)
+		return nil
+	}
+
+	// Get meeting info from db
+	meeting := new(database.Meeting)
+	err := database.DB.Get(urlKey, &meeting)
+	if err != nil {
+		_ = notFoundHandler(c)
+		return nil
+	}
+
+	return c.SendString(meeting.Title + "\n" + meeting.Email + "\n" + meeting.Description + "\n")
 }
 
-// getRandomUrl returns a secure and URL safe string of length length
+// getRandomUrl returns a secure and URL safe string of length Descriptionngth
+
 // adapted from https://gist.github.com/denisbrodbeck/635a644089868a51eccd6ae22b2eb800
 func getRandomUrl(length int) (string, error) {
 	result := ""
