@@ -114,6 +114,7 @@ func homeHandler(c *fiber.Ctx) error {
 func formHandler(c *fiber.Ctx) error {
 	return c.Render("1-1-form", fiber.Map{
 		"pagetitle": "kiusan | Meeting Form!",
+		"today":     time.Now().Format("2006-01-02"),
 	}, "layouts/home")
 }
 

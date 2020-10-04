@@ -10,6 +10,11 @@
 		<label for="usersHidden">Users are hidden from each other</label><br>
 		<input type="checkbox" id="multiple-signup" name="multiple-signup" value="multiple-signup">
 		<label for="multiple-signup">People can only sign up to one time slot</label><br>
+		<label>
+			Select date:
+			<input type="date" name="date" min="{{.today}}" required>
+			<span class="validity"></span>
+		</label><br><br>
 		<input type="submit" value="submit">
 	</form>
 </div>
