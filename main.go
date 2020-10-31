@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -121,9 +122,22 @@ func formHandler(c *fiber.Ctx) error {
 func formPostHandler(c *fiber.Ctx) error {
 	form := new(database.Meeting)
 
-	// Get the form data
+	//// Get the form data
+	// General fields
 	if err := c.BodyParser(form); err != nil {
 		return c.Status(400).SendString(err.Error())
+	}
+
+	// Dates and times
+	date := ""
+	for i := 0; true; i++ {
+		date = c.FormValue("date" + strconv.Itoa(i))
+		if date == "" {
+			break
+		}
+
+		newDate, _ := time.Parse("2006-02-01", date)
+		form.Dates = append(form.Dates, newDate)
 	}
 
 	//// Feed form into database
@@ -166,11 +180,11 @@ func meetingDisplayHandler(c *fiber.Ctx) error {
 		return nil
 	}
 
-	return c.SendString(meeting.Title + "\n" + meeting.Email + "\n" + meeting.Description + "\n")
+	return c.SendString(meeting.Title + "\n" + meeting.Email + "\n" + meeting.Description + "\n" + meeting.Dates[0].Local().String())
 }
 
-// getRandomUrl returns a secure and URL safe string of length Descriptionngth
-
+// getRandomUrl returns a secure and URL safe string of length length.
+// Returns an empty string and error if the random number generator crashes
 // adapted from https://gist.github.com/denisbrodbeck/635a644089868a51eccd6ae22b2eb800
 func getRandomUrl(length int) (string, error) {
 	result := ""

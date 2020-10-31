@@ -7,13 +7,13 @@ import (
 )
 
 type Meeting struct {
-	Title       string
-	Description string
-	Email       string
-	HideUsers   bool
-	SingeSignup bool
-	Dates       []time.Time
-	Users       *Users
+	Title        string
+	Description  string
+	Email        string
+	HideUsers    bool
+	SingleSignup bool
+	Dates        []time.Time
+	Users        *Users
 }
 
 type Users struct {
