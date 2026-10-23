@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/favicon"
-	"github.com/gofiber/fiber/v2/middleware/logger"
-	"github.com/gofiber/template/html"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/favicon"
+	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/gofiber/fiber/v3/middleware/static"
+	"github.com/gofiber/template/html/v3"
 	"github.com/recoilme/pudge"
 
 	"github.com/subjut/kiusan/database"
@@ -32,8 +34,9 @@ func initDbs() {
 
 func initRoutes(app *fiber.App) {
 	// Make sure syle files and favicons are available
-	app.Static("/", "./static/css")
-	app.Static("/", "./static/favicon")
+	// (served from the site root; a file miss resets the response and calls Next)
+	app.Get("/*", static.New("./static/css"))
+	app.Get("/*", static.New("./static/favicon"))
 
 	// Normal routes
 	app.Get("/", homeHandler)
@@ -44,7 +47,7 @@ func initRoutes(app *fiber.App) {
 	app.Get("/meet/+", meetingDisplayHandler)
 
 	// 404 Handler
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(404) // => 404 "Not Found"
 	})
 }
@@ -81,18 +84,25 @@ func main() {
 	// Set up all routes
 	initRoutes(app)
 
-	// Start the server and listen to http connections
-	_ = app.Listen(":8080")
-
 	// Shutting down section
-	// Wait for interrupt signal to gracefully shutdown the server with
-	// a timeout of 5 seconds.
-	quit := make(chan os.Signal)
+	// Wait for interrupt signal to gracefully shutdown the server.
+	// Must be registered before Listen, since Listen blocks.
+	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
-	<-quit
-	log.Println("Shutdown Server ...")
-	// Shut down server
-	app.Shutdown()
+
+	// Start the server and listen to http connections
+	go func() {
+		<-quit
+		log.Println("Shutdown Server ...")
+		// Shut down server
+		if err := app.Shutdown(); err != nil {
+			log.Println("Server Shutdown:", err)
+		}
+	}()
+
+	if err := app.Listen(":8080"); err != nil {
+		log.Println("Server stopped with error:", err)
+	}
 
 	// Closing all open dbs
 	if err := pudge.CloseAll(); err != nil {
@@ -102,41 +112,44 @@ func main() {
 	log.Println("Server exiting")
 }
 
-func notFoundHandler(c *fiber.Ctx) error {
+func notFoundHandler(c fiber.Ctx) error {
 	return c.SendStatus(404)
 }
 
-func homeHandler(c *fiber.Ctx) error {
+func homeHandler(c fiber.Ctx) error {
 	return c.Render("index", fiber.Map{
 		"pagetitle": "kiusan | Hi!",
 	}, "layouts/home")
 }
 
-func formHandler(c *fiber.Ctx) error {
+func formHandler(c fiber.Ctx) error {
 	return c.Render("1-1-form", fiber.Map{
 		"pagetitle": "kiusan | Meeting Form!",
 		"today":     time.Now().Format("2006-01-02"),
 	}, "layouts/home")
 }
 
-func formPostHandler(c *fiber.Ctx) error {
+func formPostHandler(c fiber.Ctx) error {
 	form := new(database.Meeting)
 
 	//// Get the form data
 	// General fields
-	if err := c.BodyParser(form); err != nil {
+	if err := c.Bind().Body(form); err != nil {
 		return c.Status(400).SendString(err.Error())
 	}
 
 	// Dates and times
-	date := ""
 	for i := 0; true; i++ {
-		date = c.FormValue("date" + strconv.Itoa(i))
+		date := c.FormValue("date" + strconv.Itoa(i))
 		if date == "" {
 			break
 		}
 
-		newDate, _ := time.Parse("2006-02-01", date)
+		// HTML date inputs submit YYYY-MM-DD
+		newDate, err := time.Parse("2006-01-02", date)
+		if err != nil {
+			return c.Status(400).SendString("Invalid date: " + date)
+		}
 		form.Dates = append(form.Dates, newDate)
 	}
 
@@ -145,9 +158,16 @@ func formPostHandler(c *fiber.Ctx) error {
 	var urlKey string
 	for newKeyNotfound := true; newKeyNotfound; {
 		// Create random URL safe string for key
-		urlKey, _ = getRandomUrl(16)
+		var err error
+		urlKey, err = getRandomUrl(16)
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
 
-		dbHasKey, _ := database.DB.Has(urlKey)
+		dbHasKey, err := database.DB.Has(urlKey)
+		if err != nil {
+			return c.Status(500).SendString(err.Error())
+		}
 		if !dbHasKey {
 			newKeyNotfound = false
 		}
@@ -159,28 +179,31 @@ func formPostHandler(c *fiber.Ctx) error {
 	}
 
 	// Redirect to meeting display
-	return c.Redirect("/meet/" + urlKey)
+	return c.Redirect().To("/meet/" + urlKey)
 }
 
-func meetingDisplayHandler(c *fiber.Ctx) error {
+func meetingDisplayHandler(c fiber.Ctx) error {
 	urlKey := c.Params("+")
 
 	// Check if the meeting is in the database
-	dbHasKey, _ := database.DB.Has(urlKey)
-	if !dbHasKey {
-		_ = notFoundHandler(c)
-		return nil
+	dbHasKey, err := database.DB.Has(urlKey)
+	if err != nil || !dbHasKey {
+		return notFoundHandler(c)
 	}
 
 	// Get meeting info from db
 	meeting := new(database.Meeting)
-	err := database.DB.Get(urlKey, &meeting)
+	err = database.DB.Get(urlKey, &meeting)
 	if err != nil {
-		_ = notFoundHandler(c)
-		return nil
+		return notFoundHandler(c)
 	}
 
-	return c.SendString(meeting.Title + "\n" + meeting.Email + "\n" + meeting.Description + "\n" + meeting.Dates[0].Local().String())
+	// Show all offered dates, one per line
+	lines := []string{meeting.Title, meeting.Email, meeting.Description}
+	for _, date := range meeting.Dates {
+		lines = append(lines, date.Local().String())
+	}
+	return c.SendString(strings.Join(lines, "\n"))
 }
 
 // getRandomUrl returns a secure and URL safe string of length length.
