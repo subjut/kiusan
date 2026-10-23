@@ -59,6 +59,9 @@ sign-up works.
   static middleware: two `app.Get("/*", static.New(dir))` registrations in
   `initRoutes` (a file miss resets the response and calls `c.Next()`, so the
   second registration and later routes still run).
+- `docs/prompts/` — verbatim log of user prompts, one file per date
+  (the project's steering history across agent sessions); entries are
+  appended automatically per prompt (see Conventions).
 - `meetings`, `meetings.idx` (Puge default), `meetings.db` (sqlite) —
   runtime data files in the working directory (gitignored).
 
@@ -77,6 +80,13 @@ sign-up works.
   Redirects go through `c.Redirect().To(url)`. There is no `app.Static` any
   more — use the static middleware.
 - Pages render with `c.Render("<name>", fiber.Map{...}, "layouts/home")`.
+- **Prompt logging (automatic)**: after processing every user prompt,
+  **before** sending the summary of what was done, append an entry to
+  `docs/prompts/<YYYY-MM-DD>.md` (one file per date; when a new day
+  starts, create it with the `# Prompt log` header + conventions
+  section of an existing file): the prompt quoted verbatim (typos and
+  all), numbered sequentially within the file, followed by a one-line
+  note of what it produced or decided. No asking, no skipping.
 
 ## Gotchas
 
