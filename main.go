@@ -10,6 +10,10 @@ import (
 	"strings"
 	"time"
 
+	// Bundle Go's zoneinfo so time.LoadLocation works on hosts without
+	// system tzdata (Alpine, minimal containers).
+	_ "time/tzdata"
+
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/favicon"
 	"github.com/gofiber/fiber/v3/middleware/logger"
@@ -28,6 +32,7 @@ func initRoutes(app *fiber.App, staticDir string) {
 	// Make sure syle files and favicons are available
 	// (served from the site root; a file miss resets the response and calls Next)
 	app.Get("/*", static.New(filepath.Join(staticDir, "css")))
+	app.Get("/*", static.New(filepath.Join(staticDir, "js")))
 	app.Get("/*", static.New(filepath.Join(staticDir, "favicon")))
 
 	// Normal routes
@@ -130,7 +135,6 @@ func homeHandler(c fiber.Ctx) error {
 func formHandler(c fiber.Ctx) error {
 	return c.Render("1-1-form", fiber.Map{
 		"pagetitle": "kiusan | Meeting Form!",
-		"today":     time.Now().Format("2006-01-02"),
 	}, "layouts/home")
 }
 
@@ -143,7 +147,16 @@ func formPostHandler(c fiber.Ctx) error {
 		return c.Status(400).SendString(err.Error())
 	}
 
-	// Dates and times
+	// Timezone the meeting's dates/times are authored and displayed in;
+	// optional, empty (legacy) renders as UTC.
+	form.TimeZone = strings.TrimSpace(c.FormValue("timezone"))
+	loc, err := time.LoadLocation(form.TimeZone)
+	if err != nil {
+		return c.Status(400).SendString("Invalid timezone: " + form.TimeZone)
+	}
+
+	// Dates
+	var dates []time.Time
 	for i := 0; true; i++ {
 		date := c.FormValue("date" + strconv.Itoa(i))
 		if date == "" {
@@ -155,11 +168,37 @@ func formPostHandler(c fiber.Ctx) error {
 		if err != nil {
 			return c.Status(400).SendString("Invalid date: " + date)
 		}
-		form.Dates = append(form.Dates, newDate)
+		dates = append(dates, newDate)
+	}
+
+	// Times, each propagated to every selected date.
+	var times []time.Time
+	for i := 0; true; i++ {
+		t := c.FormValue("time" + strconv.Itoa(i))
+		if t == "" {
+			break
+		}
+		newTime, err := time.Parse("15:04", t)
+		if err != nil {
+			return c.Status(400).SendString("Invalid time: " + t)
+		}
+		times = append(times, newTime)
 	}
 
 	//// Feed form into database
-	// The store assigns the random URL key.
+	// Candidate slots = dates × times; without times, dates stay at
+	// midnight (behavior pinned by the form test).
+	for _, d := range dates {
+		if len(times) == 0 {
+			form.Dates = append(form.Dates, d)
+			continue
+		}
+		for _, t := range times {
+			form.Dates = append(form.Dates,
+				time.Date(d.Year(), d.Month(), d.Day(), t.Hour(), t.Minute(), 0, 0, loc))
+		}
+	}
+
 	urlKey, err := db.Create(form)
 	if err != nil {
 		return c.Status(500).SendString(err.Error())
@@ -181,10 +220,18 @@ func meetingDisplayHandler(c fiber.Ctx) error {
 		return c.Status(500).SendString(err.Error())
 	}
 
-	// Show all offered dates, one per line
-	lines := []string{meeting.Title, meeting.Email, meeting.Description}
+	// All slots are shown in the meeting's timezone (UTC when none was
+	// set) so the display never depends on the server's timezone.
+	loc, _ := time.LoadLocation(meeting.TimeZone)
+	tzName := meeting.TimeZone
+	if tzName == "" {
+		tzName = "UTC"
+	}
+
+	// Show all offered slots, one per line
+	lines := []string{meeting.Title, meeting.Email, meeting.Description, "Timezone: " + tzName}
 	for _, date := range meeting.Dates {
-		lines = append(lines, date.Local().String())
+		lines = append(lines, date.In(loc).Format("2006-01-02 15:04"))
 	}
 	return c.SendString(strings.Join(lines, "\n"))
 }

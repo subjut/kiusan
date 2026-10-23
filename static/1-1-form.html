@@ -3,41 +3,57 @@
 		<label for="title">Title:</label><br>
 		<input type="text" id="title" name="title"><br>
 		<label for="email">Email:</label><br>
-		<input type="text" id="1-email" name="email"><br>
+		<input type="text" id="email" name="email"><br>
 		<label for="description">Description:</label><br>
 		<textarea id="description" name="description" rows="5" cols="40"></textarea><br>
 		<input type="checkbox" id="hide-users" name="HideUsers" value="hide-users">
 		<label for="hide-users">Respondents can't see each others answers</label><br>
 		<input type="checkbox" id="single-signup" name="SingleSignup" value="single-signup">
 		<label for="single-signup">People can only sign up to one time slot</label><br>
-		<label>
-			Select date(s):
-			<input type="date" name="date0" min="{{.today}}" required>
-			<span class="validity"></span>
-		</label><br>
-	</form>
-	<button onclick="add_date()">Add date</button><br><br>
-	<input type="submit" value="submit">
-	
-	<script>
-		 function add_date(){
+		<br>
 
-			var x = document.getElementById("form");
-			// create an input field to insert
-			var new_date = document.createElement("input");
-			// set input field data type to text
-			new_date.setAttribute("type", "date");
-			// set input field name
-			for (i = 0;; i++) {
-				if (document.getElementsByName("date" + i).length == 0) {
-					new_date.setAttribute("name", "date" + i);
-					break;
-				}
-			}
-			// select last position to insert element before it
-			//var pos = x.childElementCount;
-			// insert element
-			x.appendChild(new_date);
-		 }
-		</script>
+		<label for="timezone">Timezone:</label>
+		<input type="text" id="timezone" name="timezone" list="tz-options"
+			placeholder="e.g. Europe/Berlin">
+		<datalist id="tz-options">
+			<option value="UTC"></option>
+			<option value="Europe/Berlin"></option>
+			<option value="Europe/Amsterdam"></option>
+			<option value="Europe/London"></option>
+			<option value="Europe/Paris"></option>
+			<option value="America/New_York"></option>
+			<option value="America/Chicago"></option>
+			<option value="America/Denver"></option>
+			<option value="America/Los_Angeles"></option>
+			<option value="Asia/Tokyo"></option>
+			<option value="Asia/Shanghai"></option>
+			<option value="Asia/Kolkata"></option>
+			<option value="Australia/Sydney"></option>
+		</datalist><br><br>
+
+		<fieldset class="dates-picker">
+			<legend>Select date(s)</legend>
+			<div class="cal-nav">
+				<button type="button" id="cal-prev" aria-label="Previous month">‹</button>
+				<span class="cal-title" id="cal-title"></span>
+				<button type="button" id="cal-next" aria-label="Next month">›</button>
+			</div>
+			<table class="cal-grid" id="cal-grid"></table>
+			<div class="chips" id="date-chips"></div>
+			<button type="button" class="clear-btn" id="clear-dates">Clear all dates</button>
+		</fieldset>
+
+		<fieldset class="times-picker">
+			<legend>Time(s</legend>) — applied to all selected dates</legend>
+			<input type="time" id="time-input">
+			<button type="button" id="add-time">Add time</button>
+			<div class="chips" id="time-chips"></div>
+			<button type="button" class="clear-btn" id="clear-times">Clear all times</button>
+		</fieldset>
+
+		<div id="slot-preview"></div>
+
+		<input type="submit" value="submit">
+	</form>
+	<script src="./dater.js"></script>
 </div>

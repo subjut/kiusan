@@ -52,6 +52,10 @@ type Meeting struct {
 	HideUsers    bool      `gorm:"not null;default:false"`
 	SingleSignup bool      `gorm:"not null;default:false"`
 	Dates        TimeSlice `gorm:"not null"`
+	// TimeZone is the IANA zone (e.g. "Europe/Berlin") the meeting's
+	// dates and times are authored in; slots are absolute instants,
+	// rendered in this zone. Empty = legacy, rendered as UTC.
+	TimeZone string `gorm:"not null;default:''"`
 	// Users is not persisted yet — respondent sign-up does not exist
 	// (see AGENTS.md), so GORM must not create a table or FK for it.
 	Users *Users `gorm:"-"`

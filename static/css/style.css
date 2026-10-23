@@ -74,16 +74,117 @@ footer {
 }
 
 
-/* Date picker */
-span::after {
-	padding-left: 5px;
- }
- 
- input:invalid + span::after {
-	content: '✖';
- }
- 
- input:valid+span::after {
-	content: '✓';
- }
+/* Date picker (calendar + chips) */
+fieldset.dates-picker,
+fieldset.times-picker {
+    border: 1px solid var(--rich-black);
+    background-color: var(--wheat);
+    border-radius: 4px;
+    margin: 20px 0;
+    padding: 10px 15px;
+}
+
+fieldset legend {
+    font-weight: bold;
+    color: var(--rich-black);
+}
+
+.cal-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.cal-title {
+    min-width: 140px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.cal-grid,
+.slot-table {
+    border-collapse: collapse;
+    margin: 0 auto;
+}
+
+.cal-grid th,
+.cal-grid td {
+    padding: 0;
+}
+
+.cal-grid th {
+    font-size: 12px;
+    color: var(--rich-black);
+    padding: 2px 4px;
+}
+
+.cal-grid .day {
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--rich-black);
+    background-color: transparent;
+    color: var(--rich-black);
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.cal-grid .day:hover:not(:disabled) {
+    background-color: var(--bud-green);
+}
+
+.cal-grid .day.selected {
+    background-color: var(--mahogany);
+    color: var(--wheat);
+    font-weight: bold;
+}
+
+.cal-grid .day:disabled {
+    color: #999;
+    cursor: default;
+    border-color: #bbb;
+}
+
+.slot-table th,
+.slot-table td {
+    border: 1px solid var(--rich-black);
+    padding: 2px 10px;
+    font-size: 13px;
+}
+
+.chips {
+    margin-top: 10px;
+    min-height: 24px;
+}
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background-color: var(--dark-slate-blue);
+    color: var(--wheat);
+    border-radius: 14px;
+    padding: 3px 10px;
+    margin: 2px;
+    font-size: 13px;
+}
+
+.chip-x {
+    border: none;
+    background: none;
+    color: var(--wheat);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+}
+
+.chip-x:hover {
+    color: var(--mahogany);
+}
+
+.clear-btn {
+    margin-top: 8px;
+    font-size: 12px;
+}
 
