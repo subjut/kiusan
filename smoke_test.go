@@ -1,33 +1,51 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/recoilme/pudge"
+
+	"github.com/subjut/kiusan/store"
 )
 
-// setupSmoke builds the app the way main does, with the working directory
-// isolated: the template dir is resolved to an absolute path up front, while
-// the pudge data files land in a t.TempDir, so tests never touch the dev
-// ./meetings files.
-func setupSmoke(t *testing.T) *fiber.App {
+// staticDir is the absolute path of the template dir, resolved once before
+// any test chdirs into its temp dir.
+var staticDir string
+
+func TestMain(m *testing.M) {
+	abs, err := filepath.Abs("static")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "resolving static dir:", err)
+		os.Exit(1)
+	}
+	staticDir = abs
+	os.Exit(m.Run())
+}
+
+// withStore opens a throwaway storage backend of the given kind under a
+// fresh temp working directory and wires it into the package-level db, so
+// the suites never touch the dev data files.
+func withStore(t *testing.T, kind, dsn string) {
 	t.Helper()
 
-	staticDir, err := filepath.Abs("static")
-	if err != nil {
-		t.Fatalf("resolving static dir: %v", err)
-	}
-
 	t.Chdir(t.TempDir())
-	initDbs()
-	t.Cleanup(func() { _ = pudge.CloseAll() })
+	st, err := store.Open(kind, dsn)
+	if err != nil {
+		t.Fatalf("opening %q store: %v", kind, err)
+	}
+	db = st
+	t.Cleanup(func() { _ = st.Close() })
+}
 
+func newTestApp(t *testing.T) *fiber.App {
+	t.Helper()
 	return newApp(staticDir)
 }
 
@@ -39,11 +57,11 @@ func postForm(t *testing.T, app *fiber.App, form string) (*http.Response, error)
 	return app.Test(req)
 }
 
-// TestSmoke walks the request lifecycle in-process (no network): page
+// runSmokeSuite walks the request lifecycle in-process (no network): page
 // rendering, static serving, the 404 fallthrough, and a full meeting
 // create -> redirect -> read round trip.
-func TestSmoke(t *testing.T) {
-	app := setupSmoke(t)
+func runSmokeSuite(t *testing.T) {
+	app := newTestApp(t)
 
 	body := func(r *http.Response) string {
 		t.Helper()
@@ -111,11 +129,11 @@ func TestSmoke(t *testing.T) {
 	}
 }
 
-// TestFormPost pins the form contract: which submissions create a meeting
-// (303) and which the handler rejects (400), including the month/day layout
-// trap.
-func TestFormPost(t *testing.T) {
-	app := setupSmoke(t)
+// runFormPostSuite pins the form contract: which submissions create a
+// meeting (303) and which the handler rejects (400), including the
+// month/day layout trap.
+func runFormPostSuite(t *testing.T) {
+	app := newTestApp(t)
 
 	tests := []struct {
 		name       string
@@ -150,22 +168,45 @@ func TestFormPost(t *testing.T) {
 	}
 }
 
-// TestGetRandomUrl checks the key contract: exact length, URL-safe charset,
+// The smoke suites run on both backends so the storage swap is covered
+// end to end: pudge (the default) and GORM-backed sqlite (cgo-free).
+
+func TestSmokePuge(t *testing.T) {
+	withStore(t, store.BackendPuge, "meetings")
+	runSmokeSuite(t)
+}
+
+func TestSmokeSqlite(t *testing.T) {
+	withStore(t, store.BackendSQLite, "meetings.db")
+	runSmokeSuite(t)
+}
+
+func TestFormPostPuge(t *testing.T) {
+	withStore(t, store.BackendPuge, "meetings")
+	runFormPostSuite(t)
+}
+
+func TestFormPostSqlite(t *testing.T) {
+	withStore(t, store.BackendSQLite, "meetings.db")
+	runFormPostSuite(t)
+}
+
+// TestRandomKey checks the key contract: exact length, URL-safe charset,
 // and no collisions across samples.
-func TestGetRandomUrl(t *testing.T) {
+func TestRandomKey(t *testing.T) {
 	const samples = 200
 	seen := make(map[string]struct{}, samples)
 	for i := 0; i < samples; i++ {
-		key, err := getRandomUrl(16)
+		key, err := store.RandomKey(16)
 		if err != nil {
-			t.Fatalf("getRandomUrl(16): %v", err)
+			t.Fatalf("store.RandomKey(16): %v", err)
 		}
 		if len(key) != 16 {
 			t.Fatalf("key length %d, want 16: %q", len(key), key)
 		}
 		for j, c := range key {
-			if !strings.ContainsRune(urlSafeLetters, c) {
-				t.Fatalf("byte %d of %q (%q) not in urlSafeLetters", j, key, c)
+			if !strings.ContainsRune(store.URLSafeLetters, c) {
+				t.Fatalf("byte %d of %q (%q) not in URLSafeLetters", j, key, c)
 			}
 		}
 		if _, dup := seen[key]; dup {
@@ -174,12 +215,12 @@ func TestGetRandomUrl(t *testing.T) {
 		seen[key] = struct{}{}
 	}
 	for _, n := range []int{1, 5, 64, 256} {
-		key, err := getRandomUrl(n)
+		key, err := store.RandomKey(n)
 		if err != nil {
-			t.Fatalf("getRandomUrl(%d): %v", n, err)
+			t.Fatalf("store.RandomKey(%d): %v", n, err)
 		}
 		if l := len(key); l != n {
-			t.Fatalf("getRandomUrl(%d) returned length %d", n, l)
+			t.Fatalf("store.RandomKey(%d) returned length %d", n, l)
 		}
 	}
 }

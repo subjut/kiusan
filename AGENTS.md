@@ -6,8 +6,11 @@ Kiusan is a small self-hosted scheduling web app. A user creates a meeting
 poll (title, contact email, description, one or more candidate dates) and
 receives a random URL key to share: `/meet/<key>`.
 
-Written in Go with the Fiber v3 web framework (v3.6.1). Storage is the embedded
-Pudge key-value database — there is no SQL, no migrations, no ORM.
+Written in Go with the Fiber v3 web framework (v3.6.1). Storage is pluggable
+behind `store.MeetingStore` (`store/`): the embedded Pudge key-value database
+is the default, and GORM backs the relational engines (mysql, mariadb,
+postgres, sqlite), selected via `KIUSAN_STORE` + `KIUSAN_DSN`. GORM schemas
+are auto-migrated at startup (additive-only).
 
 Feature state (see `static/index.html`):
 - "Schedule Meetings" (1-1 form) — implemented (`/1-1-form`, `/meet/+`)
@@ -15,44 +18,58 @@ Feature state (see `static/index.html`):
   static stub, not templated and not routed)
 - "Find Date" — unimplemented (`static/date-form.html`, same)
 
-The `database.Users` type and `UserDb` constant exist, but no users DB is
-opened and no sign-up endpoints exist yet — do not assume respondent
+The `database.Users` type exists (excluded from the schema via
+`gorm:"-"`) but no sign-up endpoints exist yet — do not assume respondent
 sign-up works.
 
 ## Commands
 
 - Build: `go build ./...`
 - Vet: `go vet ./...`
-- Run: `go run .` (listens on `:8080`)
+- Run: `go run .` (listens on `:8080`, Pudge default storage)
+- Other backends:
+  - `KIUSAN_STORE=sqlite KIUSAN_DSN=./meetings.db go run .`
+  - `KIUSAN_STORE=mysql KIUSAN_DSN="user:pass@tcp(localhost:3306)/kiusan" go run .`
+    (mariadb: same DSN with `KIUSAN_STORE=mariadb`)
+  - `KIUSAN_STORE=postgres KIUSAN_DSN="postgres://user:pass@localhost:5432/kiusan?sslmode=disable" go run .`
 - Tests: `go test ./...` (add `-race` in CI) — `smoke_test.go` runs the app
   in-process (no server, no network) and covers page rendering,
   favicon/static serving, the 404 fallthrough, a full meeting
   create -> redirect -> read round trip, form validation (bad/malformed
-  dates and encoding), and the random URL key contract. Each test gets a
-  throwaway pudge DB in `t.TempDir()`, so the dev `./meetings` files are
-  never touched.
+  dates and encoding), and the random URL key contract. The suites run on
+  both backends (Puge and GORM-sqlite); each test chdirs into `t.TempDir()`
+  and opens a throwaway store, so the dev data files are never touched.
 
 ## Layout
 
 - `main.go` — server setup, app wiring (`newApp`), routes (`initRoutes`),
-  handlers.
-- `database/database.go` — Pudge handle (`database.DB`) and the
-  `Meeting`/`Users` model types. New DBs must be opened in
-  `main.initDbs`.
+  handlers. The store is opened in `main` via `store.Open` (env-selected);
+  handlers reach it through the package-level `db` global.
+- `database/database.go` — model types only: `Meeting`, `Users`, and
+  `TimeSlice` (candidate dates as a JSON document in a TEXT column, so the
+  schema stays portable across engines). No handles or globals here.
+- `store/` — `MeetingStore` interface and backends: `puge.go` (embedded
+  Pudge KV) and `gorm.go` (mysql/mariadb/postgres/sqlite via GORM; schema
+  auto-migrated at startup). `Open(kind, dsn)` dispatches on `KIUSAN_STORE`;
+  `RandomKey` in `key.go` builds the URL-safe keys. A new backend =
+  implement `MeetingStore` + add a case in `Open`.
 - `static/` — HTML templates rendered by gofiber/template/html/v3 (layout:
   `static/layouts/home.html`, partials in `static/partials/`), plus
   `static/css/` and `static/favicon/`, served from the site root via the
   static middleware: two `app.Get("/*", static.New(dir))` registrations in
   `initRoutes` (a file miss resets the response and calls `c.Next()`, so the
   second registration and later routes still run).
-- `meetings`, `meetings.idx` — Pudge data files, generated at runtime in
-  the working directory (gitignored).
+- `meetings`, `meetings.idx` (Puge default), `meetings.db` (sqlite) —
+  runtime data files in the working directory (gitignored).
 
 ## Conventions
 
 - Go 1.26+ toolchain (go.mod declares `go 1.26.0`, required by the Fiber v3
   and template dependencies). Don't use stdlib or dependency features newer
   than that without bumping go.mod.
+- All storage goes through the `db` global (`store.MeetingStore`); handlers
+  never touch Pudge or GORM directly, and GORM/Pudge are imported only
+  inside `store/`.
 - Handlers stay thin. In Fiber v3 a handler is `func(c fiber.Ctx) error`
   (`Ctx` is an interface — no `*`). Form fields are bound into
   `database.Meeting` via `c.Bind().Body(form)`; candidate dates arrive as
@@ -72,8 +89,15 @@ sign-up works.
   both valid lookups for a greedy param. Do not "normalize" `/meet/+` or the
   param lookup; note the static middleware uses the same wildcard form
   (`/*`), registered with `Get`, not `app.Static`.
-- **Pudge data files** (`meetings`, `meetings.idx`) are generated at
-  runtime — never hand-edit, delete, or commit them.
+- **Per-backend data files** (Puge: `meetings` + `meetings.idx`; sqlite:
+  `meetings.db`; relational: the GORM-created table in the DB) are generated
+  at runtime — never hand-edit or commit them.
+- **Portable columns only**: the schema must stay engine-agnostic. Dates
+  persist via `database.TimeSlice` as a JSON document in a TEXT column —
+  don't add engine-specific column types or features.
+- **AutoMigrate is additive-only**: it creates tables and adds columns at
+  startup but does not drop or modify anything; destructive schema changes
+  need explicit SQL migrations (none exist yet).
 - **Template engine** runs with `Reload(true)` and `Debug(true)` for
   development — template edits do not require a restart.
 - **Slices before indexing**: `meeting.Dates` must be checked for empty

@@ -1,9 +1,8 @@
 package main
 
 import (
-	"crypto/rand"
+	"errors"
 	"log"
-	"math/big"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,22 +15,14 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/gofiber/template/html/v3"
-	"github.com/recoilme/pudge"
 
 	"github.com/subjut/kiusan/database"
+	"github.com/subjut/kiusan/store"
 )
 
-// Used for random URL generator
-const urlSafeLetters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
-
-// initDbs initializes all databases used in kiusan
-func initDbs() {
-	var err error
-	database.DB, err = pudge.Open(database.MeetingDb, nil)
-	if err != nil {
-		log.Fatalf("Could not initialize databases: %s", err)
-	}
-}
+// db is the storage backend for the whole app. Handlers talk to storage
+// only through it; tests swap it for a throwaway instance per run.
+var db store.MeetingStore
 
 func initRoutes(app *fiber.App, staticDir string) {
 	// Make sure syle files and favicons are available
@@ -88,9 +79,17 @@ func newApp(staticDir string) *fiber.App {
 }
 
 func main() {
-	// Initialize databases
-	initDbs()
-	defer pudge.CloseAll()
+	// Open the storage backend selected by KIUSAN_STORE / KIUSAN_DSN.
+	var err error
+	db, err = store.Open(os.Getenv("KIUSAN_STORE"), os.Getenv("KIUSAN_DSN"))
+	if err != nil {
+		log.Fatalf("Could not open store: %s", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Println("Store Shutdown:", err)
+		}
+	}()
 
 	// Create app
 	app := newApp("./static")
@@ -113,11 +112,6 @@ func main() {
 
 	if err := app.Listen(":8080"); err != nil {
 		log.Println("Server stopped with error:", err)
-	}
-
-	// Closing all open dbs
-	if err := pudge.CloseAll(); err != nil {
-		log.Fatal("Database Shutdown:", err)
 	}
 
 	log.Println("Server exiting")
@@ -165,26 +159,8 @@ func formPostHandler(c fiber.Ctx) error {
 	}
 
 	//// Feed form into database
-	// Make sure we don't have it yet
-	var urlKey string
-	for newKeyNotfound := true; newKeyNotfound; {
-		// Create random URL safe string for key
-		var err error
-		urlKey, err = getRandomUrl(16)
-		if err != nil {
-			return c.Status(500).SendString(err.Error())
-		}
-
-		dbHasKey, err := database.DB.Has(urlKey)
-		if err != nil {
-			return c.Status(500).SendString(err.Error())
-		}
-		if !dbHasKey {
-			newKeyNotfound = false
-		}
-	}
-
-	err := database.DB.Set(urlKey, &form)
+	// The store assigns the random URL key.
+	urlKey, err := db.Create(form)
 	if err != nil {
 		return c.Status(500).SendString(err.Error())
 	}
@@ -197,16 +173,12 @@ func meetingDisplayHandler(c fiber.Ctx) error {
 	urlKey := c.Params("+")
 
 	// Check if the meeting is in the database
-	dbHasKey, err := database.DB.Has(urlKey)
-	if err != nil || !dbHasKey {
-		return notFoundHandler(c)
-	}
-
-	// Get meeting info from db
-	meeting := new(database.Meeting)
-	err = database.DB.Get(urlKey, &meeting)
+	meeting, err := db.Get(urlKey)
 	if err != nil {
-		return notFoundHandler(c)
+		if errors.Is(err, store.ErrNotFound) {
+			return notFoundHandler(c)
+		}
+		return c.Status(500).SendString(err.Error())
 	}
 
 	// Show all offered dates, one per line
@@ -215,21 +187,4 @@ func meetingDisplayHandler(c fiber.Ctx) error {
 		lines = append(lines, date.Local().String())
 	}
 	return c.SendString(strings.Join(lines, "\n"))
-}
-
-// getRandomUrl returns a secure and URL safe string of length length.
-// Returns an empty string and error if the random number generator crashes
-// adapted from https://gist.github.com/denisbrodbeck/635a644089868a51eccd6ae22b2eb800
-func getRandomUrl(length int) (string, error) {
-	result := ""
-	for {
-		if len(result) >= length {
-			return result, nil
-		}
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(urlSafeLetters))))
-		if err != nil {
-			return "", err
-		}
-		result = result + string(urlSafeLetters[num.Int64()])
-	}
 }
