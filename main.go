@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -32,11 +33,11 @@ func initDbs() {
 	}
 }
 
-func initRoutes(app *fiber.App) {
+func initRoutes(app *fiber.App, staticDir string) {
 	// Make sure syle files and favicons are available
 	// (served from the site root; a file miss resets the response and calls Next)
-	app.Get("/*", static.New("./static/css"))
-	app.Get("/*", static.New("./static/favicon"))
+	app.Get("/*", static.New(filepath.Join(staticDir, "css")))
+	app.Get("/*", static.New(filepath.Join(staticDir, "favicon")))
 
 	// Normal routes
 	app.Get("/", homeHandler)
@@ -52,13 +53,12 @@ func initRoutes(app *fiber.App) {
 	})
 }
 
-func main() {
-	// Initialize databases
-	initDbs()
-	defer pudge.CloseAll()
-
+// newApp wires up the template engine, middleware and routes. staticDir is
+// the directory holding the templates and the css/favicon assets; callers may
+// pass an absolute path to decouple the app from the working directory.
+func newApp(staticDir string) *fiber.App {
 	// We use html template engine
-	engine := html.New("./static", ".html")
+	engine := html.New(staticDir, ".html")
 
 	// For debugging, set to false or comment for production
 	// Reload the templates on each render, good for development
@@ -75,14 +75,25 @@ func main() {
 
 	// Serve favicon.ico from memory instead of disk
 	app.Use(favicon.New(favicon.Config{
-		File: "./static/favicon/favicon.ico",
+		File: filepath.Join(staticDir, "favicon", "favicon.ico"),
 	}))
 
 	// Logging middleware
 	app.Use(logger.New())
 
 	// Set up all routes
-	initRoutes(app)
+	initRoutes(app, staticDir)
+
+	return app
+}
+
+func main() {
+	// Initialize databases
+	initDbs()
+	defer pudge.CloseAll()
+
+	// Create app
+	app := newApp("./static")
 
 	// Shutting down section
 	// Wait for interrupt signal to gracefully shutdown the server.

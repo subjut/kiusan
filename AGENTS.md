@@ -24,14 +24,18 @@ sign-up works.
 - Build: `go build ./...`
 - Vet: `go vet ./...`
 - Run: `go run .` (listens on `:8080`)
-- Tests: `go test ./...` — `smoke_test.go` runs the app in-process (no server,
-  no network) and covers page rendering, favicon/static serving, the 404
-  fallthrough, and a full meeting create -> redirect -> read round trip.
-  It uses the `./meetings` dev DB and deletes what it creates.
+- Tests: `go test ./...` (add `-race` in CI) — `smoke_test.go` runs the app
+  in-process (no server, no network) and covers page rendering,
+  favicon/static serving, the 404 fallthrough, a full meeting
+  create -> redirect -> read round trip, form validation (bad/malformed
+  dates and encoding), and the random URL key contract. Each test gets a
+  throwaway pudge DB in `t.TempDir()`, so the dev `./meetings` files are
+  never touched.
 
 ## Layout
 
-- `main.go` — server setup, routes (`initRoutes`), handlers.
+- `main.go` — server setup, app wiring (`newApp`), routes (`initRoutes`),
+  handlers.
 - `database/database.go` — Pudge handle (`database.DB`) and the
   `Meeting`/`Users` model types. New DBs must be opened in
   `main.initDbs`.
