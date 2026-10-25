@@ -63,6 +63,12 @@ sign-up works.
   the static middleware: one `app.Get("/*", static.New(dir))` registration
   per dir in `initRoutes` (a file miss resets the response and calls
   `c.Next()`, so later registrations and routes still run).
+- `data/timezones.txt` — the IANA zones offered in the form's timezone
+  select (a curated list, grouped by UTC offset for maintainers: the 1-2
+  most important zones per offset per region, plus UTC; `#` lines are
+  comments). Rendered alphabetically in the form (sorted in `main.go`),
+  independent of the file order; embedded via `go:embed` and validated at
+  process start. Hand-edit when the list should change.
 - `docs/prompts/` — verbatim log of user prompts, one file per date
   (the project's steering history across agent sessions); entries are
   appended automatically per prompt (see Conventions).
@@ -114,7 +120,16 @@ sign-up works.
   `Europe/Berlin`) is where they are authored and rendered, empty = legacy
   = render as UTC. Never display with `.Local()` — that leaks the server's
   timezone. `_ "time/tzdata"` in `main.go` bundles zoneinfo for hosts
-  without system tzdata.
+  without system tzdata. The form's timezone `<select>` is rendered from
+  the committed `data/timezones.txt` (embedded with `go:embed`, filtered
+  `time.LoadLocation` at process start into `timezoneList` in
+  `main.go`, so any name the server cannot load is dropped with a
+  startup warning), so every option is loadable by the server — don't
+  hardcode zone options in the template. The options are presented in
+  alphabetical order (sorted into `timezoneList` at process start in
+  `main.go`, independent of the file's grouping); `static/js/dater.js`
+  inserts the browser's own zone at its alphabetical position when it is
+  not in the list, so the prefill always shows and submits.
 - **AutoMigrate is additive-only**: it creates tables and adds columns at
   startup but does not drop or modify anything; destructive schema changes
   need explicit SQL migrations (none exist yet).

@@ -13,23 +13,9 @@
 		<br>
 
 		<label for="timezone">Timezone:</label>
-		<input type="text" id="timezone" name="timezone" list="tz-options"
-			placeholder="e.g. Europe/Berlin">
-		<datalist id="tz-options">
-			<option value="UTC"></option>
-			<option value="Europe/Berlin"></option>
-			<option value="Europe/Amsterdam"></option>
-			<option value="Europe/London"></option>
-			<option value="Europe/Paris"></option>
-			<option value="America/New_York"></option>
-			<option value="America/Chicago"></option>
-			<option value="America/Denver"></option>
-			<option value="America/Los_Angeles"></option>
-			<option value="Asia/Tokyo"></option>
-			<option value="Asia/Shanghai"></option>
-			<option value="Asia/Kolkata"></option>
-			<option value="Australia/Sydney"></option>
-		</datalist><br><br>
+		<select id="timezone" name="timezone">
+{{range .timezones}}<option value="{{.}}">{{.}}</option>
+{{end}}</select><br><br>
 
 		<fieldset class="dates-picker">
 			<legend>Select date(s)</legend>

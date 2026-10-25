@@ -1,0 +1,122 @@
+UTC
+# UTC+0
+Europe/London
+Europe/Dublin
+Atlantic/Azores
+Africa/Accra
+Africa/Monrovia
+# UTC+1
+Europe/Berlin
+Europe/Paris
+Arctic/Longyearbyen
+Africa/Lagos
+Africa/Algiers
+# UTC+2
+Europe/Athens
+Europe/Helsinki
+Africa/Cairo
+Africa/Tripoli
+# UTC+3
+Europe/Moscow
+Africa/Nairobi
+Africa/Addis_Ababa
+Asia/Baghdad
+Asia/Riyadh
+# UTC+3:30
+Asia/Tehran
+# UTC+4
+Europe/Astrakhan
+Asia/Dubai
+Asia/Muscat
+Indian/Reunion
+# UTC+4:30
+Asia/Kabul
+# UTC+5
+Asia/Karachi
+Asia/Tashkent
+Indian/Maldives
+Antarctica/Mawson
+# UTC+5:30
+Asia/Kolkata
+# UTC+5:45
+Asia/Kathmandu
+# UTC+6
+Asia/Dhaka
+Asia/Thimphu
+Indian/Cocos
+# UTC+6:30
+Asia/Yangon
+# UTC+7
+Asia/Bangkok
+Asia/Jakarta
+Indian/Christmas
+Antarctica/Davis
+# UTC+8
+Asia/Shanghai
+Asia/Singapore
+Australia/Perth
+Antarctica/Casey
+# UTC+8:45
+Australia/Eucla
+# UTC+9
+Asia/Tokyo
+Asia/Seoul
+Pacific/Palau
+# UTC+9:30
+Australia/Darwin
+Australia/Adelaide
+# UTC+10
+Australia/Sydney
+Australia/Melbourne
+Pacific/Port_Moresby
+Pacific/Guam
+# UTC+10:30
+Australia/Lord_Howe
+# UTC+11
+Pacific/Noumea
+Pacific/Efate
+# UTC+12
+Pacific/Auckland
+Pacific/Fiji
+Antarctica/McMurdo
+# UTC+12:45
+Pacific/Chatham
+# UTC+13
+Pacific/Tongatapu
+Pacific/Apia
+# UTC+14
+Pacific/Kiritimati
+# UTC-1
+Atlantic/Cape_Verde
+Atlantic/St_Helena
+# UTC-2
+America/Noronha
+# UTC-3
+America/Argentina/Buenos_Aires
+America/Santiago
+Antarctica/Rothera
+# UTC-4
+America/La_Paz
+America/Puerto_Rico
+# UTC-5
+America/New_York
+America/Bogota
+# UTC-6
+America/Chicago
+America/Mexico_City
+# UTC-7
+America/Denver
+America/Phoenix
+# UTC-8
+America/Los_Angeles
+America/Vancouver
+# UTC-9
+America/Anchorage
+America/Juneau
+# UTC-9:30
+Pacific/Marquesas
+# UTC-10
+Pacific/Honolulu
+# UTC-11
+Pacific/Pago_Pago
+Pacific/Midway

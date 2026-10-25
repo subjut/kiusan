@@ -1,11 +1,13 @@
 package main
 
 import (
+	_ "embed"
 	"errors"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +29,40 @@ import (
 // db is the storage backend for the whole app. Handlers talk to storage
 // only through it; tests swap it for a throwaway instance per run.
 var db store.MeetingStore
+
+//go:embed data/timezones.txt
+var timezoneNamesRaw string
+
+// timezoneList is the IANA zones offered in the form's timezone select:
+// every zone from the committed data/timezones.txt (curated list, grouped
+// by UTC offset) that this build can actually load, so an offered zone can
+// never fail to load in the meeting view. Sorted alphabetically for the
+// dropdown, independent of the file's grouping. Embedded rather than read
+// from disk so it works regardless of the working directory (tests chdir).
+var timezoneList = func() []string {
+	zones := loadableTimezones(strings.Split(timezoneNamesRaw, "\n"))
+	sort.Strings(zones)
+	return zones
+}()
+
+// loadableTimezones drops names the server cannot load; the list is
+// validated once at process start, not per request. Blank lines and `#`
+// group-comment lines in the data file are skipped.
+func loadableTimezones(names []string) []string {
+	zones := make([]string, 0, len(names))
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if n == "" || strings.HasPrefix(n, "#") {
+			continue
+		}
+		if _, err := time.LoadLocation(n); err != nil {
+			log.Printf("warning: dropping unloadable timezone %q: %v", n, err)
+			continue
+		}
+		zones = append(zones, n)
+	}
+	return zones
+}
 
 func initRoutes(app *fiber.App, staticDir string) {
 	// Make sure syle files and favicons are available
@@ -135,6 +171,7 @@ func homeHandler(c fiber.Ctx) error {
 func formHandler(c fiber.Ctx) error {
 	return c.Render("1-1-form", fiber.Map{
 		"pagetitle": "kiusan | Meeting Form!",
+		"timezones": timezoneList,
 	}, "layouts/home")
 }
 

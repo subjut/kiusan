@@ -85,8 +85,41 @@ func runSmokeSuite(t *testing.T) {
 	if r := get("/"); r.StatusCode != http.StatusOK || !strings.Contains(body(r), "kiusan") {
 		t.Fatalf("GET /: status %d, body missing page content", r.StatusCode)
 	}
-	if r := get("/1-1-form"); r.StatusCode != http.StatusOK {
-		t.Fatalf("GET /1-1-form: status %d", r.StatusCode)
+	// The timezone select is rendered from data/timezones.txt (curated:
+	// 1-2 zones per UTC offset per region, plus UTC). The assertion is
+	// structural — the options must be inside the <select>, not loose text.
+	rf := get("/1-1-form")
+	if rf.StatusCode != http.StatusOK {
+		t.Fatalf("GET /1-1-form: status %d", rf.StatusCode)
+	}
+	fb := body(rf)
+	selStart := strings.Index(fb, `<select id="timezone" name="timezone">`)
+	selEnd := strings.Index(fb, "</select>")
+	if selStart < 0 || selEnd <= selStart {
+		t.Fatalf("GET /1-1-form: timezone <select> not found in body")
+	}
+	sel := fb[selStart:selEnd]
+	for _, want := range []string{
+		`<option value="Europe/Berlin">Europe/Berlin</option>`,
+		`<option value="America/New_York">America/New_York</option>`,
+		`<option value="UTC">UTC</option>`,
+	} {
+		if !strings.Contains(sel, want) {
+			t.Fatalf("GET /1-1-form: timezone select missing %s", want)
+		}
+	}
+	// The options render in alphabetical order.
+	var names []string
+	for _, o := range strings.Split(sel, `<option value="`)[1:] {
+		names = append(names, o[:strings.Index(o, `">`)])
+	}
+	if len(names) == 0 {
+		t.Fatalf("GET /1-1-form: no timezone options rendered")
+	}
+	for k := 1; k < len(names); k++ {
+		if names[k-1] > names[k] {
+			t.Fatalf("GET /1-1-form: timezone options not alphabetical: %q before %q", names[k-1], names[k])
+		}
 	}
 
 	// Favicon from memory, css from the static dir.

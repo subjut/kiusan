@@ -211,18 +211,33 @@
 	}
 
 	// ---- timezone -----------------------------------------------------------
-	// Pre-fill the meeting's timezone with the browser's zone (editable;
-	// validated server-side).
+	// Pre-select the browser's zone in the timezone <select>. If the zone
+	// is not among the server-rendered options, add it so the prefill is
+	// preserved and the value still submits (validated server-side).
 	try {
+		var tzSel = document.getElementById("timezone");
 		var localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		if (localTz) {
-			document.getElementById("timezone").value = localTz;
+			if (tzSel.querySelector('option[value="' + localTz + '"]') === null) {
+				var tzOpt = document.createElement("option");
+				tzOpt.value = localTz;
+				tzOpt.textContent = localTz;
+				// Insert at the alphabetical position, keeping the dropdown
+				// sorted like the server-rendered options.
+				var i = 0;
+				while (i < tzSel.options.length && tzSel.options[i].value < localTz) {
+					i++;
+				}
+				tzSel.insertBefore(tzOpt,
+					i < tzSel.options.length ? tzSel.options[i] : null);
+			}
+			tzSel.value = localTz;
 		}
 	} catch (err) { /* very old browsers: no prefill */ }
 
 	// ---- submit ----------------------------------------------------------------
 	// The chip state serializes into date0..n / time0..m hidden fields; the
-	// timezone travels via the plain text input.
+	// timezone travels via the <select> element.
 	form.addEventListener("submit", function () {
 		var old = form.querySelectorAll("[data-picker-input]");
 		for (var i = 0; i < old.length; i++) old[i].remove();
