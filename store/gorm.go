@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/glebarez/sqlite"
 	"github.com/subjut/kiusan/database"
@@ -61,25 +62,46 @@ func openGorm(engine, dsn string) (MeetingStore, error) {
 
 func (g *gormStore) Create(m *database.Meeting) (string, error) {
 	for {
-		key, err := RandomKey(16)
+		userKey, err := RandomKey(16)
 		if err != nil {
 			return "", err
 		}
-		var existing database.Meeting
-		res := g.db.Where("key = ?", key).Take(&existing)
-		if res.Error == nil {
-			// Collision: extremely unlikely, but loop until it is unique.
-			continue
-		}
-		if !errors.Is(res.Error, gorm.ErrRecordNotFound) {
-			return "", res.Error
-		}
-		m.Key = key
-		if err := g.db.Create(m).Error; err != nil {
+		adminKey, err := RandomKey(16)
+		if err != nil {
 			return "", err
 		}
-		return key, nil
+		// Both keys must be free in both key columns: a key must never
+		// collide with any other meeting's user or admin key.
+		var count int64
+		res := g.db.Model(&database.Meeting{}).
+			Where("key IN ? OR admin_key IN ?", []string{userKey, adminKey}, []string{userKey, adminKey}).
+			Count(&count)
+		if res.Error != nil {
+			return "", res.Error
+		}
+		if count > 0 {
+			// Collision: extremely unlikely, but loop until both are unique.
+			continue
+		}
+		m.Key, m.AdminKey = userKey, adminKey
+		if err := g.db.Create(m).Error; err != nil {
+			if isUniqueViolation(err) {
+				// Lost a race against a concurrent create; try new keys.
+				continue
+			}
+			return "", err
+		}
+		return userKey, nil
 	}
+}
+
+// isUniqueViolation recognizes duplicate-key/unique errors from the
+// supported engines (mysql/mariadb/postgres/sqlite).
+func isUniqueViolation(err error) bool {
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "duplicate") ||
+		strings.Contains(s, "unique") ||
+		strings.Contains(s, "constraint")
 }
 
 func (g *gormStore) Get(key string) (*database.Meeting, error) {
@@ -92,6 +114,47 @@ func (g *gormStore) Get(key string) (*database.Meeting, error) {
 		return nil, res.Error
 	}
 	return &meeting, nil
+}
+
+func (g *gormStore) GetAdmin(key string) (*database.Meeting, error) {
+	var meeting database.Meeting
+	res := g.db.Where("admin_key = ?", key).Take(&meeting)
+	if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return &meeting, nil
+}
+
+// Update re-saves all mutable fields under a compare-and-set on the
+// meeting's Generation: it only lands if nobody else wrote in between.
+func (g *gormStore) Update(m *database.Meeting) error {
+	res := g.db.Model(&database.Meeting{}).
+		Where("key = ? AND generation = ?", m.Key, m.Generation).
+		Updates(map[string]any{
+			"admin_key":     m.AdminKey,
+			"title":         m.Title,
+			"description":   m.Description,
+			"email":         m.Email,
+			"hide_users":    m.HideUsers,
+			"single_signup": m.SingleSignup,
+			"dates":         m.Dates,
+			"time_zone":     m.TimeZone,
+			"expires":       m.Expires,
+			"answers":       m.Answers,
+			"generation":    gorm.Expr("generation + 1"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrConflict
+	}
+	// Keep the caller's copy in sync with what was stored.
+	m.Generation++
+	return nil
 }
 
 func (g *gormStore) Delete(key string) error {

@@ -65,6 +65,13 @@ func loadableTimezones(names []string) []string {
 }
 
 func initRoutes(app *fiber.App, staticDir string) {
+	// Refuse to render inside any frame (clickjacking).
+	app.Use(func(c fiber.Ctx) error {
+		c.Set("X-Frame-Options", "DENY")
+		c.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		return c.Next()
+	})
+
 	// Make sure syle files and favicons are available
 	// (served from the site root; a file miss resets the response and calls Next)
 	app.Get("/*", static.New(filepath.Join(staticDir, "css")))
@@ -75,9 +82,14 @@ func initRoutes(app *fiber.App, staticDir string) {
 	app.Get("/", homeHandler)
 	app.Get("/1-1-form", formHandler)
 	app.Post("/1-1-form", formPostHandler)
+	// The edit form is reachable by the admin link only.
+	app.Get("/1-1-form/edit/+", formEditHandler)
 
-	// Meeting page route; gobbles up random meeting url
-	app.Get("/meet/+", meetingDisplayHandler)
+	// Meeting page routes; the gobbler takes either link key of the poll.
+	app.Get("/meet/+", meetingHandler)
+	app.Post("/meet/+/answer", answerPostHandler)
+	app.Post("/meet/+/answer/edit", answerEditPostHandler)
+	app.Post("/meet/+/answer/delete", answerDeletePostHandler)
 
 	// 404 Handler
 	app.Use(func(c fiber.Ctx) error {
@@ -141,13 +153,13 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 
-	// Start the server and listen to http connections
+	// Start the server and listen on http connections
 	go func() {
 		<-quit
 		log.Println("Shutdown Server ...")
 		// Shut down server
 		if err := app.Shutdown(); err != nil {
-			log.Println("Server Shutdown:", err)
+			log.Println("Server stopped with error:", err)
 		}
 	}()
 
@@ -168,14 +180,116 @@ func homeHandler(c fiber.Ctx) error {
 	}, "layouts/home")
 }
 
+// ---- 1-1 form: create & edit ----
+
 func formHandler(c fiber.Ctx) error {
+	now := time.Now()
 	return c.Render("1-1-form", fiber.Map{
-		"pagetitle": "kiusan | Meeting Form!",
-		"timezones": timezoneList,
+		"pagetitle":    "kiusan | Meeting Form!",
+		"timezones":    timezoneList,
+		"meetingkey":   "",
+		"title":        "",
+		"email":        "",
+		"description":  "",
+		"timezone":     "",
+		"extraTz":      "",
+		"hideusers":    false,
+		"singlesignup": false,
+		"datesAttr":    "",
+		"timesAttr":    "",
+		"expiry":       "",
+		"defaultExp":   now.UTC().AddDate(0, 3, 0).Format("2006-01-02"),
+		"minExp":       now.UTC().Format("2006-01-02"),
 	}, "layouts/home")
 }
 
+// formEditHandler renders the 1-1 form prefilled with the poll's stored
+// entries (admin link only), so editing a poll keeps both of its links.
+func formEditHandler(c fiber.Ctx) error {
+	m, err := db.GetAdmin(c.Params("+"))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return notFoundHandler(c)
+		}
+		return c.Status(500).SendString(err.Error())
+	}
+
+	// The picker state the poll was created with: its slots split into
+	// unique dates and times in the meeting's zone. Midnight slots only
+	// become a 00:00 time when some slot carries a real time, keeping the
+	// re-edit equivalent for date-only polls.
+	loc, _ := time.LoadLocation(m.TimeZone)
+	hasTime := false
+	for _, d := range m.Dates {
+		t := d.In(loc)
+		if t.Hour() != 0 || t.Minute() != 0 {
+			hasTime = true
+			break
+		}
+	}
+	dates := map[string]struct{}{}
+	times := map[string]struct{}{}
+	for _, d := range m.Dates {
+		t := d.In(loc)
+		dates[t.Format("2006-01-02")] = struct{}{}
+		if hasTime {
+			times[t.Format("15:04")] = struct{}{}
+		}
+	}
+	joined := func(set map[string]struct{}) string {
+		list := make([]string, 0, len(set))
+		for v := range set {
+			list = append(list, v)
+		}
+		sort.Strings(list)
+		return strings.Join(list, ",")
+	}
+
+	expiry := ""
+	if m.Expires != nil {
+		expiry = m.Expires.In(loc).Format("2006-01-02")
+	}
+
+	return c.Render("1-1-form", fiber.Map{
+		"pagetitle":    "kiusan | Edit: " + m.Title,
+		"timezones":    timezoneList,
+		"meetingkey":   m.AdminKey,
+		"title":        m.Title,
+		"email":        m.Email,
+		"description":  m.Description,
+		"timezone":     m.TimeZone,
+		"extraTz":      extraTimezone(m.TimeZone),
+		"hideusers":    m.HideUsers,
+		"singlesignup": m.SingleSignup,
+		"datesAttr":    joined(dates),
+		"timesAttr":    joined(times),
+		"expiry":       expiry,
+		"defaultExp":   "",
+		"minExp":       time.Now().UTC().Format("2006-01-02"),
+	}, "layouts/home")
+}
+
+// extraTimezone returns the meeting's zone when it is not among the
+// curated options, so the dropdown still carries a selected entry for it.
+func extraTimezone(zone string) string {
+	if zone == "" {
+		return ""
+	}
+	for _, z := range timezoneList {
+		if z == zone {
+			return ""
+		}
+	}
+	return zone
+}
+
+// formPostHandler creates a poll, or — when the form carries a meetingkey
+// (an admin link key) — updates that poll in place, keeping both of its
+// links.
 func formPostHandler(c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
 	form := new(database.Meeting)
 
 	//// Get the form data
@@ -183,6 +297,11 @@ func formPostHandler(c fiber.Ctx) error {
 	if err := c.Bind().Body(form); err != nil {
 		return c.Status(400).SendString(err.Error())
 	}
+
+	// The two poll options; read explicitly so the checkbox values never
+	// have to satisfy the struct binder.
+	form.HideUsers = c.FormValue("hide-users") != ""
+	form.SingleSignup = c.FormValue("single-signup") != ""
 
 	// Timezone the meeting's dates/times are authored and displayed in;
 	// optional, empty (legacy) renders as UTC.
@@ -236,39 +355,339 @@ func formPostHandler(c fiber.Ctx) error {
 		}
 	}
 
-	urlKey, err := db.Create(form)
-	if err != nil {
-		return c.Status(500).SendString(err.Error())
+	// End date (form field "enddate" — deliberately not named after
+	// Meeting.Expires, whose binding the date-only value could not feed).
+	// Empty means the 3-month default.
+	endDate, msg := parseEndDate(c.FormValue("enddate"), time.Now())
+	if msg != "" {
+		return c.Status(400).SendString(msg)
+	}
+	form.Expires = endOf(endDate, loc)
+
+	//// update in place or create
+	if editKey := strings.TrimSpace(c.FormValue("meetingkey")); editKey != "" {
+		// Admin link only: the user link is public and must not unlock
+		// poll editing.
+		saved, err := saveMeeting(editKey, true, func(m *database.Meeting) {
+			m.Title = form.Title
+			m.Description = form.Description
+			m.Email = form.Email
+			m.HideUsers = form.HideUsers
+			m.SingleSignup = form.SingleSignup
+			m.TimeZone = form.TimeZone
+			m.Dates = form.Dates
+			m.Expires = form.Expires
+			pruneAnswers(m)
+		})
+		if err != nil {
+			return meetingSaveError(c, err)
+		}
+		// Both links survive the edit; back to the admin page.
+		return c.Redirect().To("/meet/" + saved.AdminKey)
 	}
 
-	// Redirect to meeting display
-	return c.Redirect().To("/meet/" + urlKey)
+	if _, err := db.Create(form); err != nil {
+		return c.Status(500).SendString(err.Error())
+	}
+	// New poll: straight to its admin page, where both links live.
+	return c.Redirect().To("/meet/" + form.AdminKey)
 }
 
-func meetingDisplayHandler(c fiber.Ctx) error {
-	urlKey := c.Params("+")
-
-	// Check if the meeting is in the database
-	meeting, err := db.Get(urlKey)
+// parseEndDate parses the form's end date (YYYY-MM-DD, empty = the
+// 3-month default) and rejects dates before today.
+func parseEndDate(raw string, now time.Time) (time.Time, string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return now.AddDate(0, 3, 0), ""
+	}
+	d, err := time.Parse("2006-01-02", raw)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return notFoundHandler(c)
-		}
+		return time.Time{}, "Invalid end date: " + raw
+	}
+	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	if d.Before(today) {
+		return time.Time{}, "End date is in the past"
+	}
+	return d, ""
+}
+
+// endOf turns a calendar end date into the instant the poll stops
+// accepting answers: the end of that day in the meeting's zone.
+func endOf(d time.Time, loc *time.Location) *time.Time {
+	t := time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, loc)
+	return &t
+}
+
+// meetingSaveError maps the saveMeeting outcomes onto responses.
+func meetingSaveError(c fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, errNotFoundPoll):
+		return notFoundHandler(c)
+	case errors.Is(err, errConflict):
+		return c.Status(500).SendString("Too many concurrent edits, try again")
+	}
+	return c.Status(500).SendString(err.Error())
+}
+
+// ---- poll page ----
+
+// meetingHandler renders the poll page for a user or admin link: the same
+// page, with the admin link adding the copyable links, the edit-poll
+// button and the per-respondent management.
+func meetingHandler(c fiber.Ctx) error {
+	m, isAdmin, err := resolveMeeting(c.Params("+"))
+	if err != nil {
 		return c.Status(500).SendString(err.Error())
 	}
+	if m == nil {
+		return notFoundHandler(c)
+	}
+
+	now := time.Now()
+	ended := pollEnded(m, now)
+	identity := ensureIdentityCookie(c, m, now)
+	own := findAnswer(m.Answers, identity)
 
 	// All slots are shown in the meeting's timezone (UTC when none was
 	// set) so the display never depends on the server's timezone.
-	loc, _ := time.LoadLocation(meeting.TimeZone)
-	tzName := meeting.TimeZone
+	loc, _ := time.LoadLocation(m.TimeZone)
+	tzName := m.TimeZone
 	if tzName == "" {
 		tzName = "UTC"
 	}
-
-	// Show all offered slots, one per line
-	lines := []string{meeting.Title, meeting.Email, meeting.Description, "Timezone: " + tzName}
-	for _, date := range meeting.Dates {
-		lines = append(lines, date.In(loc).Format("2006-01-02 15:04"))
+	ends := ""
+	if m.Expires != nil {
+		ends = m.Expires.In(loc).Format("2006-01-02")
 	}
-	return c.SendString(strings.Join(lines, "\n"))
+
+	// Answer-form slots, prefilled with the own answer.
+	type formSlot struct {
+		Key, Label, Status, Sym, Cls string
+		PressG, PressY               string
+	}
+	press := func(on bool) string {
+		if on {
+			return "true"
+		}
+		return "false"
+	}
+	markSym := func(v string) (sym, cls string) {
+		switch v {
+		case "g":
+			return "\u2713", "g"
+		case "y":
+			return "(\u2713)", "y"
+		}
+		return "\u2717", "r"
+	}
+	slots := make([]formSlot, 0, len(m.Dates))
+	for _, d := range m.Dates {
+		label := d.In(loc).Format("Mon 2006-01-02 15:04")
+		status := ""
+		if own != nil {
+			status = own.Marks[slotKey(d)]
+		}
+		sym, cls := markSym(status)
+		slots = append(slots, formSlot{Key: slotKey(d), Label: label, Status: status, Sym: sym, Cls: cls,
+			PressG: press(status == "g"), PressY: press(status == "y")})
+	}
+
+	// The respondents visible on this page.
+	var shown database.AnswerList
+	switch {
+	case isAdmin || !m.HideUsers:
+		shown = m.Answers
+	case own != nil:
+		shown = database.AnswerList{*own}
+	}
+	type respCol struct {
+		ID, Name       string
+		IsOwn          bool
+		Marks          []string // per slot: "g" | "y" | "" (hidden-input values)
+		Syms, Csls     []string
+		PressG, PressY []string
+	}
+	cols := make([]respCol, 0, len(shown))
+	for i := range shown {
+		marks := make([]string, len(m.Dates))
+		syms := make([]string, len(m.Dates))
+		csls := make([]string, len(m.Dates))
+		pg := make([]string, len(m.Dates))
+		py := make([]string, len(m.Dates))
+		for j, d := range m.Dates {
+			v := shown[i].Marks[slotKey(d)]
+			marks[j] = v
+			s, cl := markSym(v)
+			syms[j] = s
+			csls[j] = cl
+			pg[j] = press(v == "g")
+			py[j] = press(v == "y")
+		}
+		cols = append(cols, respCol{ID: shown[i].ID, Name: shown[i].Name, IsOwn: shown[i].ID == identity, Marks: marks, Syms: syms, Csls: csls, PressG: pg, PressY: py})
+	}
+
+	// The page's forms post through the same link the page is viewed on, so
+	// the handlers' back-redirect lands on this page (the admin stays on the
+	// admin page after answering, editing, or deleting an answer there).
+	viewKey := m.Key
+	if isAdmin {
+		viewKey = m.AdminKey
+	}
+	data := fiber.Map{
+		"pagetitle":         "kiusan | " + m.Title,
+		"title":             m.Title,
+		"description":       m.Description,
+		"email":             m.Email,
+		"tzname":            tzName,
+		"ends":              ends,
+		"ended":             ended,
+		"isadmin":           isAdmin,
+		"userlink":          absURL(c, "/meet/"+m.Key),
+		"adminlink":         absURL(c, "/meet/"+m.AdminKey),
+		"editlink":          "/1-1-form/edit/" + m.AdminKey,
+		"single":            m.SingleSignup,
+		"hasown":            own != nil,
+		"ownname":           "",
+		"ownid":             "",
+		"slots":             slots,
+		"cols":              cols,
+		"csrf":              "",
+		"answeraction":      "/meet/" + viewKey + "/answer",
+		"deleteaction":      "/meet/" + viewKey + "/answer/delete",
+		"admineditaction":   "/meet/" + m.AdminKey + "/answer/edit",
+		"admindeleteaction": "/meet/" + m.AdminKey + "/answer/delete",
+	}
+	if own != nil {
+		data["ownname"] = own.Name
+		data["ownid"] = own.ID
+	}
+	if identity != "" && !ended {
+		data["csrf"] = csrfToken(identity)
+	}
+	return c.Render("meet", data, "layouts/home")
+}
+
+// absURL renders a site-absolute URL for the copyable link boxes on the
+// admin page.
+func absURL(c fiber.Ctx, path string) string {
+	return c.Scheme() + "://" + c.Host() + path
+}
+
+// answerPostHandler stores or updates the answer of the respondent behind
+// the request — the identity cookie; either link may submit it.
+func answerPostHandler(c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
+	m, _, err := resolveMeeting(c.Params("+"))
+	if err != nil {
+		return c.Status(500).SendString(err.Error())
+	}
+	if m == nil {
+		return notFoundHandler(c)
+	}
+	if pollEnded(m, time.Now()) {
+		return c.Status(410).SendString("This poll has ended")
+	}
+	identity := c.Cookies(cookieName(m))
+	if identity == "" || !verifyCSRF(c, identity) {
+		return c.Status(401).SendString("Unknown or stale identity — reload the page and try again")
+	}
+	name, msg := validName(c.FormValue("name"))
+	if msg != "" {
+		return c.Status(400).SendString(msg)
+	}
+	marks, msg := collectMarks(c, m)
+	if msg != "" {
+		return c.Status(400).SendString(msg)
+	}
+	if _, err := saveMeeting(m.Key, false, func(mm *database.Meeting) {
+		mm.Answers = upsertAnswer(mm.Answers, identity, name, marks, time.Now())
+	}); err != nil {
+		return meetingSaveError(c, err)
+	}
+	return c.Redirect().To("/meet/" + c.Params("+"))
+}
+
+// answerEditPostHandler lets the admin (admin link only) edit any
+// respondent's answer.
+func answerEditPostHandler(c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
+	key := c.Params("+")
+	m, isAdmin, err := resolveMeeting(key)
+	if err != nil {
+		return c.Status(500).SendString(err.Error())
+	}
+	// The route exists for both link shapes; only the admin link may use
+	// it, so a user key looks up like a missing link.
+	if m == nil || !isAdmin {
+		return notFoundHandler(c)
+	}
+	if pollEnded(m, time.Now()) {
+		return c.Status(410).SendString("This poll has ended")
+	}
+	id := strings.TrimSpace(c.FormValue("respondentid"))
+	if findAnswer(m.Answers, id) == nil {
+		return notFoundHandler(c)
+	}
+	name, msg := validName(c.FormValue("name"))
+	if msg != "" {
+		return c.Status(400).SendString(msg)
+	}
+	marks, msg := collectMarks(c, m)
+	if msg != "" {
+		return c.Status(400).SendString(msg)
+	}
+	if _, err := saveMeeting(key, true, func(mm *database.Meeting) {
+		mm.Answers = upsertAnswer(mm.Answers, id, name, marks, time.Now())
+	}); err != nil {
+		return meetingSaveError(c, err)
+	}
+	return c.Redirect().To("/meet/" + key)
+}
+
+// answerDeletePostHandler deletes an answer: via the admin link any
+// respondent's; via the user link only the own (identity cookie) answer,
+// which also expires the identity cookie.
+func answerDeletePostHandler(c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
+	key := c.Params("+")
+	m, isAdmin, err := resolveMeeting(key)
+	if err != nil {
+		return c.Status(500).SendString(err.Error())
+	}
+	if m == nil {
+		return notFoundHandler(c)
+	}
+	if pollEnded(m, time.Now()) {
+		return c.Status(410).SendString("This poll has ended")
+	}
+	id := strings.TrimSpace(c.FormValue("respondentid"))
+	if id == "" {
+		return c.Status(400).SendString("Missing respondent")
+	}
+	identity := c.Cookies(cookieName(m))
+	if !isAdmin && id != identity {
+		// A user link may only ever act on the own identity.
+		return notFoundHandler(c)
+	}
+	if findAnswer(m.Answers, id) == nil {
+		return notFoundHandler(c)
+	}
+	if !isAdmin && !verifyCSRF(c, identity) {
+		return c.Status(401).SendString("Unknown or stale identity — reload the page and try again")
+	}
+	if _, err := saveMeeting(key, isAdmin, func(mm *database.Meeting) {
+		mm.Answers, _ = removeAnswer(mm.Answers, id)
+	}); err != nil {
+		return meetingSaveError(c, err)
+	}
+	if !isAdmin {
+		dropIdentityCookie(c, m)
+	}
+	return c.Redirect().To("/meet/" + key)
 }

@@ -31,17 +31,33 @@ const (
 	BackendSQLite   = "sqlite"
 )
 
-// ErrNotFound is returned by MeetingStore.Get when no meeting is stored
-// under the given key.
+// ErrNotFound is returned by MeetingStore.Get/GetAdmin when no meeting is
+// stored under the given key.
 var ErrNotFound = errors.New("store: key not found")
 
-// MeetingStore is the storage contract for meetings.
+// ErrConflict is returned by MeetingStore.Update when the stored meeting's
+// Generation no longer matches m.Generation (a concurrent write happened).
+var ErrConflict = errors.New("store: update conflict: stale generation")
+
+// MeetingStore is the storage contract for meetings. A meeting is stored
+// under two random keys: its user link key (the primary key) and its admin
+// link key.
 type MeetingStore interface {
-	// Create stores the meeting and returns the assigned URL key.
+	// Create stores the meeting, assigns both of its random keys and
+	// returns the user link key.
 	Create(m *database.Meeting) (string, error)
-	// Get returns the meeting stored under key, or ErrNotFound if absent.
+	// Get returns the meeting stored under the user link key, or
+	// ErrNotFound if absent.
 	Get(key string) (*database.Meeting, error)
-	// Delete removes the meeting stored under key.
+	// GetAdmin returns the meeting stored under the admin link key, or
+	// ErrNotFound if absent.
+	GetAdmin(key string) (*database.Meeting, error)
+	// Update writes m back, but only if the stored meeting still has
+	// Generation == m.Generation; the stored Generation then advances by
+	// one (mirrored onto m). It returns ErrConflict otherwise.
+	Update(m *database.Meeting) error
+	// Delete removes the meeting stored under key (and its admin key
+	// index entry).
 	Delete(key string) error
 	// Close releases the backend's resources.
 	Close() error

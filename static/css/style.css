@@ -11,6 +11,9 @@
 --queen-blue: #41658aff;
 --dark-slate-blue: #414073ff;
 --english-violet: #4c3957ff;
+
+--mark-green: #2e6b34ff;
+--mark-gold: #8a6d00ff;
 }
 
 
@@ -186,5 +189,130 @@ fieldset legend {
 .clear-btn {
     margin-top: 8px;
     font-size: 12px;
+}
+
+/* Poll page (answer table, results, admin extras) */
+.meta {
+    color: var(--rich-black);
+    font-size: 13px;
+}
+
+.description {
+    background-color: var(--wheat);
+    border: 1px solid var(--rich-black);
+    border-radius: 4px;
+    padding: 10px 15px;
+    white-space: pre-line;
+}
+
+.ended {
+    color: var(--mahogany);
+    font-weight: bold;
+}
+
+/* Admin extras: copyable links + edit poll */
+.links {
+    margin: 20px 0;
+}
+
+.copybox {
+    width: 100%;
+    max-width: 480px;
+    font-size: 13px;
+    margin: 2px 0 12px;
+}
+
+.btn {
+    display: inline-block;
+    background-color: var(--dark-slate-blue);
+    color: var(--wheat);
+    padding: 8px 16px;
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+/* Answer form: slot rows with mark toggles */
+.answer-table th,
+.answer-table td,
+.answers-table th,
+.answers-table td {
+    border: 1px solid var(--rich-black);
+    padding: 4px 10px;
+    font-size: 13px;
+    text-align: center;
+}
+
+.answer-table td:first-child,
+.answers-table td:first-child {
+    text-align: left;
+}
+
+button.mark {
+    border: 2px solid var(--rich-black);
+    background: transparent;
+    color: var(--rich-black);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 10px;
+    border-radius: 4px;
+}
+
+button.mark:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+tr.sel-g button.mark-g {
+    background-color: var(--bud-green);
+    color: var(--rich-black);
+}
+
+tr.sel-y button.mark-y {
+    background-color: #e5c460;
+    color: var(--rich-black);
+}
+
+tr.greyed td { color: #8a8a8a; }
+
+.status {
+    font-weight: bold;
+}
+
+.st-g { color: var(--mark-green); }
+.st-y { color: var(--mark-gold); }
+.st-r { color: var(--mahogany); }
+
+/* Tinted backgrounds so marks read as colour at a glance */
+td.st-g { background-color: #dcebdb; }
+td.st-y { background-color: #f6ead0; }
+td.st-r { background-color: #f6d9cd; }
+
+.form-actions {
+    margin: 12px 0;
+    display: flex;
+    gap: 12px;
+}
+
+.answer-delete {
+    margin: 8px 0;
+}
+
+.editing { font-size: 13px; }
+
+/* Admin per-respondent cards */
+.manage p {
+    font-size: 13px;
+}
+
+.resp-card {
+    border: 1px solid var(--rich-black);
+    border-radius: 4px;
+    margin: 12px 0;
+    padding: 8px 14px;
+}
+
+.resp-del {
+    margin: -4px 0 12px;
+    text-align: right;
 }
 

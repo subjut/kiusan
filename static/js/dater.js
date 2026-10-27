@@ -17,6 +17,21 @@
 	var dates = {}; // "YYYY-MM-DD" -> true
 	var times = {}; // "HH:MM" -> true
 
+	// When the form edits an existing poll, the server seeds the picker
+	// state via data-dates / data-times (comma-separated lists).
+	(function seed() {
+		(function (list, into) {
+			list.split(",").forEach(function (v) {
+				if (v) into[v] = true;
+			});
+		})(form.getAttribute("data-dates") || "", dates);
+		(function (list, into) {
+			list.split(",").forEach(function (v) {
+				if (v) into[v] = true;
+			});
+		})(form.getAttribute("data-times") || "", times);
+	})();
+
 	var dateChips = document.getElementById("date-chips");
 	var timeChips = document.getElementById("time-chips");
 	var timeInput = document.getElementById("time-input");
@@ -52,9 +67,12 @@
 	}
 
 	// ---- calendar ----------------------------------------------------------
-	// The view starts on the user's current month.
+	// The view starts on the first seeded date (edit mode) or the user's
+	// current month.
 	var view = (function () {
-		var t = localToday().split("-");
+		var base = localToday();
+		for (var d in dates) { base = d; break; }
+		var t = base.split("-");
 		return { y: +t[0], m: +t[1] - 1 }; // m: 0-based
 	})();
 
@@ -217,7 +235,9 @@
 	try {
 		var tzSel = document.getElementById("timezone");
 		var localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-		if (localTz) {
+		// In edit mode the server already selected the poll's zone; only
+		// prefill the browser zone when nothing is selected yet.
+		if (localTz && !tzSel.value) {
 			if (tzSel.querySelector('option[value="' + localTz + '"]') === null) {
 				var tzOpt = document.createElement("option");
 				tzOpt.value = localTz;

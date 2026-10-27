@@ -1,20 +1,24 @@
 <div class="container">
-	<form id="form" method="POST">
+	<form id="form" method="POST" data-dates="{{.datesAttr}}" data-times="{{.timesAttr}}">
+		{{if .meetingkey}}<input type="hidden" name="meetingkey" value="{{.meetingkey}}">{{end}}
 		<label for="title">Title:</label><br>
-		<input type="text" id="title" name="title"><br>
+		<input type="text" id="title" name="title" value="{{.title}}"><br>
 		<label for="email">Email:</label><br>
-		<input type="text" id="email" name="email"><br>
+		<input type="text" id="email" name="email" value="{{.email}}"><br>
 		<label for="description">Description:</label><br>
-		<textarea id="description" name="description" rows="5" cols="40"></textarea><br>
-		<input type="checkbox" id="hide-users" name="HideUsers" value="hide-users">
+		<textarea id="description" name="description" rows="5" cols="40">{{.description}}</textarea><br>
+		<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .hideusers}} checked{{end}}>
 		<label for="hide-users">Respondents can't see each others answers</label><br>
-		<input type="checkbox" id="single-signup" name="SingleSignup" value="single-signup">
+		<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .singlesignup}} checked{{end}}>
 		<label for="single-signup">People can only sign up to one time slot</label><br>
+		<label for="enddate">Poll ends:</label>
+		<input type="date" id="enddate" name="enddate" min="{{.minExp}}" value="{{if .expiry}}{{.expiry}}{{else}}{{.defaultExp}}{{end}}"><br>
 		<br>
 
 		<label for="timezone">Timezone:</label>
 		<select id="timezone" name="timezone">
-{{range .timezones}}<option value="{{.}}">{{.}}</option>
+{{range .timezones}}<option value="{{.}}"{{if eq . $.timezone}} selected{{end}}>{{.}}</option>
+{{end}}{{if .extraTz}}<option value="{{.extraTz}}" selected>{{.extraTz}}</option>
 {{end}}</select><br><br>
 
 		<fieldset class="dates-picker">
@@ -30,7 +34,7 @@
 		</fieldset>
 
 		<fieldset class="times-picker">
-			<legend>Time(s</legend>) — applied to all selected dates</legend>
+			<legend>Time(s) — applied to all selected dates</legend>
 			<input type="time" id="time-input">
 			<button type="button" id="add-time">Add time</button>
 			<div class="chips" id="time-chips"></div>
@@ -39,7 +43,7 @@
 
 		<div id="slot-preview"></div>
 
-		<input type="submit" value="submit">
+		<input type="submit" value="{{if .meetingkey}}Save changes{{else}}submit{{end}}">
 	</form>
-	<script src="./dater.js"></script>
+	<script src="/dater.js"></script>
 </div>

@@ -1,0 +1,112 @@
+<div class="container">
+	<h2>{{.title}}</h2>
+	<p class="meta">Timezone: {{.tzname}}{{if .ends}} &middot; Ends {{.ends}}{{end}}{{if .email}} &middot; {{.email}}{{end}}</p>
+
+	{{if .isadmin}}
+	<section class="links">
+		Respondent link (share this):</label>
+		<input type="text" class="copybox" readonly value="{{.userlink}}">
+		Admin link (keep this to yourself):</label>
+		<input type="text" class="copybox" readonly value="{{.adminlink}}">
+		<a class="btn" href="{{.editlink}}">Edit poll</a>
+	</section>
+	{{end}}
+
+	{{if .description}}
+	<p class="description">{{.description}}</p>
+	{{end}}
+
+	{{if .ended}}
+	<p class="ended">This poll has ended{{if .ends}} on {{.ends}}{{end}} — it no longer accepts answers.</p>
+	{{else if .slots}}
+	<form method="POST" action="{{.answeraction}}" id="answer-form" data-single="{{if .single}}true{{else}}false{{end}}">
+		{{if .csrf}}<input type="hidden" name="csrftoken" value="{{.csrf}}">{{end}}
+		{{range .slots}}<input type="hidden" name="a{{.Key}}" value="{{.Status}}">{{end}}
+		<label for="name">Name:</label>
+		<input type="text" id="name" name="name" maxlength="50" value="{{.ownname}}" required>
+		{{if .hasown}}<span class="editing"> (editing your answer)</span>{{end}}
+		<table class="answer-table">
+			<tr>
+				<th>Slot</th>
+				<th>Available</th>
+				{{if not .single}}<th>Maybe</th>{{end}}
+				<th>Your mark</th>
+			</tr>
+			{{range .slots}}
+			<tr data-slot="{{.Key}}" data-status="{{.Status}}">
+				<td>{{.Label}}</td>
+				<td><button type="button" class="mark mark-g" aria-pressed="{{.PressG}}">&#10003;</button></td>
+				{{if not $.single}}<td><button type="button" class="mark mark-y" aria-pressed="{{.PressY}}">(&#10003;)</button></td>{{end}}
+				<td class="status st-{{.Cls}}">{{.Sym}}</td>
+			</tr>
+			{{end}}
+		</table>
+		<div class="form-actions">
+			<button type="submit">{{if .hasown}}Save answer{{else}}Submit answer{{end}}</button>
+		</div>
+	</form>
+	{{if .hasown}}
+	<form method="POST" action="{{.deleteaction}}" class="answer-delete">
+		{{if .csrf}}<input type="hidden" name="csrftoken" value="{{.csrf}}">{{end}}
+		<input type="hidden" name="respondentid" value="{{.ownid}}">
+		<button type="submit" id="delete-own">Delete your answer</button>
+	</form>
+	{{end}}
+	{{else}}
+	<p>This poll has no time slots.</p>
+	{{end}}
+
+	{{if and .isadmin (not .ended) .cols}}
+	<section class="manage">
+		<h2>Manage answers</h2>
+		<p>As the organizer you may edit or delete any respondent's answer.</p>
+		{{range $col := .cols}}
+		<fieldset class="resp-card">
+			<legend>{{.Name}}{{if .IsOwn}} (you){{end}}</legend>
+			<form method="POST" action="{{$.admineditaction}}" class="resp-form" data-single="{{if $.single}}true{{else}}false{{end}}">
+				<input type="hidden" name="respondentid" value="{{.ID}}">
+				<label for="respname-{{.ID}}">Name:</label>
+				<input type="text" id="respname-{{.ID}}" name="name" maxlength="50" value="{{.Name}}" required>
+				{{range $si, $s := $.slots}}<input type="hidden" name="a{{$s.Key}}" value="{{index $col.Marks $si}}">{{end}}
+				<table class="answer-table">
+					<tr>
+						<th>Slot</th>
+						<th>Available</th>
+						{{if not $.single}}<th>Maybe</th>{{end}}
+						<th>Mark</th>
+					</tr>
+					{{range $si, $s := $.slots}}
+					<tr data-slot="{{$s.Key}}" data-status="{{index $col.Marks $si}}">
+						<td>{{$s.Label}}</td>
+						<td><button type="button" class="mark mark-g" aria-pressed="{{index $col.PressG $si}}">&#10003;</button></td>
+						{{if not $.single}}<td><button type="button" class="mark mark-y" aria-pressed="{{index $col.PressY $si}}">(&#10003;)</button></td>{{end}}
+						<td class="status st-{{index $col.Csls $si}}">{{index $col.Syms $si}}</td>
+					</tr>
+					{{end}}
+				</table>
+				<div class="form-actions">
+					<button type="submit">Save changes</button>
+				</div>
+			</form>
+			<form method="POST" action="{{$.admindeleteaction}}" class="resp-del">
+				<input type="hidden" name="respondentid" value="{{.ID}}">
+				<button type="submit" class="resp-delete">Delete answer</button>
+			</form>
+		</fieldset>
+		{{end}}
+	</section>
+	{{end}}
+
+	{{if .cols}}
+	<section class="results">
+		<h2>Submitted answers</h2>
+		<table class="answers-table">
+			<tr><th>Respondent</th>{{range .slots}}<th>{{.Label}}</th>{{end}}</tr>
+			{{range $col := .cols}}
+			<tr><td>{{.Name}}{{if .IsOwn}} (you){{end}}</td>{{range $j, $sym := .Syms}}<td class="cell st-{{index $col.Csls $j}}">{{.}}</td>{{end}}</tr>
+			{{end}}
+		</table>
+	</section>
+	{{end}}
+</div>
+<script src="/poll.js"></script>

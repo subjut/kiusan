@@ -4,8 +4,11 @@
 
 Kiusan is a small self-hosted scheduling web app. A user creates a meeting
 poll (title, contact email, description, candidate dates with optional
-times in a per-meeting timezone) and receives a random URL key to share:
-`/meet/<key>`.
+times in a per-meeting timezone, and an end date) and gets two random
+URL links on the same route: a respondent link `/meet/<key>` to answer
+the poll, and an admin link `/meet/<adminKey>` to manage it (the
+organizer answers through it too). Respondents are identified by a
+per-poll browser cookie — there are no user accounts.
 
 Written in Go with the Fiber v3 web framework (v3.6.1). Storage is pluggable
 behind `store.MeetingStore` (`store/`): the embedded Pudge key-value database
@@ -14,14 +17,14 @@ postgres, sqlite), selected via `KIUSAN_STORE` + `KIUSAN_DSN`. GORM schemas
 are auto-migrated at startup (additive-only).
 
 Feature state (see `static/index.html`):
-- "Schedule Meetings" (1-1 form) — implemented (`/1-1-form`, `/meet/+`)
+- "Schedule Meetings" — implemented end to end: the 1-1 form, the
+  two-link meeting page (respondent answer form with green/yellow/red
+  marks, submitted-answers matrix, admin link boxes, poll edit, answer
+  management), the per-poll identity cookie with CSRF token, poll
+  expiry, and the prefilled poll edit that keeps both links.
 - "Vote on Something" — unimplemented (`static/choice-form.html` is a
   static stub, not templated and not routed)
 - "Find Date" — unimplemented (`static/date-form.html`, same)
-
-The `database.Users` type exists (excluded from the schema via
-`gorm:"-"`) but no sign-up endpoints exist yet — do not assume respondent
-sign-up works.
 
 ## Commands
 
@@ -38,28 +41,57 @@ sign-up works.
   favicon/static serving, the 404 fallthrough, a full meeting
   create -> redirect -> read round trip (timezone-aware slots), form
   validation (bad/malformed dates and times, invalid timezones, encoding),
-  and the random URL key contract. The suites run on
-  both backends (Puge and GORM-sqlite); each test chdirs into `t.TempDir()`
-  and opens a throwaway store, so the dev data files are never touched.
+  and the random URL key contract; `poll_test.go` covers the answer
+  lifecycle on the two-link model (identity cookie + CSRF, answering,
+  visibility / hide-users, single-slot enforcement, answer edit/delete,
+  admin answer management, poll edit with stable links and mark pruning,
+  legacy polls without an admin key, expiry and prolongation, the
+  clickjacking headers, and the urlencoded-only POST gate). The suites
+  run on both backends (Puge and GORM-sqlite); each test chdirs into
+  `t.TempDir()` and opens a throwaway store, so the dev data files are
+  never touched.
 
 ## Layout
 
-- `main.go` — server setup, app wiring (`newApp`), routes (`initRoutes`),
-  handlers. The store is opened in `main` via `store.Open` (env-selected);
-  handlers reach it through the package-level `db` global.
+- `main.go` — server setup, app wiring (`newApp`), routes (`initRoutes`,
+  incl. the clickjacking-header middleware and the poll routes: `GET
+  /1-1-form/edit/+` (admin key only), `POST /meet/+/answer`,
+  `POST /meet/+/answer/edit`, `POST /meet/+/answer/delete`), and the
+  thin handlers. The store is opened in `main` via `store.Open`
+  (env-selected); handlers reach it through the package-level `db`
+  global.
+- `poll.go` — the poll plumbing shared by the handlers: the per-poll
+  identity cookie (`kiusan-<userKey>`, HttpOnly + SameSite=Lax, valid
+  until the poll ends — 90 days for legacy polls without an end), the
+  stateless CSRF token (HMAC-SHA256 over the cookie value, secret from
+  `KIUSAN_SECRET` or random per start), `slotKey` (the slot's absolute
+  UTC instant, seconds stripped), the answer-list operations
+  (find/upsert/remove/prune), and `saveMeeting` (fresh read, mutate,
+  compare-and-set `Update`, retry on conflict).
 - `database/database.go` — model types only: `Meeting` (incl. the
-  optional IANA `TimeZone`), `Users`, and `TimeSlice` (candidate slots as
-  a JSON document in a TEXT column, so the schema stays portable across
-  engines). No handles or globals here.
+  optional IANA `TimeZone`, the nullable `AdminKey` — empty = legacy, no
+  admin link — `Expires`, `Answers`, and the CAS stamp `Generation`),
+  `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
+  a JSON document in a TEXT column) and `TimeSlice` (candidate slots,
+  same treatment). No handles or globals here.
 - `store/` — `MeetingStore` interface and backends: `puge.go` (embedded
-  Pudge KV) and `gorm.go` (mysql/mariadb/postgres/sqlite via GORM; schema
-  auto-migrated at startup). `Open(kind, dsn)` dispatches on `KIUSAN_STORE`;
-  `RandomKey` in `key.go` builds the URL-safe keys. A new backend =
-  implement `MeetingStore` + add a case in `Open`.
-- `static/` — HTML templates rendered by gofiber/template/html/v3 (layout:
-  `static/layouts/home.html`, partials in `static/partials/`), plus
-  `static/css/`, `static/js/` (the `dater.js` calendar/chip picker widget,
-  vanilla, no deps) and `static/favicon/`, served from the site root via
+  Pudge KV; the admin link resolves through `admin:<adminKey>` pointer
+  entries in the same KV file) and `gorm.go`
+  (mysql/mariadb/postgres/sqlite via GORM; schema auto-migrated at
+  startup; the admin link is a `uniqueIndex`ed, nullable `admin_key`
+  column). `Get`/`GetAdmin` resolve the two links; `Update` is a
+  compare-and-set on `Generation` (`ErrConflict` when stale) and honors a
+  changed admin key (GORM writes `admin_key`, pudge re-points the
+  pointer); the user key never changes. `Open(kind, dsn)` dispatches on
+  `KIUSAN_STORE`; `RandomKey` in `key.go` builds the URL-safe keys. A new
+  backend = implement `MeetingStore` + add a case in `Open`.
+- `static/` — HTML templates rendered by gofiber/template/html/v3
+  (`static/index.html`, `static/1-1-form.html`, `static/meet.html`;
+  layout: `static/layouts/home.html`, partials in `static/partials/`),
+  plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
+  widget and `poll.js` — answer-table toggling, single-slot grey-out,
+  delete confirmations, copy-box selection; both vanilla, no deps) and
+  `static/favicon/`, served from the site root via
   the static middleware: one `app.Get("/*", static.New(dir))` registration
   per dir in `initRoutes` (a file miss resets the response and calls
   `c.Next()`, so later registrations and routes still run).
@@ -137,3 +169,40 @@ sign-up works.
   development — template edits do not require a restart.
 - **Slices before indexing**: `meeting.Dates` must be checked for empty
   before indexing (handlers must not panic on malformed stored data).
+- **Template action quotes & range root**: never put quoted string
+  literals inside `{{...}}` actions that sit inside an attribute value —
+  html/template mis-tokenizes and the parse failure surfaces somewhere
+  odd ("in attribute name"); precompute such values in the handler.
+  Inside a nested `{{range}}` the page data root is `$.`, not `.` (the
+  loop variable shadows it).
+- **Checkbox binding**: the schema binder accepts only `on` or a
+  parseable bool for `bool` fields, so the form's checkboxes use
+  `value="true"` and the handler reads them via
+  `c.FormValue(name) != ""` instead of the binder — an unparseable
+  checkbox value 400s the whole submission.
+- **The end-date field is `enddate`**: deliberately not named after
+  `Meeting.Expires` — the binder would feed a `YYYY-MM-DD` value into
+  `*time.Time` (RFC3339-only `TextUnmarshaler`) and 400 the form.
+- **Answers mark instants, not rows**: marks are keyed by
+  `slotKey(slot)` (the slot's absolute UTC instant, seconds stripped), so
+  editing the poll (adding/removing slots) never shifts stored marks;
+  `pruneAnswers` drops marks for slots that no longer exist, and both
+  links survive every edit.
+- **Two links, one route**: `meetingHandler` tries the user key, then the
+  admin key, to pick the view. The admin link is a capability URL:
+  admin-keyed endpoints (answer edit/delete, the poll edit form and its
+  `meetingkey` field) are authorized by the key alone and carry no CSRF
+  token; the cookie-identity endpoints (answering, deleting the own
+  answer) require the `csrftoken` form field.
+- **CSRF secret**: set `KIUSAN_SECRET` so tokens survive server restarts
+  (still-open pages keep working); without it the secret is random per
+  start and open pages must be reloaded after a restart.
+- **Expiry**: `Expires` is end-of-day (23:59:59) in the meeting's
+  timezone; nil = legacy = no end. An ended poll answers with 410, mints
+  no new identity cookie, and hides the form — but the admin page keeps
+  its edit button, so the organizer can prolong the poll and reopen
+  answering.
+- **Legacy polls**: an empty `AdminKey` (stored NULL on the relational
+  backends — the column must stay nullable: a unique index over
+  `''` would break with two or more legacy rows) means no admin view:
+  the key never matches, and the user page simply offers no poll edit.
