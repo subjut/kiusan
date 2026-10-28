@@ -210,22 +210,12 @@ func runFormPostSuite(t *testing.T) {
 	}
 }
 
-// The smoke suites run on both backends so the storage swap is covered
-// end to end: pudge (the default) and GORM-backed sqlite (cgo-free).
-
-func TestSmokePuge(t *testing.T) {
-	withStore(t, store.BackendPuge, "meetings")
-	runSmokeSuite(t)
-}
+// The smoke and form-post suites run on GORM-backed sqlite (the default,
+// cgo-free), covering the storage end to end.
 
 func TestSmokeSqlite(t *testing.T) {
 	withStore(t, store.BackendSQLite, "meetings.db")
 	runSmokeSuite(t)
-}
-
-func TestFormPostPuge(t *testing.T) {
-	withStore(t, store.BackendPuge, "meetings")
-	runFormPostSuite(t)
 }
 
 func TestFormPostSqlite(t *testing.T) {

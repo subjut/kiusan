@@ -2,5 +2,4 @@ __debug_bin
 kiusan
 
 # databases
-meetings
-meetings.idx
+meetings.db

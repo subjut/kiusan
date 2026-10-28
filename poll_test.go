@@ -532,11 +532,6 @@ func mustZone(t *testing.T, name string) *time.Location {
 	return loc
 }
 
-func TestPollPudge(t *testing.T) {
-	withStore(t, store.BackendPuge, "meetings")
-	runPollSuite(t)
-}
-
 func TestPollSqlite(t *testing.T) {
 	withStore(t, store.BackendSQLite, "meetings.db")
 	runPollSuite(t)

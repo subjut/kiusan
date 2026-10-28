@@ -6,7 +6,6 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/gofiber/fiber/v3 v3.6.1
 	github.com/gofiber/template/html/v3 v3.0.11
-	github.com/recoilme/pudge v1.0.3
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.3
 	gorm.io/gorm v1.31.2

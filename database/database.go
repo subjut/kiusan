@@ -55,8 +55,7 @@ type Answer struct {
 
 // AnswerList holds a poll's answers. It persists as a JSON document in a
 // single TEXT column (via GormDataType/Value/Scan) like TimeSlice, so the
-// schema stays portable across every backend; on the Pudge backend it is
-// simply gob-encoded inside the meeting value.
+// schema stays portable across every backend.
 type AnswerList []Answer
 
 // GormDataType tells GORM to use a plain text column.

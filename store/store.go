@@ -4,15 +4,13 @@
 //
 // Supported backends (selected via the KIUSAN_STORE environment variable):
 //
-//   - "pudge" (or empty): the embedded Pudge key-value database. Data lives
-//     in the `meetings` and `meetings.idx` files in the working directory.
-//     This is the default and needs no configuration.
+//   - "sqlite" (or empty): GORM + pure-Go sqlite (no cgo). This is the
+//     default and needs no configuration; KIUSAN_DSN defaults to
+//     "./meetings.db".
 //   - "mysql" / "mariadb": GORM + go-sql-driver/mysql.
 //     KIUSAN_DSN, e.g. "user:pass@tcp(localhost:3306)/kiusan"
 //   - "postgres": GORM + pgx.
 //     KIUSAN_DSN, e.g. "postgres://user:pass@localhost:5432/kiusan?sslmode=disable"
-//   - "sqlite": GORM + pure-Go sqlite (no cgo).
-//     KIUSAN_DSN defaults to "./meetings.db"
 package store
 
 import (
@@ -24,7 +22,6 @@ import (
 
 // Backend names accepted by Open (and in KIUSAN_STORE).
 const (
-	BackendPuge     = "pudge"
 	BackendMySQL    = "mysql"
 	BackendMariaDB  = "mariadb"
 	BackendPostgres = "postgres"
@@ -63,29 +60,24 @@ type MeetingStore interface {
 	Close() error
 }
 
-// Default data-file names, used when KIUSAN_DSN is not set.
-const (
-	defaultPudgeName  = "meetings"
-	defaultSqliteName = "meetings.db"
-)
+// defaultSqliteName is the default data-file name, used when KIUSAN_DSN is
+// not set for the default sqlite backend.
+const defaultSqliteName = "meetings.db"
 
 // Open returns a MeetingStore for the given backend kind. An empty kind
-// selects the default Pudge backend; the relational backends need a DSN
-// (sqlite falls back to defaultSqliteName).
+// selects the default sqlite backend; mysql, mariadb and postgres need a
+// DSN (sqlite falls back to defaultSqliteName).
 func Open(kind, dsn string) (MeetingStore, error) {
 	switch kind {
-	case "", BackendPuge:
+	case "", BackendSQLite:
 		if dsn == "" {
-			dsn = defaultPudgeName
-		}
-		return newPugeStore(dsn)
-	case BackendMySQL, BackendMariaDB, BackendPostgres, BackendSQLite:
-		if dsn == "" && kind == BackendSQLite {
 			dsn = defaultSqliteName
 		}
+		return openGorm(BackendSQLite, dsn)
+	case BackendMySQL, BackendMariaDB, BackendPostgres:
 		return openGorm(kind, dsn)
 	default:
-		return nil, fmt.Errorf("store: unknown backend %q (valid: %s, %s, %s, %s, %s)",
-			kind, BackendPuge, BackendMySQL, BackendMariaDB, BackendPostgres, BackendSQLite)
+		return nil, fmt.Errorf("store: unknown backend %q (valid: %s, %s, %s, %s)",
+			kind, BackendMySQL, BackendMariaDB, BackendPostgres, BackendSQLite)
 	}
 }

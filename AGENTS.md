@@ -11,10 +11,10 @@ organizer answers through it too). Respondents are identified by a
 per-poll browser cookie — there are no user accounts.
 
 Written in Go with the Fiber v3 web framework (v3.6.1). Storage is pluggable
-behind `store.MeetingStore` (`store/`): the embedded Pudge key-value database
-is the default, and GORM backs the relational engines (mysql, mariadb,
-postgres, sqlite), selected via `KIUSAN_STORE` + `KIUSAN_DSN`. GORM schemas
-are auto-migrated at startup (additive-only).
+behind `store.MeetingStore` (`store/`), backed by GORM on the relational
+engines (sqlite — the default — plus mysql, mariadb, postgres), selected
+via `KIUSAN_STORE` + `KIUSAN_DSN`. GORM schemas are auto-migrated at
+startup (additive-only).
 
 Feature state (see `static/index.html`):
 - "Schedule Meetings" — implemented end to end: the 1-1 form, the
@@ -30,9 +30,10 @@ Feature state (see `static/index.html`):
 
 - Build: `go build ./...`
 - Vet: `go vet ./...`
-- Run: `go run .` (listens on `:8080`, Pudge default storage)
+- Run: `go run .` (listens on `:8080`, default sqlite storage in
+  `./meetings.db`)
 - Other backends:
-  - `KIUSAN_STORE=sqlite KIUSAN_DSN=./meetings.db go run .`
+  - `KIUSAN_STORE=sqlite KIUSAN_DSN=./other.db go run .` (a non-default sqlite file)
   - `KIUSAN_STORE=mysql KIUSAN_DSN="user:pass@tcp(localhost:3306)/kiusan" go run .`
     (mariadb: same DSN with `KIUSAN_STORE=mariadb`)
   - `KIUSAN_STORE=postgres KIUSAN_DSN="postgres://user:pass@localhost:5432/kiusan?sslmode=disable" go run .`
@@ -47,9 +48,8 @@ Feature state (see `static/index.html`):
   admin answer management, poll edit with stable links and mark pruning,
   legacy polls without an admin key, expiry and prolongation, the
   clickjacking headers, and the urlencoded-only POST gate). The suites
-  run on both backends (Puge and GORM-sqlite); each test chdirs into
-  `t.TempDir()` and opens a throwaway store, so the dev data files are
-  never touched.
+  run on GORM-sqlite; each test chdirs into `t.TempDir()` and opens a
+  throwaway store, so the dev data files are never touched.
 
 ## Layout
 
@@ -74,17 +74,16 @@ Feature state (see `static/index.html`):
   `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
   a JSON document in a TEXT column) and `TimeSlice` (candidate slots,
   same treatment). No handles or globals here.
-- `store/` — `MeetingStore` interface and backends: `puge.go` (embedded
-  Pudge KV; the admin link resolves through `admin:<adminKey>` pointer
-  entries in the same KV file) and `gorm.go`
-  (mysql/mariadb/postgres/sqlite via GORM; schema auto-migrated at
-  startup; the admin link is a `uniqueIndex`ed, nullable `admin_key`
-  column). `Get`/`GetAdmin` resolve the two links; `Update` is a
-  compare-and-set on `Generation` (`ErrConflict` when stale) and honors a
-  changed admin key (GORM writes `admin_key`, pudge re-points the
-  pointer); the user key never changes. `Open(kind, dsn)` dispatches on
-  `KIUSAN_STORE`; `RandomKey` in `key.go` builds the URL-safe keys. A new
-  backend = implement `MeetingStore` + add a case in `Open`.
+- `store/` — the `MeetingStore` interface and its GORM-backed
+  implementation `gorm.go` (sqlite — the default when `KIUSAN_STORE` is
+  empty, DSN defaulting to `./meetings.db` — plus mysql/mariadb/postgres;
+  schema auto-migrated at startup; the admin link is a `uniqueIndex`ed,
+  nullable `admin_key` column). `Get`/`GetAdmin` resolve the two links;
+  `Update` is a compare-and-set on `Generation` (`ErrConflict` when stale)
+  and honors a changed admin key; the user key never changes.
+  `Open(kind, dsn)` dispatches on `KIUSAN_STORE`; `RandomKey` in `key.go`
+  builds the URL-safe keys. A new backend = implement `MeetingStore` +
+  add a case in `Open`.
 - `static/` — HTML templates rendered by gofiber/template/html/v3
   (`static/index.html`, `static/1-1-form.html`, `static/meet.html`;
   layout: `static/layouts/home.html`, partials in `static/partials/`),
@@ -104,8 +103,8 @@ Feature state (see `static/index.html`):
 - `docs/prompts/` — verbatim log of user prompts, one file per date
   (the project's steering history across agent sessions); entries are
   appended automatically per prompt (see Conventions).
-- `meetings`, `meetings.idx` (Puge default), `meetings.db` (sqlite) —
-  runtime data files in the working directory (gitignored).
+- `meetings.db` — the default runtime data file in the working directory
+  (sqlite; gitignored).
 
 ## Conventions
 
@@ -113,8 +112,7 @@ Feature state (see `static/index.html`):
   and template dependencies). Don't use stdlib or dependency features newer
   than that without bumping go.mod.
 - All storage goes through the `db` global (`store.MeetingStore`); handlers
-  never touch Pudge or GORM directly, and GORM/Pudge are imported only
-  inside `store/`.
+  never touch GORM directly, and GORM is imported only inside `store/`.
 - Handlers stay thin. In Fiber v3 a handler is `func(c fiber.Ctx) error`
   (`Ctx` is an interface — no `*`). Form fields are bound into
   `database.Meeting` via `c.Bind().Body(form)`; candidate dates arrive as
@@ -141,9 +139,9 @@ Feature state (see `static/index.html`):
   both valid lookups for a greedy param. Do not "normalize" `/meet/+` or the
   param lookup; note the static middleware uses the same wildcard form
   (`/*`), registered with `Get`, not `app.Static`.
-- **Per-backend data files** (Puge: `meetings` + `meetings.idx`; sqlite:
-  `meetings.db`; relational: the GORM-created table in the DB) are generated
-  at runtime — never hand-edit or commit them.
+- **Per-backend data files** (sqlite: `meetings.db`; relational: the
+  GORM-created table in the DB) are generated at runtime — never
+  hand-edit or commit them.
 - **Portable columns only**: the schema must stay engine-agnostic. Dates
   persist via `database.TimeSlice` as a JSON document in a TEXT column —
   don't add engine-specific column types or features.
