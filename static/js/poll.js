@@ -1,78 +1,72 @@
-// poll.js — answer-table behaviour for the poll page (vanilla, no deps).
+// poll.js — unified answers table behaviour for the poll page (vanilla, no deps).
 //
-// Model: one table row per slot, each with green / yellow toggle buttons
+// The table holds a row per respondent and exactly one form row — the empty
+// last row while the viewer has no answer, or a row opened for editing via
+// ?edit=. Each form cell carries green / yellow / red toggle buttons
 // (yellow only when the poll is not single-slot) and a hidden input
-// carrying the state ("g", "y" or "" = red X on submit). Single-slot
-// polls grey out every other row while one is marked; the server
-// re-checks the constraint on submit, the grey-out is a convenience.
+// holding the state ("g", "y" or "" = red X on submit; the red button
+// simply selects the unset state). Single-slot polls grey out every other
+// cell while one is marked; the server re-checks the constraint on submit.
+// Trash icons fill and submit the page's hidden delete form.
 
 (function () {
 	"use strict";
 
-	function paintRow(row) {
-		var v = row.getAttribute("data-status") || "";
-		row.classList.toggle("sel-g", v === "g");
-		row.classList.toggle("sel-y", v === "y");
-		var st = row.querySelector(".status");
-		if (st) {
-			st.textContent = v === "g" ? "\u2713" : v === "y" ? "(\u2713)" : "\u2717";
-			st.className = "status " + (v === "g" ? "st-g" : v === "y" ? "st-y" : "st-r");
-		}
-		var gb = row.querySelector(".mark-g");
-		if (gb) gb.setAttribute("aria-pressed", v === "g" ? "true" : "false");
-		var yb = row.querySelector(".mark-y");
-		if (yb) yb.setAttribute("aria-pressed", v === "y" ? "true" : "false");
+	function paintCell(cell) {
+		var v = cell.getAttribute("data-status") || "";
+		cell.classList.remove("st-g", "st-y", "st-r");
+		cell.classList.add(v === "g" ? "st-g" : v === "y" ? "st-y" : "st-r");
+		var g = cell.querySelector(".mark-g");
+		if (g) g.setAttribute("aria-pressed", v === "g" ? "true" : "false");
+		var y = cell.querySelector(".mark-y");
+		if (y) y.setAttribute("aria-pressed", v === "y" ? "true" : "false");
+		var r = cell.querySelector(".mark-r");
+		if (r) r.setAttribute("aria-pressed", v === "" ? "true" : "false");
 	}
 
-	// Wire one answer table: the form that owns the rows and their hidden
-	// inputs (the own-answer form or one of the admin's per-respondent
-	// cards).
-	function wire(root, single) {
-		var rows = Array.prototype.slice.call(root.querySelectorAll("tr[data-slot]"));
+	// Wire one answers form: its form cells and their hidden inputs.
+	function wire(form, single) {
+		var cells = Array.prototype.slice.call(form.querySelectorAll("td.form-cell"));
 
 		function greyOut() {
 			var marked = null;
-			rows.forEach(function (r) {
-				if (r.getAttribute("data-status")) marked = r;
+			cells.forEach(function (c) {
+				if (c.getAttribute("data-status")) marked = c;
 			});
-			rows.forEach(function (r) {
-				var off = single && marked !== null && r !== marked;
-				r.classList.toggle("greyed", off);
-				r.querySelectorAll("button.mark").forEach(function (b) {
+			cells.forEach(function (c) {
+				var off = single && marked !== null && c !== marked;
+				c.classList.toggle("greyed", off);
+				c.querySelectorAll("button.mark").forEach(function (b) {
 					b.disabled = off;
 				});
 			});
 		}
 
-		function setStatus(slot, v) {
-			var row = null;
-			rows.forEach(function (r) {
-				if (r.getAttribute("data-slot") === slot) row = r;
-			});
-			if (!row) return;
-			row.setAttribute("data-status", v);
-			var input = root.querySelector('input[name="a' + slot + '"]');
+		function setStatus(cell, v) {
+			cell.setAttribute("data-status", v);
+			var input = cell.querySelector('input[type="hidden"]');
 			if (input) input.value = v;
-			paintRow(row);
+			paintCell(cell);
 			greyOut();
 		}
 
-		root.addEventListener("click", function (e) {
+		form.addEventListener("click", function (e) {
 			var btn = e.target.closest("button.mark");
 			if (!btn || btn.disabled) return;
-			var row = btn.closest("tr[data-slot]");
-			if (!row) return;
-			var slot = row.getAttribute("data-slot");
-			var current = row.getAttribute("data-status") || "";
+			var cell = btn.closest("td.form-cell");
+			if (!cell) return;
+			var current = cell.getAttribute("data-status") || "";
 			if (btn.classList.contains("mark-g")) {
-				setStatus(slot, current === "g" ? "" : "g");
+				setStatus(cell, current === "g" ? "" : "g");
 			} else if (btn.classList.contains("mark-y")) {
-				setStatus(slot, current === "y" ? "" : "y");
+				setStatus(cell, current === "y" ? "" : "y");
+			} else if (btn.classList.contains("mark-r")) {
+				setStatus(cell, "");
 			}
 		});
 
-		rows.forEach(function (r) {
-			setStatus(r.getAttribute("data-slot"), r.getAttribute("data-status") || "");
+		cells.forEach(function (c) {
+			setStatus(c, c.getAttribute("data-status") || "");
 		});
 	}
 
@@ -81,22 +75,20 @@
 		wire(main, main.getAttribute("data-single") === "true");
 	}
 
-	Array.prototype.forEach.call(document.querySelectorAll("form.resp-form"), function (f) {
-		wire(f, f.getAttribute("data-single") === "true");
-	});
-
-	// Deleting an answer is destructive: confirm on submit.
-	Array.prototype.forEach.call(
-		document.querySelectorAll("form.answer-delete, form.resp-del"),
-		function (f) {
-			f.addEventListener("submit", function (e) {
-				var msg = f.classList.contains("resp-del")
-					? "Delete this respondent's answer?"
-					: "Delete your answer for this poll?";
-				if (!confirm(msg)) e.preventDefault();
+	// Deleting an answer is destructive: confirm on click, then fill and
+	// submit the page's hidden delete form.
+	var delForm = document.getElementById("del-form");
+	if (delForm) {
+		var target = delForm.querySelector('input[name="respondentid"]');
+		Array.prototype.forEach.call(document.querySelectorAll(".del-btn"), function (b) {
+			b.addEventListener("click", function () {
+				var name = b.getAttribute("data-name") || "";
+				if (!confirm(name ? "Delete " + name + "'s answer?" : "Delete this answer?")) return;
+				target.value = b.getAttribute("data-id") || "";
+				delForm.submit();
 			});
-		}
-	);
+		});
+	}
 
 	// Clicking a link box selects the whole URL for copying.
 	Array.prototype.forEach.call(document.querySelectorAll("input.copybox"), function (i) {

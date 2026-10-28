@@ -245,8 +245,12 @@ func runPollSuite(t *testing.T) {
 		gotA.Answers[0].Marks[s1] != "g" || gotA.Answers[0].Marks[s2] != "y" {
 		t.Fatalf("answer not stored as submitted: %+v", gotA.Answers)
 	}
+	// The submitted answer renders as a static row: name with the
+	// edit/delete icons in front, tinted marks per slot.
 	bOwn := p.body(p.get("/meet/"+mA.Key, cookie+"="+alice))
-	contains(bOwn, `value="Alice"`)
+	contains(bOwn, "Alice (you)")
+	contains(bOwn, `?edit=`+alice)
+	contains(bOwn, `data-id="`+alice+`"`)
 	contains(bOwn, "st-g")
 	contains(bOwn, "st-y")
 
@@ -313,7 +317,7 @@ func runPollSuite(t *testing.T) {
 		t.Fatalf("unmarked slot must drop from the marks: %+v", aliceAns.Marks)
 	}
 	bEd := p.body(p.get("/meet/"+mA.Key, cookie+"="+alice))
-	contains(bEd, `value="Alice J"`)
+	contains(bEd, "Alice J (you)")
 	absent(bEd, "st-y")
 
 	// ... and deleting it, which also expires the identity cookie.
@@ -333,7 +337,11 @@ func runPollSuite(t *testing.T) {
 	if findAnswer(gotA.Answers, alice) != nil {
 		t.Fatalf("own answer not removed: %+v", gotA.Answers)
 	}
-	absent(p.body(p.get("/meet/"+mA.Key, cookie+"="+alice)), "editing your answer")
+	// A deleted answer leaves only the fresh form row behind.
+	bFresh := p.body(p.get("/meet/"+mA.Key, cookie+"="+alice))
+	contains(bFresh, `placeholder="Your name"`)
+	contains(bFresh, "Submit answer")
+	absent(bFresh, "Alice J")
 
 	// A user link may never act on someone else's answer.
 	status(p.post("/meet/"+mA.Key+"/answer/delete",
@@ -368,15 +376,18 @@ func runPollSuite(t *testing.T) {
 		t.Fatalf("organizer answer not stored: %+v", gotA.Answers)
 	}
 	contains(p.body(p.get("/meet/"+adminA, cookie+"="+adminTok)), "(you)")
-	contains(p.body(p.get("/meet/"+mA.Key, cookie+"="+adminTok)), `id="delete-own"`)
 	// Both views post their answer forms through their own link, so the
-	// back-redirect lands on the page the form came from.
+	// back-redirect lands on the page the form came from; the organizer's
+	// row carries the edit/delete icons in both.
 	bAdmView := p.body(p.get("/meet/"+adminA, cookie+"="+adminTok))
 	bUsrView := p.body(p.get("/meet/"+mA.Key, cookie+"="+adminTok))
 	contains(bAdmView, `action="/meet/`+adminA+`/answer"`)
 	absent(bAdmView, `action="/meet/`+mA.Key+`/answer"`)
 	contains(bUsrView, `action="/meet/`+mA.Key+`/answer"`)
 	absent(bUsrView, `action="/meet/`+adminA+`/answer"`)
+	contains(bAdmView, `?edit=`+adminTok)
+	contains(bUsrView, `?edit=`+adminTok)
+	contains(bUsrView, `data-id="`+adminTok+`"`)
 	// The admin view's delete-own form is a capability post through the
 	// admin link and keeps the admin on the admin page.
 	rOwnDel := p.post("/meet/"+adminA+"/answer/delete", "respondentid="+adminTok, cookie+"="+adminTok)
@@ -388,6 +399,25 @@ func runPollSuite(t *testing.T) {
 	if findAnswer(gotA.Answers, adminTok) != nil {
 		t.Fatalf("organizer answer not removed: %+v", gotA.Answers)
 	}
+
+	// The edit row renders in place: the opened respondent's row becomes
+	// the form, posting through the admin edit endpoint with their id and
+	// prefilled name.
+	bEdRow := p.body(p.get("/meet/"+adminA+"?edit="+bob, cookie+"="+adminTok))
+	contains(bEdRow, `action="/meet/`+adminA+`/answer/edit"`)
+	contains(bEdRow, `name="respondentid" value="`+bob+`"`)
+	contains(bEdRow, `value="Bobby"`)
+	contains(bEdRow, "Save changes")
+	absent(bEdRow, `?edit=`+bob)
+	// A user link may never open someone else's row, and an unknown
+	// ?edit target just renders the plain page.
+	bUsrEd := p.body(p.get("/meet/"+mA.Key+"?edit="+bob, cookie+"="+adminTok))
+	absent(bUsrEd, `answer/edit`)
+	absent(bUsrEd, `value="Bobby"`)
+	absent(bUsrEd, `data-id="`+bob+`"`)
+	bGhost := p.body(p.get("/meet/"+adminA+"?edit=ghost", cookie+"="+adminTok))
+	absent(bGhost, `answer/edit`)
+	contains(bGhost, "Submit answer")
 
 	// ---- editing the poll itself ----
 	rEd := p.get("/1-1-form/edit/"+adminA, "")

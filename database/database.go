@@ -106,7 +106,7 @@ type Meeting struct {
 	// AdminKey is stored NULL on relational backends when empty (legacy
 	// polls predate the admin link); a unique index allows many NULLs, which
 	// a unique-on-empty-string could not.
-	AdminKey string `gorm:"uniqueIndex"`
+	AdminKey     string    `gorm:"uniqueIndex"`
 	Title        string    `gorm:"not null"`
 	Description  string    `gorm:"not null"`
 	Email        string    `gorm:"not null"`

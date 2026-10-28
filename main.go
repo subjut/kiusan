@@ -433,7 +433,7 @@ func meetingSaveError(c fiber.Ctx, err error) error {
 
 // meetingHandler renders the poll page for a user or admin link: the same
 // page, with the admin link adding the copyable links, the edit-poll
-// button and the per-respondent management.
+// button and the per-row edit/delete icons on every answer.
 func meetingHandler(c fiber.Ctx) error {
 	m, isAdmin, err := resolveMeeting(c.Params("+"))
 	if err != nil {
@@ -448,6 +448,45 @@ func meetingHandler(c fiber.Ctx) error {
 	identity := ensureIdentityCookie(c, m, now)
 	own := findAnswer(m.Answers, identity)
 
+	// The one form row in the answers table: the empty last row while the
+	// viewer has no answer yet, or — opened with ?edit=<id> — that
+	// respondent's row turned into the form in place. A user link may only
+	// open its own row; an admin link any row, with someone else's row
+	// posting through the capability admin edit endpoint (the own row
+	// posts through the cookie identity like a respondent's).
+	viewKey := m.Key
+	if isAdmin {
+		viewKey = m.AdminKey
+	}
+	editParam := strings.TrimSpace(c.Query("edit"))
+	var other *database.Answer
+	if editParam != "" {
+		other = findAnswer(m.Answers, editParam)
+	}
+	var formTarget *database.Answer
+	formID := ""
+	formNew := false
+	formAction := "/meet/" + viewKey + "/answer"
+	formRespondentID := ""
+	if !ended {
+		switch {
+		case own != nil && editParam == identity:
+			formTarget = own
+			formID = own.ID
+		case isAdmin && other != nil && other.ID != identity:
+			formTarget = other
+			formID = other.ID
+			formAction = "/meet/" + m.AdminKey + "/answer/edit"
+			formRespondentID = other.ID
+		case own == nil:
+			formNew = true
+		}
+	}
+	formName := ""
+	if formTarget != nil {
+		formName = formTarget.Name
+	}
+
 	// All slots are shown in the meeting's timezone (UTC when none was
 	// set) so the display never depends on the server's timezone.
 	loc, _ := time.LoadLocation(m.TimeZone)
@@ -460,10 +499,10 @@ func meetingHandler(c fiber.Ctx) error {
 		ends = m.Expires.In(loc).Format("2006-01-02")
 	}
 
-	// Answer-form slots, prefilled with the own answer.
+	// Table column slots, prefilled with the form target's marks.
 	type formSlot struct {
-		Key, Label, Status, Sym, Cls string
-		PressG, PressY               string
+		Key, Label string
+		PressR     string
 	}
 	press := func(on bool) string {
 		if on {
@@ -482,14 +521,12 @@ func meetingHandler(c fiber.Ctx) error {
 	}
 	slots := make([]formSlot, 0, len(m.Dates))
 	for _, d := range m.Dates {
-		label := d.In(loc).Format("Mon 2006-01-02 15:04")
 		status := ""
-		if own != nil {
-			status = own.Marks[slotKey(d)]
+		if formTarget != nil {
+			status = formTarget.Marks[slotKey(d)]
 		}
-		sym, cls := markSym(status)
-		slots = append(slots, formSlot{Key: slotKey(d), Label: label, Status: status, Sym: sym, Cls: cls,
-			PressG: press(status == "g"), PressY: press(status == "y")})
+		slots = append(slots, formSlot{Key: slotKey(d), Label: d.In(loc).Format("Mon 2006-01-02 15:04"),
+			PressR: press(status == "")})
 	}
 
 	// The respondents visible on this page.
@@ -501,11 +538,14 @@ func meetingHandler(c fiber.Ctx) error {
 		shown = database.AnswerList{*own}
 	}
 	type respCol struct {
-		ID, Name       string
-		IsOwn          bool
-		Marks          []string // per slot: "g" | "y" | "" (hidden-input values)
-		Syms, Csls     []string
-		PressG, PressY []string
+		ID, Name string
+		IsOwn    bool
+		Marks    []string // per slot: "g" | "y" | "" (the form row's hidden-input values)
+		Syms     []string // per slot: the mark glyph in a static row's cell
+		Csls     []string // per slot: st-g | st-y | st-r
+		PressG   []string
+		PressY   []string
+		PressR   []string
 	}
 	cols := make([]respCol, 0, len(shown))
 	for i := range shown {
@@ -514,6 +554,7 @@ func meetingHandler(c fiber.Ctx) error {
 		csls := make([]string, len(m.Dates))
 		pg := make([]string, len(m.Dates))
 		py := make([]string, len(m.Dates))
+		pr := make([]string, len(m.Dates))
 		for j, d := range m.Dates {
 			v := shown[i].Marks[slotKey(d)]
 			marks[j] = v
@@ -522,47 +563,47 @@ func meetingHandler(c fiber.Ctx) error {
 			csls[j] = cl
 			pg[j] = press(v == "g")
 			py[j] = press(v == "y")
+			pr[j] = press(v == "")
 		}
-		cols = append(cols, respCol{ID: shown[i].ID, Name: shown[i].Name, IsOwn: shown[i].ID == identity, Marks: marks, Syms: syms, Csls: csls, PressG: pg, PressY: py})
+		cols = append(cols, respCol{ID: shown[i].ID, Name: shown[i].Name, IsOwn: shown[i].ID == identity,
+			Marks: marks, Syms: syms, Csls: csls, PressG: pg, PressY: py, PressR: pr})
 	}
 
 	// The page's forms post through the same link the page is viewed on, so
 	// the handlers' back-redirect lands on this page (the admin stays on the
 	// admin page after answering, editing, or deleting an answer there).
-	viewKey := m.Key
-	if isAdmin {
-		viewKey = m.AdminKey
+	csrf := ""
+	if identity != "" && !ended {
+		csrf = csrfToken(identity)
 	}
 	data := fiber.Map{
-		"pagetitle":         "kiusan | " + m.Title,
-		"title":             m.Title,
-		"description":       m.Description,
-		"email":             m.Email,
-		"tzname":            tzName,
-		"ends":              ends,
-		"ended":             ended,
-		"isadmin":           isAdmin,
-		"userlink":          absURL(c, "/meet/"+m.Key),
-		"adminlink":         absURL(c, "/meet/"+m.AdminKey),
-		"editlink":          "/1-1-form/edit/" + m.AdminKey,
-		"single":            m.SingleSignup,
-		"hasown":            own != nil,
-		"ownname":           "",
-		"ownid":             "",
-		"slots":             slots,
-		"cols":              cols,
-		"csrf":              "",
-		"answeraction":      "/meet/" + viewKey + "/answer",
-		"deleteaction":      "/meet/" + viewKey + "/answer/delete",
-		"admineditaction":   "/meet/" + m.AdminKey + "/answer/edit",
-		"admindeleteaction": "/meet/" + m.AdminKey + "/answer/delete",
-	}
-	if own != nil {
-		data["ownname"] = own.Name
-		data["ownid"] = own.ID
-	}
-	if identity != "" && !ended {
-		data["csrf"] = csrfToken(identity)
+		"pagetitle":        "kiusan | " + m.Title,
+		"title":            m.Title,
+		"description":      m.Description,
+		"email":            m.Email,
+		"tzname":           tzName,
+		"ends":             ends,
+		"ended":            ended,
+		"isadmin":          isAdmin,
+		"userlink":         absURL(c, "/meet/"+m.Key),
+		"adminlink":        absURL(c, "/meet/"+m.AdminKey),
+		"editlink":         "/1-1-form/edit/" + m.AdminKey,
+		"single":           m.SingleSignup,
+		"slots":            slots,
+		"cols":             cols,
+		"selflink":         "/meet/" + viewKey,
+		"formnew":          formNew,
+		"formid":           formID,
+		"formname":         formName,
+		"formaction":       formAction,
+		"formrespondentid": formRespondentID,
+		"deleteaction":     "/meet/" + viewKey + "/answer/delete",
+		// CSRF travels with the forms that post through the cookie
+		// identity: the form row (unless it posts through the capability
+		// admin edit endpoint) and, in the user view, the delete form.
+		"answercsrf": csrf != "" && formRespondentID == "" && (formNew || formID != ""),
+		"delcsrf":    csrf != "" && !isAdmin,
+		"csrftoken":  csrf,
 	}
 	return c.Render("meet", data, "layouts/home")
 }

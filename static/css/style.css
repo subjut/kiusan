@@ -231,9 +231,7 @@ fieldset legend {
     text-decoration: none;
 }
 
-/* Answer form: slot rows with mark toggles */
-.answer-table th,
-.answer-table td,
+/* Unified answers table: a row per respondent, plus one form row */
 .answers-table th,
 .answers-table td {
     border: 1px solid var(--rich-black);
@@ -242,18 +240,61 @@ fieldset legend {
     text-align: center;
 }
 
-.answer-table td:first-child,
-.answers-table td:first-child {
-    text-align: left;
+.answers-table th {
+    white-space: nowrap;
 }
 
+.answers-table td:first-child {
+    text-align: left;
+    white-space: nowrap;
+}
+
+/* The form row and the own row stand out in the name column */
+tr.form-row td:first-child,
+tr.own td:first-child {
+    background-color: var(--wheat);
+}
+
+.form-row input[name="name"] {
+    min-width: 130px;
+}
+
+/* Pencil / trash icons in front of a name */
+a.icon-btn,
+button.icon-btn {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 3px;
+    padding: 2px 4px;
+    border: 1px solid var(--rich-black);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--rich-black);
+    text-decoration: none;
+    cursor: pointer;
+    line-height: 1;
+}
+
+a.icon-btn:hover {
+    background-color: var(--wheat);
+}
+
+button.icon-btn:hover {
+    background-color: #f6d9cd;
+}
+
+button.icon-btn:hover svg {
+    color: var(--mahogany);
+}
+
+/* Mark toggles in the form row's cells */
 button.mark {
     border: 2px solid var(--rich-black);
     background: transparent;
     color: var(--rich-black);
     cursor: pointer;
     font-size: 14px;
-    padding: 2px 10px;
+    padding: 2px 8px;
     border-radius: 4px;
 }
 
@@ -262,20 +303,25 @@ button.mark:disabled {
     cursor: not-allowed;
 }
 
-tr.sel-g button.mark-g {
+button.mark-g[aria-pressed="true"] {
     background-color: var(--bud-green);
     color: var(--rich-black);
 }
 
-tr.sel-y button.mark-y {
+button.mark-y[aria-pressed="true"] {
     background-color: #e5c460;
     color: var(--rich-black);
 }
 
-tr.greyed td { color: #8a8a8a; }
-
-.status {
+button.mark-r[aria-pressed="true"] {
+    border-color: var(--mahogany);
+    color: var(--mahogany);
     font-weight: bold;
+}
+
+/* Single-slot grey-out */
+td.form-cell.greyed {
+    opacity: 0.4;
 }
 
 .st-g { color: var(--mark-green); }
@@ -291,28 +337,5 @@ td.st-r { background-color: #f6d9cd; }
     margin: 12px 0;
     display: flex;
     gap: 12px;
-}
-
-.answer-delete {
-    margin: 8px 0;
-}
-
-.editing { font-size: 13px; }
-
-/* Admin per-respondent cards */
-.manage p {
-    font-size: 13px;
-}
-
-.resp-card {
-    border: 1px solid var(--rich-black);
-    border-radius: 4px;
-    margin: 12px 0;
-    padding: 8px 14px;
-}
-
-.resp-del {
-    margin: -4px 0 12px;
-    text-align: right;
 }
 
