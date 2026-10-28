@@ -53,8 +53,7 @@ type MeetingStore interface {
 	// Generation == m.Generation; the stored Generation then advances by
 	// one (mirrored onto m). It returns ErrConflict otherwise.
 	Update(m *database.Meeting) error
-	// Delete removes the meeting stored under key (and its admin key
-	// index entry).
+	// Delete removes the meeting stored under key.
 	Delete(key string) error
 	// Close releases the backend's resources.
 	Close() error

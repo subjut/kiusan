@@ -26,13 +26,9 @@ func cookieName(m *database.Meeting) string {
 	return "kiusan-" + m.Key
 }
 
-// legacyCookieAge is how long an identity cookie lives when the poll has
-// no end date (created before the expiry feature).
-const legacyCookieAge = 90 * 24 * time.Hour
-
-// pollEnded reports whether the poll has reached its end (nil = no end).
+// pollEnded reports whether the poll has reached its end.
 func pollEnded(m *database.Meeting, now time.Time) bool {
-	return m.Expires != nil && now.After(*m.Expires)
+	return now.After(m.Expires)
 }
 
 // ensureIdentityCookie returns the poll's identity value for this
@@ -45,11 +41,7 @@ func ensureIdentityCookie(c fiber.Ctx, m *database.Meeting, now time.Time) strin
 	if id := c.Cookies(name); id != "" {
 		return id
 	}
-	exp := *m.Expires
-	if m.Expires == nil {
-		exp = now.Add(legacyCookieAge)
-	}
-	if !exp.After(now) {
+	if !m.Expires.After(now) {
 		return ""
 	}
 	token, err := store.RandomKey(32)
@@ -57,7 +49,7 @@ func ensureIdentityCookie(c fiber.Ctx, m *database.Meeting, now time.Time) strin
 		return ""
 	}
 	c.Cookie(&fiber.Cookie{
-		Name: name, Value: token, Expires: exp,
+		Name: name, Value: token, Expires: m.Expires,
 		HTTPOnly: true, SameSite: "Lax", Path: "/",
 	})
 	return token

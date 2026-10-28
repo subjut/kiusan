@@ -46,7 +46,7 @@ Feature state (see `static/index.html`):
   lifecycle on the two-link model (identity cookie + CSRF, answering,
   visibility / hide-users, single-slot enforcement, answer edit/delete,
   admin answer management, poll edit with stable links and mark pruning,
-  legacy polls without an admin key, expiry and prolongation, the
+  expiry and prolongation, the
   clickjacking headers, and the urlencoded-only POST gate). The suites
   run on GORM-sqlite; each test chdirs into `t.TempDir()` and opens a
   throwaway store, so the dev data files are never touched.
@@ -62,23 +62,23 @@ Feature state (see `static/index.html`):
   global.
 - `poll.go` — the poll plumbing shared by the handlers: the per-poll
   identity cookie (`kiusan-<userKey>`, HttpOnly + SameSite=Lax, valid
-  until the poll ends — 90 days for legacy polls without an end), the
+  until the poll ends), the
   stateless CSRF token (HMAC-SHA256 over the cookie value, secret from
   `KIUSAN_SECRET` or random per start), `slotKey` (the slot's absolute
   UTC instant, seconds stripped), the answer-list operations
   (find/upsert/remove/prune), and `saveMeeting` (fresh read, mutate,
   compare-and-set `Update`, retry on conflict).
-- `database/database.go` — model types only: `Meeting` (incl. the
-  optional IANA `TimeZone`, the nullable `AdminKey` — empty = legacy, no
-  admin link — `Expires`, `Answers`, and the CAS stamp `Generation`),
+- `database/database.go` — model types only: `Meeting` (incl. the IANA
+  `TimeZone` (empty renders as UTC), the `uniqueIndex`ed `AdminKey`, the
+  always-set `Expires`, `Answers`, and the CAS stamp `Generation`),
   `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
   a JSON document in a TEXT column) and `TimeSlice` (candidate slots,
   same treatment). No handles or globals here.
 - `store/` — the `MeetingStore` interface and its GORM-backed
   implementation `gorm.go` (sqlite — the default when `KIUSAN_STORE` is
   empty, DSN defaulting to `./meetings.db` — plus mysql/mariadb/postgres;
-  schema auto-migrated at startup; the admin link is a `uniqueIndex`ed,
-  nullable `admin_key` column). `Get`/`GetAdmin` resolve the two links;
+  schema auto-migrated at startup; the admin link is a `uniqueIndex`ed
+  `admin_key` column). `Get`/`GetAdmin` resolve the two links;
   `Update` is a compare-and-set on `Generation` (`ErrConflict` when stale)
   and honors a changed admin key; the user key never changes.
   `Open(kind, dsn)` dispatches on `KIUSAN_STORE`; `RandomKey` in `key.go`
@@ -147,8 +147,8 @@ Feature state (see `static/index.html`):
   don't add engine-specific column types or features.
 - **Meeting timezone & server-independence**: slots are absolute instants
   (RFC3339 in `TimeSlice`); `Meeting.TimeZone` (IANA name, e.g.
-  `Europe/Berlin`) is where they are authored and rendered, empty = legacy
-  = render as UTC. Never display with `.Local()` — that leaks the server's
+  `Europe/Berlin`) is where they are authored and rendered, empty
+  renders as UTC. Never display with `.Local()` — that leaks the server's
   timezone. `_ "time/tzdata"` in `main.go` bundles zoneinfo for hosts
   without system tzdata. The form's timezone `<select>` is rendered from
   the committed `data/timezones.txt` (embedded with `go:embed`, filtered
@@ -196,11 +196,8 @@ Feature state (see `static/index.html`):
   (still-open pages keep working); without it the secret is random per
   start and open pages must be reloaded after a restart.
 - **Expiry**: `Expires` is end-of-day (23:59:59) in the meeting's
-  timezone; nil = legacy = no end. An ended poll answers with 410, mints
+  timezone; the form's `enddate` is optional and defaults to three
+  months, so every poll has one. An ended poll answers with 410, mints
   no new identity cookie, and hides the form — but the admin page keeps
   its edit button, so the organizer can prolong the poll and reopen
   answering.
-- **Legacy polls**: an empty `AdminKey` (stored NULL on the relational
-  backends — the column must stay nullable: a unique index over
-  `''` would break with two or more legacy rows) means no admin view:
-  the key never matches, and the user page simply offers no poll edit.

@@ -123,9 +123,8 @@ func (p *pollClient) createPoll(form string) (*database.Meeting, string) {
 // runPollSuite exercises the two-link poll model end to end: create, both
 // views, the per-poll identity cookie, CSRF-gated answering, answer
 // editing and deletion, admin management, poll editing (keys must survive),
-// expiry and prolongation, legacy polls without an admin link, and the
-// clickjacking headers. One sequential walkthrough, as the old suites are
-// shaped; it runs once per backend.
+// expiry and prolongation, and the clickjacking headers. One sequential
+// walkthrough, as the old suites are shaped; it runs on the sqlite backend.
 func runPollSuite(t *testing.T) {
 	berlin := mustZone(t, "Europe/Berlin")
 	p := newPollClient(t, newTestApp(t))
@@ -164,7 +163,7 @@ func runPollSuite(t *testing.T) {
 	} else if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("admin key lookup: %v", err)
 	}
-	if wantEnd := time.Date(2026, 12, 31, 23, 59, 59, 0, berlin); mA.Expires == nil || !mA.Expires.Equal(wantEnd) {
+	if wantEnd := time.Date(2026, 12, 31, 23, 59, 59, 0, berlin); !mA.Expires.Equal(wantEnd) {
 		t.Fatalf("poll A expiry: got %v, want %v", mA.Expires, wantEnd)
 	}
 	cookie := cookieName(mA)
@@ -448,7 +447,7 @@ func runPollSuite(t *testing.T) {
 	if gotA.Title != "Poll A v2" {
 		t.Fatalf("title not updated: %q", gotA.Title)
 	}
-	if wantEnd := time.Date(2027, 1, 31, 23, 59, 59, 0, berlin); gotA.Expires == nil || !gotA.Expires.Equal(wantEnd) {
+	if wantEnd := time.Date(2027, 1, 31, 23, 59, 59, 0, berlin); !gotA.Expires.Equal(wantEnd) {
 		t.Fatalf("expiry not updated: %v", gotA.Expires)
 	}
 	if len(gotA.Dates) != 1 || !gotA.Dates[0].Equal(time.Date(2026, 11, 1, 12, 0, 0, 0, berlin)) {
@@ -460,22 +459,9 @@ func runPollSuite(t *testing.T) {
 		}
 	}
 
-	// ---- a legacy poll without an admin link ----
-	mL, adminL := p.createPoll("title=Poll+L&email=poll%40example.com&description=L+description&timezone=UTC&enddate=2026-12-31&date0=2026-11-01&time0=10:00")
-	mL.AdminKey = ""
-	if err := db.Update(mL); err != nil {
-		t.Fatalf("simulating a legacy poll: %v", err)
-	}
-	status(p.get("/meet/"+adminL, ""), http.StatusNotFound)
-	if _, err := db.GetAdmin(adminL); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("legacy poll still resolves through the admin key")
-	}
-	absent(p.body(p.get("/meet/"+mL.Key, "")), "Edit poll")
-
 	// ---- poll D: expiry and prolongation ----
 	mD, adminD := p.createPoll("title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2026-12-31&date0=2026-11-01&time0=10:00")
-	past := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	mD.Expires = &past
+	mD.Expires = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	if err := db.Update(mD); err != nil {
 		t.Fatalf("forcing expiry: %v", err)
 	}
@@ -506,7 +492,7 @@ func runPollSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
-	if wantEnd := time.Date(2027, 3, 1, 23, 59, 59, 0, berlin); gotD.Expires == nil || !gotD.Expires.Equal(wantEnd) {
+	if wantEnd := time.Date(2027, 3, 1, 23, 59, 59, 0, berlin); !gotD.Expires.Equal(wantEnd) {
 		t.Fatalf("prolongation not stored: %v", gotD.Expires)
 	}
 	rReopen := p.get("/meet/"+mD.Key, "")

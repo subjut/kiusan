@@ -102,10 +102,9 @@ func (a *AnswerList) Scan(value any) error {
 // change, so editing the poll never invalidates a shared link.
 type Meeting struct {
 	Key string `gorm:"primaryKey"`
-	// AdminKey is stored NULL on relational backends when empty (legacy
-	// polls predate the admin link); a unique index allows many NULLs, which
-	// a unique-on-empty-string could not.
-	AdminKey     string    `gorm:"uniqueIndex"`
+	// AdminKey is the admin link, unique across the table; every poll
+	// has one, assigned by the store at creation and never changed.
+	AdminKey     string    `gorm:"not null;uniqueIndex"`
 	Title        string    `gorm:"not null"`
 	Description  string    `gorm:"not null"`
 	Email        string    `gorm:"not null"`
@@ -114,11 +113,13 @@ type Meeting struct {
 	Dates        TimeSlice `gorm:"not null"`
 	// TimeZone is the IANA zone (e.g. "Europe/Berlin") the meeting's
 	// dates and times are authored in; slots are absolute instants,
-	// rendered in this zone. Empty = legacy, rendered as UTC.
+	// rendered in this zone. Empty renders as UTC (the fallback a
+	// no-JS form submit reaches; the form's JS always sends a zone).
 	TimeZone string `gorm:"not null;default:''"`
-	// Expires is when the poll stops accepting answers (end of the chosen
-	// day in TimeZone); nil = no end (legacy polls).
-	Expires *time.Time
+	// Expires is when the poll stops accepting answers (end of the
+	// chosen day in TimeZone); the form's enddate is optional and
+	// defaults to three months, so it is always set.
+	Expires time.Time `gorm:"not null"`
 	// Answers are the submitted answers (identity, name, marks per slot).
 	Answers AnswerList `gorm:"not null;default:'[]'"`
 	// Generation advances with every store-level write; it is the

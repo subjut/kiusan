@@ -1,6 +1,6 @@
 <div class="container">
 	<h2>{{.title}}</h2>
-	<p class="meta">Timezone: {{.tzname}}{{if .ends}} &middot; Ends {{.ends}}{{end}}{{if .email}} &middot; {{.email}}{{end}}</p>
+	<p class="meta">Timezone: {{.tzname}} &middot; Ends {{.ends}}{{if .email}} &middot; {{.email}}{{end}}</p>
 
 	{{if .isadmin}}
 	<section class="links">
@@ -17,7 +17,7 @@
 	{{end}}
 
 	{{if .ended}}
-	<p class="ended">This poll has ended{{if .ends}} on {{.ends}}{{end}} — it no longer accepts answers.</p>
+	<p class="ended">This poll has ended on {{.ends}} — it no longer accepts answers.</p>
 	{{else if .slots}}
 	<!-- All answers in one table: a row per respondent, plus one form row —
 	     the empty last row while the viewer has no answer yet, or the row

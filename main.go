@@ -245,10 +245,7 @@ func formEditHandler(c fiber.Ctx) error {
 		return strings.Join(list, ",")
 	}
 
-	expiry := ""
-	if m.Expires != nil {
-		expiry = m.Expires.In(loc).Format("2006-01-02")
-	}
+	expiry := m.Expires.In(loc).Format("2006-01-02")
 
 	return c.Render("1-1-form", fiber.Map{
 		"pagetitle":    "kiusan | Edit: " + m.Title,
@@ -304,7 +301,7 @@ func formPostHandler(c fiber.Ctx) error {
 	form.SingleSignup = c.FormValue("single-signup") != ""
 
 	// Timezone the meeting's dates/times are authored and displayed in;
-	// optional, empty (legacy) renders as UTC.
+	// optional, an empty value renders as UTC.
 	form.TimeZone = strings.TrimSpace(c.FormValue("timezone"))
 	loc, err := time.LoadLocation(form.TimeZone)
 	if err != nil {
@@ -413,9 +410,8 @@ func parseEndDate(raw string, now time.Time) (time.Time, string) {
 
 // endOf turns a calendar end date into the instant the poll stops
 // accepting answers: the end of that day in the meeting's zone.
-func endOf(d time.Time, loc *time.Location) *time.Time {
-	t := time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, loc)
-	return &t
+func endOf(d time.Time, loc *time.Location) time.Time {
+	return time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, loc)
 }
 
 // meetingSaveError maps the saveMeeting outcomes onto responses.
@@ -494,10 +490,7 @@ func meetingHandler(c fiber.Ctx) error {
 	if tzName == "" {
 		tzName = "UTC"
 	}
-	ends := ""
-	if m.Expires != nil {
-		ends = m.Expires.In(loc).Format("2006-01-02")
-	}
+	ends := m.Expires.In(loc).Format("2006-01-02")
 
 	// Table column slots, prefilled with the form target's marks.
 	type formSlot struct {
