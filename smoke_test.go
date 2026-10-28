@@ -101,7 +101,7 @@ func runSmokeSuite(t *testing.T) {
 	sel := fb[selStart:selEnd]
 	for _, want := range []string{
 		`<option value="Europe/Berlin">Europe/Berlin</option>`,
-		`<option value="America/New_York">America/New_York</option>`,
+		`<option value="America/New_York">America/New York</option>`,
 		`<option value="UTC">UTC</option>`,
 	} {
 		if !strings.Contains(sel, want) {

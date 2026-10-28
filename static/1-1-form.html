@@ -17,8 +17,8 @@
 
 		<label for="timezone">Timezone:</label>
 		<select id="timezone" name="timezone">
-{{range .timezones}}<option value="{{.}}"{{if eq . $.timezone}} selected{{end}}>{{.}}</option>
-{{end}}{{if .extraTz}}<option value="{{.extraTz}}" selected>{{.extraTz}}</option>
+{{range .timezones}}<option value="{{.}}"{{if eq . $.timezone}} selected{{end}}>{{zoneDisplay .}}</option>
+{{end}}{{if .extraTz}}<option value="{{.extraTz}}" selected>{{zoneDisplay .extraTz}}</option>
 {{end}}</select><br><br>
 
 		<fieldset class="dates-picker">

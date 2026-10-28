@@ -159,7 +159,10 @@ Feature state (see `static/index.html`):
   alphabetical order (sorted into `timezoneList` at process start in
   `main.go`, independent of the file's grouping); `static/js/dater.js`
   inserts the browser's own zone at its alphabetical position when it is
-  not in the list, so the prefill always shows and submits.
+  not in the list, so the prefill always shows and submits. Labels show
+  the zone name with underscores as spaces (the `zoneDisplay` template
+  function in `main.go`, also applied to the poll page's `Timezone:`
+  line); option values and stored data keep the real IANA name.
 - **AutoMigrate is additive-only**: it creates tables and adds columns at
   startup but does not drop or modify anything; destructive schema changes
   need explicit SQL migrations (none exist yet).

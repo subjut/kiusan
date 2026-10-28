@@ -236,12 +236,14 @@
 		var tzSel = document.getElementById("timezone");
 		var localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 		// In edit mode the server already selected the poll's zone; only
-		// prefill the browser zone when nothing is selected yet.
-		if (localTz && !tzSel.value) {
+		// prefill the browser zone when the server selected nothing. (A
+		// select with no selected option still reports its first option
+		// as .value, so test the attribute, not the value.)
+		if (localTz && !tzSel.querySelector("option[selected]")) {
 			if (tzSel.querySelector('option[value="' + localTz + '"]') === null) {
 				var tzOpt = document.createElement("option");
 				tzOpt.value = localTz;
-				tzOpt.textContent = localTz;
+				tzOpt.textContent = localTz.replace(/_/g, " ");
 				// Insert at the alphabetical position, keeping the dropdown
 				// sorted like the server-rendered options.
 				var i = 0;

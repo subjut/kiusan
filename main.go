@@ -104,6 +104,13 @@ func newApp(staticDir string) *fiber.App {
 	// We use html template engine
 	engine := html.New(staticDir, ".html")
 
+	// Dropdown labels show zone names with underscores as spaces
+	// ("America/New York"); option values keep the real IANA name so
+	// the form still submits a loadable zone.
+	engine.AddFunc("zoneDisplay", func(z string) string {
+		return strings.ReplaceAll(z, "_", " ")
+	})
+
 	// For debugging, set to false or comment for production
 	// Reload the templates on each render, good for development
 	engine.Reload(true)
@@ -490,6 +497,7 @@ func meetingHandler(c fiber.Ctx) error {
 	if tzName == "" {
 		tzName = "UTC"
 	}
+	tzName = strings.ReplaceAll(tzName, "_", " ")
 	ends := m.Expires.In(loc).Format("2006-01-02")
 
 	// Table column slots, prefilled with the form target's marks.
