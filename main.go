@@ -506,23 +506,42 @@ func meetingHandler(c fiber.Ctx) error {
 		slots = append(slots, formSlot{Key: slotKey(d), PressR: press(status == "")})
 	}
 
-	// Two-row header: one date cell per date (spanning that date's slot
-	// columns) plus a time sub-row when any slot has a time. A single-slot
-	// date gets the short label ("Sun 1 Nov") that fits the 44px column;
-	// the full date then moves to the tooltip.
-	type headerGroup struct {
-		day   time.Time
+	// Header rows: a year row (each year cell spanning that year's date
+	// columns), a date row (day / month / weekday stacked, each cell
+	// spanning that date's time columns), and a time sub-row when any
+	// slot has a time.
+	type headerYear struct {
+		year  int
 		Label string
-		Title string
 		Span  int
-		Times []string
 	}
-	header := make([]headerGroup, 0)
+	type headerDate struct {
+		dayKey string
+		Day    string // "30" (each part renders on its own line)
+		Month  string // "Nov"
+		Dow    string // "Mon" (bottom line)
+		Title  string // tooltip: "Mon 30 Nov 2026"
+		Span   int
+		Times  []string
+	}
+	headerYears := make([]headerYear, 0)
+	header := make([]headerDate, 0)
 	hasTime := false
 	for _, d := range dates {
 		t := d.In(loc)
-		if n := len(header); n == 0 || header[n-1].day.Format("2006-01-02") != t.Format("2006-01-02") {
-			header = append(header, headerGroup{day: t})
+		y := t.Year()
+		if n := len(headerYears); n == 0 || headerYears[n-1].year != y {
+			headerYears = append(headerYears, headerYear{year: y,
+				Label: strconv.Itoa(int(y))})
+		}
+		headerYears[len(headerYears)-1].Span++
+		dayKey := t.Format("2006-01-02")
+		if n := len(header); n == 0 || header[n-1].dayKey != dayKey {
+			header = append(header, headerDate{dayKey: dayKey,
+				Day:   t.Format("2"),
+				Month: t.Format("Jan"),
+				Dow:   t.Format("Mon"),
+				Title: t.Format("Mon 2 Jan 2006")})
 		}
 		g := &header[len(header)-1]
 		g.Span++
@@ -532,15 +551,6 @@ func meetingHandler(c fiber.Ctx) error {
 			hasTime = true
 		}
 		g.Times = append(g.Times, sub)
-	}
-	for i := range header {
-		t := header[i].day
-		if header[i].Span == 1 {
-			header[i].Label = t.Format("Mon") + " " + t.Format("2 Jan")
-			header[i].Title = t.Format("Mon 2006-01-02")
-		} else {
-			header[i].Label = t.Format("Mon 2006-01-02")
-		}
 	}
 
 	// The respondents visible on this page.
@@ -605,6 +615,7 @@ func meetingHandler(c fiber.Ctx) error {
 		"single":           m.SingleSignup,
 		"slots":            slots,
 		"header":           header,
+		"headerYears":      headerYears,
 		"hasTime":          hasTime,
 		"cols":             cols,
 		"selflink":         "/meet/" + viewKey,

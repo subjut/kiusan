@@ -167,8 +167,10 @@ func runSmokeSuite(t *testing.T) {
 		"Smoke Meeting",
 		"smoke@example.com",
 		"Timezone: Europe/Berlin",
-		"Sun 2026-11-01", "Mon 2026-11-02",
-		`colspan="2"`,
+		`class="th-year" colspan="4"`,
+		`class="th-date" colspan="2"`,
+		`title="Sun 1 Nov 2026"`, "1<br>Nov<br>Sun",
+		`title="Mon 2 Nov 2026"`, "2<br>Nov<br>Mon",
 		`class="th-time"`, "10:00", "14:00",
 	} {
 		if !strings.Contains(mb, want) {

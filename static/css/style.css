@@ -500,10 +500,17 @@
 		padding: 0;
 	}
 
-	/* two-row slot header: the date spans that date's time columns and may
-	   wrap onto two lines in a narrow span */
-	.answers-table th.th-date {
+	/* the year spans its year's date columns, the date (with the weekday
+	   below) spans that date's time columns */
+	.answers-table th.th-year {
 		padding: 0.5rem 0.25rem;
+		line-height: 1.25;
+	}
+
+	/* day / month / weekday stacked: the widest token ("Mon", "Dec")
+	   fits the 44px column, so every date column stays the same width */
+	.answers-table th.th-date {
+		padding: 0.5rem 0.125rem;
 		line-height: 1.25;
 	}
 
@@ -516,11 +523,22 @@
 		font-weight: 500;
 	}
 
-	.answers-table th:first-child,
-	.answers-table td:first-child {
+	/* data rows only: the name column is the left-aligned one; the
+	   header's first cells (year/date/time) stay centered */
+	.answers-table tbody td:first-child {
 		text-align: left;
 		white-space: nowrap;
 		border-left: none;
+	}
+
+	.answers-table thead th:first-child {
+		border-left: none;
+	}
+
+	/* the name header spans all header rows — pin it to the bottom so it
+	   reads as the label of the first row, not a lost top cell */
+	.answers-table .th-name {
+		vertical-align: bottom;
 	}
 
 	.answers-table th:last-child,
@@ -532,8 +550,10 @@
 		border-bottom: none;
 	}
 
-	/* own answer: subtle teal tint */
-	tr.own td {
+	/* own answer: a subtle teal tint on the name cell only — tinting the
+	   whole row beats the semantic mark backgrounds on specificity and
+	   washes out yes/maybe/no */
+	tr.own td:first-child {
 		background-color: var(--accent-50);
 	}
 

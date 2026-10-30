@@ -30,21 +30,30 @@
 		<div class="table-scroll" tabindex="0" role="region" aria-label="Answers">
 			<table class="answers-table">
 				<caption>Submitted answers: one row per respondent, one column per time slot.</caption>
+				<thead>
 				{{if .hasTime}}
 				<tr>
-					<th scope="col" rowspan="2">Name</th>
-					{{range .header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}"{{if .Title}} title="{{.Title}}"{{end}}>{{.Label}}</th>{{end}}
+					<th scope="col" rowspan="3" class="th-name">Name</th>
+					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}">{{.Label}}</th>{{end}}
+				</tr>
+				<tr>
+					{{range .header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}" title="{{.Title}}">{{.Day}}<br>{{.Month}}<br>{{.Dow}}</th>{{end}}
 				</tr>
 				<tr>
 					{{range .header}}{{range .Times}}<th scope="col" class="th-time">{{.}}</th>{{end}}{{end}}
 				</tr>
 				{{else}}
 				<tr>
-					<th scope="col">Name</th>
-					{{range .header}}<th scope="col" class="th-date"{{if .Title}} title="{{.Title}}"{{end}}>{{.Label}}</th>{{end}}
+					<th scope="col" rowspan="2" class="th-name">Name</th>
+					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}">{{.Label}}</th>{{end}}
+				</tr>
+				<tr>
+					{{range .header}}<th scope="col" class="th-date" title="{{.Title}}">{{.Day}}<br>{{.Month}}<br>{{.Dow}}</th>{{end}}
 				</tr>
 				{{end}}
-			{{range $col := .cols}}
+				</thead>
+				<tbody>
+				{{range $col := .cols}}
 			{{if eq $col.ID $.formid}}
 			<tr class="form-row">
 				<td>
@@ -97,6 +106,7 @@
 				{{end}}
 			</tr>
 			{{end}}
+				</tbody>
 			</table>
 		</div>
 		{{if or $.formnew $.formid}}
