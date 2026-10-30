@@ -169,8 +169,8 @@ func runSmokeSuite(t *testing.T) {
 		"Timezone: Europe/Berlin",
 		`class="th-year" colspan="4"`,
 		`class="th-date" colspan="2"`,
-		`title="Sun 1 Nov 2026"`, "1<br>Nov<br>Sun",
-		`title="Mon 2 Nov 2026"`, "2<br>Nov<br>Mon",
+		`title="Sun 1 Nov 2026"`, "1 Nov\nSun",
+		`title="Mon 2 Nov 2026"`, "2 Nov\nMon",
 		`class="th-time"`, "10:00", "14:00",
 	} {
 		if !strings.Contains(mb, want) {
@@ -225,6 +225,38 @@ func runFormPostSuite(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestHeaderLabelConsistency pins the date header's label format: every
+// date renders with as many lines as the narrowest date column allows,
+// so a poll mixing single-slot and multi-slot dates stays readable.
+func TestHeaderLabelConsistency(t *testing.T) {
+	withStore(t, store.BackendSQLite, "meetings.db")
+	app := newTestApp(t)
+
+	r, err := postForm(t, app, "title=Mixed&email=m%40example.com&description=d&timezone=Europe/Berlin&slot0=2026-11-01T10:00&slot1=2026-11-02T10:00&slot2=2026-11-02T14:00")
+	if err != nil {
+		t.Fatalf("POST /1-1-form: %v", err)
+	}
+	if r.StatusCode != 303 {
+		t.Fatalf("POST /1-1-form: expected 303, got %d", r.StatusCode)
+	}
+	mr, err := app.Test(httptest.NewRequest(http.MethodGet, r.Header.Get("Location"), nil))
+	if err != nil {
+		t.Fatalf("GET meeting: %v", err)
+	}
+	b, _ := io.ReadAll(mr.Body)
+	mb := string(b)
+	// The single-slot 1 Nov (span 1) forces the three-line format on the
+	// two-slot 2 Nov as well.
+	for _, want := range []string{
+		`class="th-date" colspan="1"`, `class="th-date" colspan="2"`,
+		"1\nNov\nSun", "2\nNov\nMon",
+	} {
+		if !strings.Contains(mb, want) {
+			t.Fatalf("GET meeting: expected %q in body, got:\n%s", want, mb)
+		}
 	}
 }
 

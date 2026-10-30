@@ -440,12 +440,28 @@
 	}
 
 	/* ---- answers table --------------------------------------------------- */
-	/* inline-block: the card hugs the content-sized table, clamping to
-	   the container width (and scrolling) when the table is wider;
-	   vertical-align removes the baseline gap an inline box leaves below */
+	/* the breakout is --tw (the table's rendered width, measured by
+	   poll.js) wide, capped at a 1rem gutter from the viewport. Pure-CSS
+	   intrinsic sizing (width: max-content) did not reliably resolve to
+	   the table's width through the overflow:auto scroll box, so the
+	   width is measured in JS and passed here as a px value. A fitting
+	   table stays left-aligned in .container (the min(0px, …) clamp
+	   keeps the margin at zero); a wider one shifts left so the overflow
+	   is equal on both sides — centered in the window. Without JS, --tw
+	   falls back to 100% and the box degrades to the plain container
+	   width. (100vw counts the scrollbar on some platforms; worst case
+	   is a one-scrollbar page overflow) */
+	.table-breakout {
+		width: min(var(--tw, 100%), calc(100vw - 2rem));
+		margin-left: calc(min(0px, (100% - min(var(--tw, 100%), calc(100vw - 2rem))) / 2));
+	}
+
+	/* the scroll box fills the breakout; content-box, so the border does
+	   not steal 2px from the table and raise a needless scrollbar — the
+	   table only overflows it, and thus scrolls, when it is wider than
+	   the viewport */
 	.table-scroll {
-		display: inline-block;
-		vertical-align: bottom;
+		box-sizing: content-box;
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		background: var(--surface);
@@ -453,10 +469,10 @@
 		border-radius: var(--radius-card);
 	}
 
-	/* width follows the content: narrow polls shrink to their slots,
-	   long polls grow until .table-scroll starts scrolling (which stays
-	   within the viewport) */
+	/* width follows the content: narrow polls shrink to their slots, long
+	   polls grow to their natural width and never shrink to fit */
 	.answers-table {
+		width: max-content;
 		border-collapse: collapse;
 		font-variant-numeric: tabular-nums;
 	}
@@ -507,11 +523,12 @@
 		line-height: 1.25;
 	}
 
-	/* day / month / weekday stacked: the widest token ("Mon", "Dec")
-	   fits the 44px column, so every date column stays the same width */
+	/* the date label uses as few lines as fit the span (pre-line renders
+	   its newlines); every date column stays 44px wide */
 	.answers-table th.th-date {
 		padding: 0.5rem 0.125rem;
 		line-height: 1.25;
+		white-space: pre-line;
 	}
 
 	.answers-table th.th-time {

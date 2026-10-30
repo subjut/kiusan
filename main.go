@@ -507,8 +507,9 @@ func meetingHandler(c fiber.Ctx) error {
 	}
 
 	// Header rows: a year row (each year cell spanning that year's date
-	// columns), a date row (day / month / weekday stacked, each cell
-	// spanning that date's time columns), and a time sub-row when any
+	// columns), a date row (day/month/weekday in as few lines as the
+	// narrowest date column allows — consistently, on every date — each
+	// cell spanning that date's time columns), and a time sub-row when any
 	// slot has a time.
 	type headerYear struct {
 		year  int
@@ -517,9 +518,8 @@ func meetingHandler(c fiber.Ctx) error {
 	}
 	type headerDate struct {
 		dayKey string
-		Day    string // "30" (each part renders on its own line)
-		Month  string // "Nov"
-		Dow    string // "Mon" (bottom line)
+		day    time.Time
+		Label  string // day/month/weekday, newline-separated per line
 		Title  string // tooltip: "Mon 30 Nov 2026"
 		Span   int
 		Times  []string
@@ -537,10 +537,7 @@ func meetingHandler(c fiber.Ctx) error {
 		headerYears[len(headerYears)-1].Span++
 		dayKey := t.Format("2006-01-02")
 		if n := len(header); n == 0 || header[n-1].dayKey != dayKey {
-			header = append(header, headerDate{dayKey: dayKey,
-				Day:   t.Format("2"),
-				Month: t.Format("Jan"),
-				Dow:   t.Format("Mon"),
+			header = append(header, headerDate{dayKey: dayKey, day: t,
 				Title: t.Format("Mon 2 Jan 2006")})
 		}
 		g := &header[len(header)-1]
@@ -551,6 +548,29 @@ func meetingHandler(c fiber.Ctx) error {
 			hasTime = true
 		}
 		g.Times = append(g.Times, sub)
+	}
+	// The date label uses as few lines as fit the narrowest date column
+	// (without stretching the 44px slot columns), applied to every date
+	// so the header reads consistently: three lines when any date has one
+	// slot column, two when the narrowest has two, one when every date
+	// has three or more.
+	minSpan := 0
+	for i := range header {
+		if minSpan == 0 || header[i].Span < minSpan {
+			minSpan = header[i].Span
+		}
+	}
+	for i := range header {
+		t := header[i].day
+		switch {
+		case minSpan <= 1:
+			header[i].Label = t.Format("2") + "\n" +
+				t.Format("Jan") + "\n" + t.Format("Mon")
+		case minSpan == 2:
+			header[i].Label = t.Format("2 Jan") + "\n" + t.Format("Mon")
+		default:
+			header[i].Label = t.Format("2 Jan Mon")
+		}
 	}
 
 	// The respondents visible on this page.

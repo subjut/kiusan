@@ -179,7 +179,7 @@ func runPollSuite(t *testing.T) {
 		"Poll A", "Pick a time", "Timezone: Europe/Berlin",
 		`class="th-year" colspan="2"`, "2026",
 		`class="th-date" colspan="2"`, `title="Sun 1 Nov 2026"`,
-		"1<br>Nov<br>Sun",
+		"1 Nov\nSun",
 		`class="th-time"`, "10:00", "14:00",
 		`id="answer-form"`, `data-single="false"`,
 		`name="csrftoken"`, `value="` + csrfToken(alice) + `"`,

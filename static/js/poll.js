@@ -75,6 +75,29 @@
 		wire(main, main.getAttribute("data-single") === "true");
 	}
 
+	// The answers table's .table-breakout wrapper is sized to the table's
+	// rendered width via --tw: pure-CSS intrinsic sizing did not
+	// reliably resolve the table's width through the overflow:auto scroll
+	// box, so it is measured here. Re-measure when the table resizes
+	// (font load, zoom).
+	var breakout = document.querySelector(".table-breakout");
+	var table = document.querySelector(".answers-table");
+	if (breakout && table) {
+		var setTableWidth = function () {
+			// +1px: the collapsed table border paints ~0.5px beyond the
+			// border box, so the raw width would leave a sub-pixel
+			// overflow and raise a 1px scrollbar on every table.
+			breakout.style.setProperty(
+				"--tw",
+				Math.ceil(table.getBoundingClientRect().width) + 2 + "px"
+			);
+		};
+		setTableWidth();
+		if (typeof ResizeObserver !== "undefined") {
+			new ResizeObserver(setTableWidth).observe(table);
+		}
+	}
+
 	// Deleting an answer is destructive: confirm on click, then fill and
 	// submit the page's hidden delete form.
 	var delForm = document.getElementById("del-form");

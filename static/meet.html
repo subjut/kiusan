@@ -27,9 +27,9 @@
 	<form method="POST" action="{{.formaction}}" id="answer-form" data-single="{{if .single}}true{{else}}false{{end}}">
 		{{if .answercsrf}}<input type="hidden" name="csrftoken" value="{{.csrftoken}}">{{end}}
 		{{if .formrespondentid}}<input type="hidden" name="respondentid" value="{{.formrespondentid}}">{{end}}
-		<div class="table-scroll" tabindex="0" role="region" aria-label="Answers">
-			<table class="answers-table">
-				<caption>Submitted answers: one row per respondent, one column per time slot.</caption>
+		<div class="table-breakout">
+			<div class="table-scroll" tabindex="0" role="region" aria-label="Answers">
+				<table class="answers-table">
 				<thead>
 				{{if .hasTime}}
 				<tr>
@@ -37,7 +37,7 @@
 					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}">{{.Label}}</th>{{end}}
 				</tr>
 				<tr>
-					{{range .header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}" title="{{.Title}}">{{.Day}}<br>{{.Month}}<br>{{.Dow}}</th>{{end}}
+					{{range .header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}" title="{{.Title}}">{{.Label}}</th>{{end}}
 				</tr>
 				<tr>
 					{{range .header}}{{range .Times}}<th scope="col" class="th-time">{{.}}</th>{{end}}{{end}}
@@ -48,7 +48,7 @@
 					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}">{{.Label}}</th>{{end}}
 				</tr>
 				<tr>
-					{{range .header}}<th scope="col" class="th-date" title="{{.Title}}">{{.Day}}<br>{{.Month}}<br>{{.Dow}}</th>{{end}}
+					{{range .header}}<th scope="col" class="th-date" title="{{.Title}}">{{.Label}}</th>{{end}}
 				</tr>
 				{{end}}
 				</thead>
@@ -108,6 +108,7 @@
 			{{end}}
 				</tbody>
 			</table>
+			</div>
 		</div>
 		{{if or $.formnew $.formid}}
 		<div class="form-actions">
