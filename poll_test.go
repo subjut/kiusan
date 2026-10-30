@@ -154,7 +154,7 @@ func runPollSuite(t *testing.T) {
 	}
 
 	// ---- poll A: the full answer lifecycle ----
-	mA, adminA := p.createPoll("title=Poll+A&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2026-12-31&date0=2026-11-01&time0=10:00&time1=14:00")
+	mA, adminA := p.createPoll("title=Poll+A&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2026-12-31&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
 	if mA.Key == "" || mA.AdminKey != adminA {
 		t.Fatalf("poll A keys: user %q, admin %q (Location %q)", mA.Key, mA.AdminKey, adminA)
 	}
@@ -267,7 +267,7 @@ func runPollSuite(t *testing.T) {
 	contains(bMut, "Bob")
 
 	// ---- poll B: hidden respondents ----
-	mB, _ := p.createPoll("title=Poll+B&email=poll%40example.com&description=B+description&timezone=Europe/Berlin&enddate=2026-12-31&hide-users=true&date0=2026-11-01&time0=10:00")
+	mB, _ := p.createPoll("title=Poll+B&email=poll%40example.com&description=B+description&timezone=Europe/Berlin&enddate=2026-12-31&hide-users=true&slot0=2026-11-01T10:00")
 	cb := cookieName(mB)
 	carol := p.cookie(p.get("/meet/"+mB.Key, ""), cb)
 	status(p.post("/meet/"+mB.Key+"/answer", "name=Carol&csrftoken="+csrfToken(carol)+"&a"+s1+"=g", cb+"="+carol), http.StatusSeeOther)
@@ -278,7 +278,7 @@ func runPollSuite(t *testing.T) {
 	contains(p.body(p.get("/meet/"+mB.AdminKey, cb+"="+adminB)), "Carol")
 
 	// ---- poll C: single-slot signups ----
-	mC, _ := p.createPoll("title=Poll+C&email=poll%40example.com&description=C+description&timezone=Europe/Berlin&enddate=2026-12-31&single-signup=true&date0=2026-11-01&time0=10:00&time1=14:00")
+	mC, _ := p.createPoll("title=Poll+C&email=poll%40example.com&description=C+description&timezone=Europe/Berlin&enddate=2026-12-31&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
 	cc := cookieName(mC)
 	cy := p.cookie(p.get("/meet/"+mC.Key, ""), cc)
 	bC := p.body(p.get("/meet/"+mC.Key, cc+"="+cy))
@@ -436,7 +436,7 @@ func runPollSuite(t *testing.T) {
 	// A new slot set, a new title, a new end date — and both links must
 	// survive, with marks for removed slots pruned from the answers.
 	rPe := p.post("/1-1-form", "meetingkey="+adminA+
-		"&title=Poll+A+v2&email=poll%40example.com&description=Updated&timezone=Europe/Berlin&enddate=2027-01-31&date0=2026-11-01&time0=12:00", "")
+		"&title=Poll+A+v2&email=poll%40example.com&description=Updated&timezone=Europe/Berlin&enddate=2027-01-31&slot0=2026-11-01T12:00", "")
 	status(rPe, http.StatusSeeOther)
 	if loc := rPe.Header.Get("Location"); loc != "/meet/"+adminA {
 		t.Fatalf("poll edit redirect: %q", loc)
@@ -461,7 +461,7 @@ func runPollSuite(t *testing.T) {
 	}
 
 	// ---- poll D: expiry and prolongation ----
-	mD, adminD := p.createPoll("title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2026-12-31&date0=2026-11-01&time0=10:00")
+	mD, adminD := p.createPoll("title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2026-12-31&slot0=2026-11-01T10:00")
 	mD.Expires = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	if err := db.Update(mD); err != nil {
 		t.Fatalf("forcing expiry: %v", err)
@@ -484,7 +484,7 @@ func runPollSuite(t *testing.T) {
 
 	// The organizer can prolong an ended poll, reopening answering.
 	rDp := p.post("/1-1-form", "meetingkey="+adminD+
-		"&title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2027-03-01&date0=2026-11-01&time0=10:00", "")
+		"&title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2027-03-01&slot0=2026-11-01T10:00", "")
 	status(rDp, http.StatusSeeOther)
 	if loc := rDp.Header.Get("Location"); loc != "/meet/"+adminD {
 		t.Fatalf("prolongation redirect: %q", loc)

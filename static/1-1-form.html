@@ -1,5 +1,5 @@
 <div class="container">
-	<form id="form" method="POST" data-dates="{{.datesAttr}}" data-times="{{.timesAttr}}">
+	<form id="form" method="POST" data-slots="{{.slotsAttr}}">
 		{{if .meetingkey}}<input type="hidden" name="meetingkey" value="{{.meetingkey}}">{{end}}
 		<h2>{{if .meetingkey}}Edit poll{{else}}Schedule a meeting{{end}}</h2>
 		<label for="title">Title:</label><br>
@@ -35,10 +35,12 @@
 		</fieldset>
 
 		<fieldset class="times-picker">
-			<legend>Time(s) — applied to all selected dates</legend>
-			<input type="time" id="time-input">
-			<button type="button" id="add-time" class="btn-secondary">Add time</button>
-			<div class="chips" id="time-chips"></div>
+			<legend>Time(s) — per date, or add to all dates at once</legend>
+			<div class="times-all">
+				<input type="time" id="time-input">
+				<button type="button" id="add-time" class="btn-secondary">Add to all dates</button>
+			</div>
+			<div id="date-times"></div>
 			<button type="button" class="clear-btn" id="clear-times">Clear all times</button>
 		</fieldset>
 

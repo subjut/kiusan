@@ -128,10 +128,12 @@ Feature state (see `static/index.html`):
   never touch GORM directly, and GORM is imported only inside `store/`.
 - Handlers stay thin. In Fiber v3 a handler is `func(c fiber.Ctx) error`
   (`Ctx` is an interface — no `*`). Form fields are bound into
-  `database.Meeting` via `c.Bind().Body(form)`; candidate dates arrive as
-  repeated form fields named `date0`, `date1`, ... and are bound separately.
-  Redirects go through `c.Redirect().To(url)`. There is no `app.Static` any
-  more — use the static middleware.
+  `database.Meeting` via `c.Bind().Body(form)`; candidate slots arrive as
+  repeated form fields named `slot0`, `slot1`, ... (each `YYYY-MM-DD` for
+  a midnight slot or `YYYY-MM-DDTHH:MM` for a timed slot — times are
+  per date, see `dater.js`) and are bound separately. Redirects go
+  through `c.Redirect().To(url)`. There is no `app.Static` any more —
+  use the static middleware.
 - Pages render with `c.Render("<name>", fiber.Map{...}, "layouts/home")`.
 - **Prompt logging (automatic)**: after processing every user prompt,
   **before** sending the summary of what was done, append an entry to

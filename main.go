@@ -203,8 +203,7 @@ func formHandler(c fiber.Ctx) error {
 		"extraTz":      "",
 		"hideusers":    false,
 		"singlesignup": false,
-		"datesAttr":    "",
-		"timesAttr":    "",
+		"slotsAttr":    "",
 		"expiry":       "",
 		"defaultExp":   now.UTC().AddDate(0, 3, 0).Format("2006-01-02"),
 		"minExp":       now.UTC().Format("2006-01-02"),
@@ -222,35 +221,19 @@ func formEditHandler(c fiber.Ctx) error {
 		return c.Status(500).SendString(err.Error())
 	}
 
-	// The picker state the poll was created with: its slots split into
-	// unique dates and times in the meeting's zone. Midnight slots only
-	// become a 00:00 time when some slot carries a real time, keeping the
-	// re-edit equivalent for date-only polls.
+	// The picker state the poll was created with: its slots in the
+	// meeting's zone, one entry per slot — "YYYY-MM-DD" for midnight
+	// slots, "YYYY-MM-DDTHH:MM" for timed ones. The picker groups them
+	// by date and sorts.
 	loc, _ := time.LoadLocation(m.TimeZone)
-	hasTime := false
+	slots := make([]string, 0, len(m.Dates))
 	for _, d := range m.Dates {
 		t := d.In(loc)
 		if t.Hour() != 0 || t.Minute() != 0 {
-			hasTime = true
-			break
+			slots = append(slots, t.Format("2006-01-02T15:04"))
+		} else {
+			slots = append(slots, t.Format("2006-01-02"))
 		}
-	}
-	dates := map[string]struct{}{}
-	times := map[string]struct{}{}
-	for _, d := range m.Dates {
-		t := d.In(loc)
-		dates[t.Format("2006-01-02")] = struct{}{}
-		if hasTime {
-			times[t.Format("15:04")] = struct{}{}
-		}
-	}
-	joined := func(set map[string]struct{}) string {
-		list := make([]string, 0, len(set))
-		for v := range set {
-			list = append(list, v)
-		}
-		sort.Strings(list)
-		return strings.Join(list, ",")
 	}
 
 	expiry := m.Expires.In(loc).Format("2006-01-02")
@@ -266,8 +249,7 @@ func formEditHandler(c fiber.Ctx) error {
 		"extraTz":      extraTimezone(m.TimeZone),
 		"hideusers":    m.HideUsers,
 		"singlesignup": m.SingleSignup,
-		"datesAttr":    joined(dates),
-		"timesAttr":    joined(times),
+		"slotsAttr":    strings.Join(slots, ","),
 		"expiry":       expiry,
 		"defaultExp":   "",
 		"minExp":       time.Now().UTC().Format("2006-01-02"),
@@ -316,48 +298,35 @@ func formPostHandler(c fiber.Ctx) error {
 		return c.Status(400).SendString("Invalid timezone: " + form.TimeZone)
 	}
 
-	// Dates
-	var dates []time.Time
+	// Candidate slots, one per field: "YYYY-MM-DD" (a date-only slot,
+	// midnight in the meeting zone) or "YYYY-MM-DDTHH:MM" (a timed slot).
+	// Each date may carry any set of times; the picker sends them per
+	// date.
 	for i := 0; true; i++ {
-		date := c.FormValue("date" + strconv.Itoa(i))
-		if date == "" {
+		v := c.FormValue("slot" + strconv.Itoa(i))
+		if v == "" {
 			break
 		}
+		datePart, timePart, _ := strings.Cut(v, "T")
 
 		// HTML date inputs submit YYYY-MM-DD
-		newDate, err := time.Parse("2006-01-02", date)
+		newDate, err := time.Parse("2006-01-02", datePart)
 		if err != nil {
-			return c.Status(400).SendString("Invalid date: " + date)
+			return c.Status(400).SendString("Invalid date: " + v)
 		}
-		dates = append(dates, newDate)
-	}
-
-	// Times, each propagated to every selected date.
-	var times []time.Time
-	for i := 0; true; i++ {
-		t := c.FormValue("time" + strconv.Itoa(i))
-		if t == "" {
-			break
-		}
-		newTime, err := time.Parse("15:04", t)
-		if err != nil {
-			return c.Status(400).SendString("Invalid time: " + t)
-		}
-		times = append(times, newTime)
-	}
-
-	//// Feed form into database
-	// Candidate slots = dates × times; without times, dates stay at
-	// midnight (behavior pinned by the form test).
-	for _, d := range dates {
-		if len(times) == 0 {
-			form.Dates = append(form.Dates, d)
+		if timePart == "" {
+			form.Dates = append(form.Dates,
+				time.Date(newDate.Year(), newDate.Month(), newDate.Day(), 0, 0, 0, 0, loc))
 			continue
 		}
-		for _, t := range times {
-			form.Dates = append(form.Dates,
-				time.Date(d.Year(), d.Month(), d.Day(), t.Hour(), t.Minute(), 0, 0, loc))
+		// HTML time inputs submit HH:MM
+		newTime, err := time.Parse("15:04", timePart)
+		if err != nil {
+			return c.Status(400).SendString("Invalid time: " + v)
 		}
+		form.Dates = append(form.Dates,
+			time.Date(newDate.Year(), newDate.Month(), newDate.Day(),
+				newTime.Hour(), newTime.Minute(), 0, 0, loc))
 	}
 
 	// End date (form field "enddate" — deliberately not named after

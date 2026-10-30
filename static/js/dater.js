@@ -1,11 +1,12 @@
 // dater.js — date/time picker for the meeting form (vanilla, no deps).
 //
-// Model: candidate slots = selected dates × selected times. Dates are
-// picked in a month calendar (multi-select), times are added as chips;
-// removing a date or a time removes all of its slots. All state is plain
-// YYYY-MM-DD / HH:MM strings, so there are no Date-object timezone
-// pitfalls — "today" comes from the user's browser on purpose, since the
-// earliest selectable date should follow the user, not the server.
+// Model: candidate slots are per date — each selected date carries its
+// own set of times, and a date without times is a midnight slot. The
+// "add to all dates" input applies one time to every selected date at
+// once. All state is plain YYYY-MM-DD / HH:MM strings, so there are no
+// Date-object timezone pitfalls — "today" comes from the user's browser
+// on purpose, since the earliest selectable date should follow the user,
+// not the server.
 
 (function () {
 	"use strict";
@@ -14,26 +15,25 @@
 	if (!form) return;
 
 	// ---- state -----------------------------------------------------------
-	var dates = {}; // "YYYY-MM-DD" -> true
-	var times = {}; // "HH:MM" -> true
+	// "YYYY-MM-DD" -> { "HH:MM" -> true }
+	var dateTimes = {};
 
 	// When the form edits an existing poll, the server seeds the picker
-	// state via data-dates / data-times (comma-separated lists).
-	(function seed() {
-		(function (list, into) {
-			list.split(",").forEach(function (v) {
-				if (v) into[v] = true;
-			});
-		})(form.getAttribute("data-dates") || "", dates);
-		(function (list, into) {
-			list.split(",").forEach(function (v) {
-				if (v) into[v] = true;
-			});
-		})(form.getAttribute("data-times") || "", times);
-	})();
+	// via data-slots (comma-separated "YYYY-MM-DD[THH:MM]" slots, one per
+	// candidate slot of the poll).
+	(form.getAttribute("data-slots") || "").split(",").forEach(function (v) {
+		if (!v) return;
+		var d = v, t = "", i = v.indexOf("T");
+		if (i >= 0) {
+			d = v.slice(0, i);
+			t = v.slice(i + 1);
+		}
+		if (!dateTimes[d]) dateTimes[d] = {};
+		if (t) dateTimes[d][t] = true;
+	});
 
 	var dateChips = document.getElementById("date-chips");
-	var timeChips = document.getElementById("time-chips");
+	var dateTimesEl = document.getElementById("date-times");
 	var timeInput = document.getElementById("time-input");
 	var preview = document.getElementById("slot-preview");
 	var grid = document.getElementById("cal-grid");
@@ -71,7 +71,7 @@
 	// current month.
 	var view = (function () {
 		var base = localToday();
-		for (var d in dates) { base = d; break; }
+		for (var d in dateTimes) { base = d; break; }
 		var t = base.split("-");
 		return { y: +t[0], m: +t[1] - 1 }; // m: 0-based
 	})();
@@ -101,7 +101,7 @@
 				var dateStr = iso(view.y, view.m, idx);
 				var past = dateStr < min;
 				var cls = "day";
-				if (dates[dateStr]) cls += " selected";
+				if (dateTimes[dateStr]) cls += " selected";
 				html += '<td><button type="button" class="' + cls + '"' +
 					(past ? " disabled" : "") + ' data-date="' + dateStr +
 					'" title="' + dateStr + '">' + idx + "</button></td>";
@@ -129,102 +129,136 @@
 		var btn = e.target.closest("button.day");
 		if (!btn || btn.disabled) return;
 		var d = btn.getAttribute("data-date");
-		if (dates[d]) {
-			delete dates[d];
+		if (dateTimes[d]) {
+			delete dateTimes[d];
 		} else {
-			dates[d] = true;
+			dateTimes[d] = {};
 		}
 		renderAll();
 	});
 
-	// ---- chips ---------------------------------------------------------------
+	// ---- chips + per-date times -------------------------------------------
 	function sorted(obj) {
 		return Object.keys(obj).sort();
 	}
 
+	function timeChip(d, t) {
+		return '<span class="chip">' + t +
+			'<button type="button" class="chip-x" data-date="' + d +
+			'" data-time="' + t + '" title="Remove ' + t + ' on ' + d +
+			'">✕</button></span>';
+	}
+
 	function renderDateChips() {
-		dateChips.innerHTML = sorted(dates).map(function (d) {
+		dateChips.innerHTML = sorted(dateTimes).map(function (d) {
 			return '<span class="chip">' + d +
 				'<button type="button" class="chip-x" data-date="' + d +
 				'" title="Remove ' + d + '">✕</button></span>';
 		}).join("");
 	}
 
-	function renderTimeChips() {
-		timeChips.innerHTML = sorted(times).map(function (t) {
-			return '<span class="chip">' + t +
-				'<button type="button" class="chip-x" data-time="' + t +
-				'" title="Remove ' + t + '">✕</button></span>';
+	function renderDateTimes() {
+		dateTimesEl.innerHTML = sorted(dateTimes).map(function (d) {
+			var ts = sorted(dateTimes[d]);
+			var chips = ts.map(function (t) {
+				return timeChip(d, t);
+			}).join("");
+			return '<div class="date-times-row">' +
+				'<span class="date-times-label">' + d + "</span>" +
+				'<span class="chips">' + chips + "</span>" +
+				'<input type="time" class="date-time-input" data-date="' + d + '">' +
+				'<button type="button" class="btn-secondary date-time-add" data-date="' + d + '">Add</button>' +
+				"</div>";
 		}).join("");
 	}
 
 	dateChips.addEventListener("click", function (e) {
 		var x = e.target.closest(".chip-x");
 		if (!x) return;
-		delete dates[x.getAttribute("data-date")];
+		delete dateTimes[x.getAttribute("data-date")];
 		renderAll();
 	});
-	timeChips.addEventListener("click", function (e) {
+
+	dateTimesEl.addEventListener("click", function (e) {
 		var x = e.target.closest(".chip-x");
-		if (!x) return;
-		delete times[x.getAttribute("data-time")];
-		renderAll();
+		if (x) {
+			var d = x.getAttribute("data-date");
+			if (dateTimes[d]) {
+				delete dateTimes[d][x.getAttribute("data-time")];
+			}
+			renderAll();
+			return;
+		}
+		var add = e.target.closest(".date-time-add");
+		if (!add) return;
+		var row = add.closest(".date-times-row");
+		var input = row ? row.querySelector(".date-time-input") : null;
+		if (input && /^\d{2}:\d{2}$/.test(input.value)) {
+			var d2 = add.getAttribute("data-date");
+			if (dateTimes[d2]) dateTimes[d2][input.value] = true;
+			renderAll();
+		}
 	});
+
 	document.getElementById("clear-dates").addEventListener("click", function () {
-		dates = {};
+		dateTimes = {};
 		renderAll();
 	});
 	document.getElementById("clear-times").addEventListener("click", function () {
-		times = {};
+		for (var d in dateTimes) dateTimes[d] = {};
 		renderAll();
 	});
 
 	// ---- times ----------------------------------------------------------------
-	function addTime() {
+	// "Add to all dates": one time, applied to every selected date at once.
+	// With no dates selected the input keeps its value (nothing to apply).
+	function addTimeToAll() {
 		var v = timeInput.value;
 		if (!/^\d{2}:\d{2}$/.test(v)) return;
-		times[v] = true;
-		timeInput.value = "";
-		renderAll();
+		var any = false;
+		for (var d in dateTimes) {
+			dateTimes[d][v] = true;
+			any = true;
+		}
+		if (any) {
+			timeInput.value = "";
+			renderAll();
+		}
 	}
-	document.getElementById("add-time").addEventListener("click", addTime);
-	timeInput.addEventListener("change", addTime);
+	document.getElementById("add-time").addEventListener("click", addTimeToAll);
+	timeInput.addEventListener("change", addTimeToAll);
 	timeInput.addEventListener("keydown", function (e) {
 		if (e.key === "Enter") {
 			e.preventDefault();
-			addTime();
+			addTimeToAll();
 		}
 	});
 
 	// ---- slot preview ----------------------------------------------------------
 	function renderPreview() {
-		var ds = sorted(dates);
-		var ts = sorted(times);
+		var ds = sorted(dateTimes);
 		if (ds.length === 0) {
 			preview.textContent =
 				"Select date(s) to see the candidate slots.";
 			return;
 		}
-		if (ts.length === 0) {
-			preview.textContent = ds.length +
-				" date(s) selected, no times — they all become midnight slots.";
-			return;
-		}
-		var html = "<p>" + ds.length + " date(s) × " + ts.length +
-			" time(s) = " + (ds.length * ts.length) + " slot(s)</p>";
-		html += '<table class="slot-table"><tr><th>Date</th>';
-		for (var j = 0; j < ts.length; j++) {
-			html += "<th>" + ts[j] + "</th>";
-		}
-		html += "</tr>";
+		var timed = 0, midnights = 0;
+		var lines = [];
 		for (var i = 0; i < ds.length; i++) {
-			html += "<tr><td>" + ds[i] + "</td>";
-			for (var k = 0; k < ts.length; k++) {
-				html += "<td>" + ts[k] + "</td>";
+			var d = ds[i];
+			var ts = sorted(dateTimes[d]);
+			if (ts.length === 0) {
+				midnights++;
+				lines.push("<p><b>" + d + "</b> — no times: midnight slot</p>");
+			} else {
+				timed += ts.length;
+				lines.push("<p><b>" + d + "</b> — " + ts.join(", ") + "</p>");
 			}
-			html += "</tr>";
 		}
-		html += "</table>";
+		var html = lines.join("");
+		html += "<p>" + timed + " timed slot(s)";
+		if (midnights) html += " + " + midnights + " midnight slot(s)";
+		html += " = " + (timed + midnights) + " slot(s) total</p>";
 		preview.innerHTML = html;
 	}
 
@@ -258,35 +292,36 @@
 	} catch (err) { /* very old browsers: no prefill */ }
 
 	// ---- submit ----------------------------------------------------------------
-	// The chip state serializes into date0..n / time0..m hidden fields; the
-	// timezone travels via the <select> element.
+	// The picker state serializes into slot0..n hidden fields, one per
+	// candidate slot: "YYYY-MM-DD" (midnight) or "YYYY-MM-DDTHH:MM",
+	// dates and times ascending.
 	form.addEventListener("submit", function () {
 		var old = form.querySelectorAll("[data-picker-input]");
 		for (var i = 0; i < old.length; i++) old[i].remove();
-		var ds = sorted(dates);
-		var ts = sorted(times);
-		for (var a = 0; a < ds.length; a++) {
-			var dEl = document.createElement("input");
-			dEl.type = "hidden";
-			dEl.name = "date" + a;
-			dEl.value = ds[a];
-			dEl.setAttribute("data-picker-input", "1");
-			form.appendChild(dEl);
-		}
-		for (var b = 0; b < ts.length; b++) {
-			var tEl = document.createElement("input");
-			tEl.type = "hidden";
-			tEl.name = "time" + b;
-			tEl.value = ts[b];
-			tEl.setAttribute("data-picker-input", "1");
-			form.appendChild(tEl);
-		}
+		var n = 0;
+		sorted(dateTimes).forEach(function (d) {
+			var emit = function (value) {
+				var el = document.createElement("input");
+				el.type = "hidden";
+				el.name = "slot" + n;
+				el.value = value;
+				el.setAttribute("data-picker-input", "1");
+				form.appendChild(el);
+				n++;
+			};
+			var ts = sorted(dateTimes[d]);
+			if (ts.length === 0) {
+				emit(d);
+			} else {
+				ts.forEach(function (t) { emit(d + "T" + t); });
+			}
+		});
 	});
 
 	function renderAll() {
 		renderCalendar();
 		renderDateChips();
-		renderTimeChips();
+		renderDateTimes();
 		renderPreview();
 	}
 	renderAll();

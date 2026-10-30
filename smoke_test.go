@@ -146,7 +146,7 @@ func runSmokeSuite(t *testing.T) {
 	}
 
 	// Create a meeting via the form and read it back through the redirect.
-	r, err := postForm(t, app, "title=Smoke+Meeting&email=smoke%40example.com&description=upgrade+check&timezone=Europe/Berlin&date0=2026-11-01&date1=2026-11-02&time0=10:00&time1=14:00")
+	r, err := postForm(t, app, "title=Smoke+Meeting&email=smoke%40example.com&description=upgrade+check&timezone=Europe/Berlin&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00&slot2=2026-11-02T10:00&slot3=2026-11-02T14:00")
 	if err != nil {
 		t.Fatalf("POST /1-1-form: %v", err)
 	}
@@ -196,15 +196,16 @@ func runFormPostSuite(t *testing.T) {
 		// when set, must appear in the response body
 		wantBody string
 	}{
-		{"single date", "title=A&email=a%40b.c&description=d&date0=2026-11-01", 303, ""},
-		{"two dates", "title=A&email=a%40b.c&description=d&date0=2026-11-01&date1=2026-11-02", 303, ""},
+		{"single date", "title=A&email=a%40b.c&description=d&slot0=2026-11-01", 303, ""},
+		{"two dates", "title=A&email=a%40b.c&description=d&slot0=2026-11-01&slot1=2026-11-02", 303, ""},
 		{"no dates (accepted today; pinned as current behavior)", "title=A&email=a%40b.c&description=d", 303, ""},
-		{"swapped month/day", "title=A&email=a%40b.c&description=d&date0=01-11-2026", 400, "Invalid date"},
-		{"two dates with two times", "title=A&email=a%40b.c&description=d&date0=2026-11-01&date1=2026-11-02&time0=10:00&time1=14:00", 303, ""},
-		{"bad time", "title=A&email=a%40b.c&description=d&date0=2026-11-01&time0=99:99", 400, "Invalid time"},
-		{"bad timezone", "title=A&email=a%40b.c&description=d&date0=2026-11-01&timezone=Not/AZone", 400, "Invalid timezone"},
-		{"impossible day", "title=A&email=a%40b.c&description=d&date0=2026-02-30", 400, "Invalid date"},
-		{"malformed encoding", "title=A&email=a%40b.c&description=d&date0=%E0%41", 400, ""},
+		{"swapped month/day", "title=A&email=a%40b.c&description=d&slot0=01-11-2026", 400, "Invalid date"},
+		{"two dates with two times", "title=A&email=a%40b.c&description=d&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00&slot2=2026-11-02T10:00&slot3=2026-11-02T14:00", 303, ""},
+		{"per-date times", "title=A&email=a%40b.c&description=d&slot0=2026-11-01T10:00&slot1=2026-11-02T14:00", 303, ""},
+		{"bad time", "title=A&email=a%40b.c&description=d&slot0=2026-11-01T99:99", 400, "Invalid time"},
+		{"bad timezone", "title=A&email=a%40b.c&description=d&slot0=2026-11-01&timezone=Not/AZone", 400, "Invalid timezone"},
+		{"impossible day", "title=A&email=a%40b.c&description=d&slot0=2026-02-30", 400, "Invalid date"},
+		{"malformed encoding", "title=A&email=a%40b.c&description=d&slot0=%E0%41", 400, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
