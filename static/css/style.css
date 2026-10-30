@@ -86,6 +86,20 @@
 		color: var(--text);
 		background-color: var(--bg);
 		-webkit-font-smoothing: antialiased;
+		/* sticky footer: the page is a full-viewport column, and main
+		   grows to push the footer to the bottom of the screen on short
+		   pages (100dvh where supported, 100vh fallback) */
+		min-height: 100vh;
+		min-height: 100dvh;
+		display: flex;
+		flex-direction: column;
+	}
+
+	main {
+		flex: 1;
+		/* breathing room below the header — the page title used to sit
+		   flush against the header border */
+		padding-top: 2rem;
 	}
 
 	/* form elements inherit the page typography */
@@ -187,6 +201,38 @@
 
 	header .container {
 		padding-block: 0.875rem;
+	}
+
+	/* wordmark (links home): the circular K mark — a teal circle with the
+	   K knocked out in soft teal — plus the name */
+	.wordmark {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.wordmark-k {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		flex: none;
+	}
+
+	.wordmark-k .k-circle {
+		fill: var(--accent);
+	}
+
+	.wordmark-k .k-mark {
+		fill: var(--accent-soft);
+	}
+
+	.wordmark-k svg {
+		display: block;
+		width: 100%;
+		height: 100%;
 	}
 
 	header h1 {
