@@ -72,10 +72,11 @@ func initRoutes(app *fiber.App, staticDir string) {
 		return c.Next()
 	})
 
-	// Make sure syle files and favicons are available
+	// Make sure style files, fonts, and favicons are available
 	// (served from the site root; a file miss resets the response and calls Next)
 	app.Get("/*", static.New(filepath.Join(staticDir, "css")))
 	app.Get("/*", static.New(filepath.Join(staticDir, "js")))
+	app.Get("/*", static.New(filepath.Join(staticDir, "fonts")))
 	app.Get("/*", static.New(filepath.Join(staticDir, "favicon")))
 
 	// Normal routes

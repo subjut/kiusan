@@ -1,341 +1,815 @@
-/** Colors */
-:root {
---rich-black-fogra-29: #04151fff;
---rich-black: #183a37ff;
---wheat: #efd6acff;
---mahogany: #c44900ff;
---dark-purple: #432534ff;
+/* kiusan — design system
+ *
+ * Warm & friendly, light theme, single teal accent. All colors live in
+ * :root as tokens (layer `theme`); every page reuses them, so the look
+ * is consistent by construction. Layer order:
+ *
+ *   @layer theme, base, components
+ *
+ * Typography: self-hosted Inter variable font (see /InterVariable.woff2,
+ * license in static/fonts/LICENSE.txt). No framework, no build step.
+ *
+ * Accessibility: AA contrast on all text/background pairs, a consistent
+ * :focus-visible ring, glyphs (never color alone) for the answer marks,
+ * >=44px targets for calendar days, prefers-reduced-motion and
+ * forced-colors support.
+ */
 
---bud-green: #79b473ff;
---shiny-shamrock: #70a37fff;
---queen-blue: #41658aff;
---dark-slate-blue: #414073ff;
---english-violet: #4c3957ff;
-
---mark-green: #2e6b34ff;
---mark-gold: #8a6d00ff;
+@font-face {
+	font-family: "Inter";
+	src: url("/InterVariable.woff2") format("woff2");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
 }
 
+@layer theme, base, components;
 
-body {
-    font: 15px/1.5 Arial, Helvetica, sans-serif;
-    padding:0;
-    margin:0;
-    background-color:var(--queen-blue);
+/* ------------------------------------------------------------------ */
+/* theme: design tokens                                                */
+/* ------------------------------------------------------------------ */
+@layer theme {
+	:root {
+		/* surfaces */
+		--bg: #faf8f4;
+		--surface: #ffffff;
+		--border: #e7e2d9;
+
+		/* text (warm stone neutrals, AA on the surfaces above) */
+		--text: #292524;
+		--text-2: #57534e;
+
+		/* accent (teal) — actions, links, selection, focus */
+		--accent: #0f766e;
+		--accent-hover: #115e59;
+		--accent-soft: #ccfbf1;
+		--accent-50: #f0fdfa;
+
+		/* semantic answer marks — dark glyph on a light tint (AA) */
+		--mark-green-text: #15803d;
+		--mark-green-bg: #dcfce7;
+		--mark-amber-text: #92400e;
+		--mark-amber-bg: #fef3c7;
+		--mark-red-text: #b91c1c;
+		--mark-red-bg: #fee2e2;
+
+		/* shape + elevation */
+		--radius-card: 16px;
+		--radius-input: 10px;
+		--shadow: 0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
+
+		/* type */
+		--font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+			Roboto, "Helvetica Neue", Arial, sans-serif;
+	}
 }
 
-/* Global */
-.container{
-    width:80%;
-    margin:auto;
-    overflow:hidden;
+/* ------------------------------------------------------------------ */
+/* base: reset + global defaults                                       */
+/* ------------------------------------------------------------------ */
+@layer base {
+	*,
+	*::before,
+	*::after {
+		box-sizing: border-box;
+	}
+
+	html {
+		-webkit-text-size-adjust: 100%;
+	}
+
+	body {
+		margin: 0;
+		font-family: var(--font);
+		font-size: 1rem;
+		line-height: 1.5;
+		color: var(--text);
+		background-color: var(--bg);
+		-webkit-font-smoothing: antialiased;
+	}
+
+	/* form elements inherit the page typography */
+	button,
+	input,
+	select,
+	textarea {
+		font: inherit;
+		color: inherit;
+	}
+
+	/* one consistent, high-visibility keyboard focus indicator */
+	:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
+	}
+
+	::selection {
+		background-color: var(--accent-soft);
+	}
+
+	h1,
+	h2,
+	h3 {
+		line-height: 1.25;
+		margin: 0 0 0.5rem;
+		overflow-wrap: break-word;
+	}
+
+	h1 {
+		font-size: 1.75rem;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+	}
+
+	h2 {
+		font-size: 1.375rem;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+	}
+
+	h3 {
+		font-size: 1.125rem;
+		font-weight: 600;
+	}
+
+	p {
+		margin: 0 0 1rem;
+	}
+
+	a {
+		color: var(--accent);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	a:hover {
+		color: var(--accent-hover);
+	}
+
+	label {
+		font-weight: 500;
+	}
+
+	.container {
+		max-width: 960px;
+		margin-inline: auto;
+		padding-inline: 1rem;
+	}
+
+	/* skip link: visually hidden until keyboard-focused */
+	.skip-link {
+		position: absolute;
+		left: -9999px;
+		top: 0;
+		z-index: 100;
+		background: var(--surface);
+		color: var(--accent);
+		font-weight: 600;
+		padding: 0.5rem 1rem;
+		border-radius: 0 0 var(--radius-input) 0;
+		text-decoration: none;
+	}
+
+	.skip-link:focus {
+		left: 0;
+	}
 }
 
+/* ------------------------------------------------------------------ */
+/* components                                                          */
+/* ------------------------------------------------------------------ */
+@layer components {
+	/* ---- header / footer -------------------------------------------- */
+	header {
+		background: var(--surface);
+		border-bottom: 1px solid var(--border);
+	}
 
-/* Header */
-header{
-    background-color:var(--english-violet);
-    text-align: center;
+	header .container {
+		padding-block: 0.875rem;
+	}
+
+	header h1 {
+		margin: 0;
+		font-size: 1.375rem;
+		font-weight: 700;
+		letter-spacing: -0.01em;
+	}
+
+	footer {
+		background: var(--surface);
+		border-top: 1px solid var(--border);
+		margin-top: 3rem;
+		padding-block: 1.5rem;
+		text-align: center;
+		color: var(--text-2);
+		font-size: 0.875rem;
+	}
+
+	footer p {
+		margin: 0;
+	}
+
+	footer a {
+		color: var(--text-2);
+	}
+
+	footer a:hover {
+		color: var(--accent);
+	}
+
+	/* ---- landing cards ---------------------------------------------- */
+	#choose {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: 1rem;
+		margin-top: 2rem;
+	}
+
+	.choose-box a {
+		display: block;
+		text-decoration: none;
+		color: inherit;
+	}
+
+	.box {
+		height: 100%;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-card);
+		box-shadow: var(--shadow);
+		padding: 1.5rem;
+		text-align: left;
+		transition: transform 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.choose-box a:hover .box,
+	.choose-box a:focus-visible .box {
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(28, 25, 23, 0.1);
+	}
+
+	.box h2 {
+		margin-top: 0;
+	}
+
+	.box p {
+		color: var(--text-2);
+		margin-bottom: 0;
+	}
+
+	/* ---- form fields -------------------------------------------------- */
+	input[type="text"],
+	input[type="email"],
+	input[type="date"],
+	input[type="time"],
+	select,
+	textarea {
+		color: var(--text);
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-input);
+		padding: 0.4375rem 0.75rem;
+		min-height: 40px;
+		width: 100%;
+		max-width: 480px;
+	}
+
+	textarea {
+		min-height: 90px;
+		resize: vertical;
+	}
+
+	input::placeholder,
+	textarea::placeholder {
+		color: var(--text-2);
+		opacity: 0.7;
+	}
+
+	input[type="checkbox"] {
+		width: 1.125rem;
+		height: 1.125rem;
+		margin-right: 0.375rem;
+		vertical-align: middle;
+		accent-color: var(--accent);
+	}
+
+	/* ---- buttons ------------------------------------------------------- */
+	.btn,
+	button[type="submit"],
+	input[type="submit"] {
+		display: inline-block;
+		font-weight: 600;
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		border-radius: var(--radius-input);
+		color: #fff;
+		padding: 0.5rem 1.125rem;
+		min-height: 40px;
+		text-decoration: none;
+		cursor: pointer;
+		transition: background-color 0.15s ease, border-color 0.15s ease;
+	}
+
+	.btn:hover,
+	button[type="submit"]:hover,
+	input[type="submit"]:hover {
+		background: var(--accent-hover);
+		border-color: var(--accent-hover);
+		color: #fff;
+	}
+
+	.btn-secondary {
+		display: inline-block;
+		font-weight: 500;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-input);
+		color: var(--text);
+		padding: 0.4375rem 1rem;
+		min-height: 40px;
+		cursor: pointer;
+		transition: background-color 0.15s ease, border-color 0.15s ease;
+	}
+
+	.btn-secondary:hover {
+		background: var(--bg);
+		border-color: var(--text-2);
+	}
+
+	#time-input {
+		width: auto;
+		max-width: 130px;
+	}
+
+	#add-time {
+		margin-left: 0.5rem;
+	}
+
+	/* ---- icon buttons (pencil / trash) --------------------------------- */
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		vertical-align: middle;
+		margin-right: 0.25rem;
+		min-width: 32px;
+		min-height: 32px;
+		padding: 0.25rem;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--surface);
+		color: var(--text-2);
+		text-decoration: none;
+		cursor: pointer;
+		line-height: 1;
+		transition: background-color 0.12s ease, border-color 0.12s ease,
+			color 0.12s ease;
+	}
+
+	a.icon-btn:hover,
+	button.icon-btn:hover {
+		color: var(--accent);
+		border-color: var(--accent);
+		background: var(--accent-soft);
+	}
+
+	button.icon-btn.del-btn:hover {
+		color: var(--mark-red-text);
+		border-color: var(--mark-red-text);
+		background: var(--mark-red-bg);
+	}
+
+	/* ---- mark toggles (form-row cells) ---------------------------------- */
+	button.mark {
+		font-size: 0.875rem;
+		line-height: 1;
+		padding: 0.3125rem 0.625rem;
+		min-height: 34px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--surface);
+		color: var(--text-2);
+		cursor: pointer;
+		transition: background-color 0.12s ease, border-color 0.12s ease,
+			color 0.12s ease;
+	}
+
+	button.mark:hover:not(:disabled) {
+		border-color: var(--text-2);
+		color: var(--text);
+	}
+
+	button.mark:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+
+	button.mark-g[aria-pressed="true"] {
+		background: var(--mark-green-bg);
+		border-color: var(--mark-green-text);
+		color: var(--mark-green-text);
+		font-weight: 600;
+	}
+
+	button.mark-y[aria-pressed="true"] {
+		background: var(--mark-amber-bg);
+		border-color: var(--mark-amber-text);
+		color: var(--mark-amber-text);
+		font-weight: 600;
+	}
+
+	button.mark-r[aria-pressed="true"] {
+		background: var(--mark-red-bg);
+		border-color: var(--mark-red-text);
+		color: var(--mark-red-text);
+		font-weight: 600;
+	}
+
+	/* ---- answers table --------------------------------------------------- */
+	.table-scroll {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-card);
+	}
+
+	.answers-table {
+		border-collapse: collapse;
+		width: 100%;
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* visually hidden caption (screen-reader table description) */
+	.answers-table caption {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	.answers-table th,
+	.answers-table td {
+		border-bottom: 1px solid var(--border);
+		border-right: 1px solid var(--border);
+		padding: 0.5rem 0.75rem;
+		font-size: 0.875rem;
+		text-align: center;
+		vertical-align: middle;
+	}
+
+	.answers-table th {
+		background: var(--bg);
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.answers-table th:first-child,
+	.answers-table td:first-child {
+		text-align: left;
+		white-space: nowrap;
+		border-left: none;
+	}
+
+	.answers-table th:last-child,
+	.answers-table td:last-child {
+		border-right: none;
+	}
+
+	.answers-table tr:last-child td {
+		border-bottom: none;
+	}
+
+	/* own answer: subtle teal tint */
+	tr.own td {
+		background-color: var(--accent-50);
+	}
+
+	/* the active form row's name cell stands out neutrally */
+	tr.form-row td:first-child {
+		background: var(--bg);
+		font-weight: 600;
+	}
+
+	/* row hover — tinted mark cells keep their semantic color */
+	.answers-table tr:not(.own):not(.form-row):hover td:not(.st-g):not(.st-y):not(.st-r) {
+		background-color: var(--bg);
+	}
+
+	.form-row input[name="name"] {
+		width: 100%;
+		max-width: none;
+		min-width: 130px;
+	}
+
+	/* semantic mark colors (glyphs — never color alone) */
+	.st-g {
+		color: var(--mark-green-text);
+	}
+
+	.st-y {
+		color: var(--mark-amber-text);
+	}
+
+	.st-r {
+		color: var(--mark-red-text);
+	}
+
+	/* tinted backgrounds so marks read as colour at a glance */
+	td.st-g {
+		background-color: var(--mark-green-bg);
+	}
+
+	td.st-y {
+		background-color: var(--mark-amber-bg);
+	}
+
+	td.st-r {
+		background-color: var(--mark-red-bg);
+	}
+
+	/* single-slot grey-out */
+	td.form-cell.greyed {
+		opacity: 0.4;
+	}
+
+	/* ---- poll page --------------------------------------------------------- */
+	.meta {
+		color: var(--text-2);
+		font-size: 0.875rem;
+		margin-top: 1rem;
+	}
+
+	.description {
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius-card);
+		box-shadow: var(--shadow);
+		padding: 1rem 1.25rem;
+		white-space: pre-line;
+	}
+
+	.ended {
+		background: var(--mark-red-bg);
+		border: 1px solid var(--mark-red-text);
+		border-radius: var(--radius-input);
+		color: var(--mark-red-text);
+		font-weight: 600;
+		padding: 0.75rem 1rem;
+	}
+
+	/* admin extras: copyable links + edit poll */
+	.links {
+		margin: 1.5rem 0;
+		display: grid;
+		gap: 0.375rem;
+		align-content: start;
+		font-size: 0.875rem;
+		color: var(--text-2);
+	}
+
+	.copybox {
+		max-width: 480px;
+		margin-bottom: 0.5rem;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.8125rem;
+		color: var(--text-2);
+		background: var(--bg);
+		cursor: text;
+	}
+
+	/* submit / cancel bar */
+	.form-actions {
+		margin: 0.75rem 0;
+		display: flex;
+		gap: 0.75rem;
+		align-items: center;
+	}
+
+	/* ---- date/time picker ---------------------------------------------------- */
+	fieldset.dates-picker,
+	fieldset.times-picker {
+		border: 1px solid var(--border);
+		background: var(--surface);
+		border-radius: var(--radius-card);
+		box-shadow: var(--shadow);
+		margin: 1.25rem 0;
+		padding: 1rem 1.25rem 1.25rem;
+	}
+
+	fieldset legend {
+		font-weight: 600;
+		padding-inline: 0.375rem;
+	}
+
+	.cal-nav {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.cal-title {
+		min-width: 140px;
+		text-align: center;
+		font-weight: 600;
+	}
+
+	.cal-nav button {
+		font-size: 1.25rem;
+		line-height: 1;
+		min-width: 40px;
+		min-height: 40px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--surface);
+		color: var(--text);
+		cursor: pointer;
+	}
+
+	.cal-nav button:hover:not(:disabled) {
+		background: var(--bg);
+		border-color: var(--text-2);
+	}
+
+	.cal-nav button:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.cal-grid,
+	.slot-table {
+		border-collapse: collapse;
+		margin: 0 auto;
+	}
+
+	.cal-grid th {
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-2);
+		padding: 0.25rem;
+	}
+
+	.cal-grid .day {
+		width: 44px;
+		height: 44px;
+		margin: 1px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--surface);
+		color: var(--text);
+		font-size: 0.875rem;
+		cursor: pointer;
+		transition: background-color 0.12s ease, border-color 0.12s ease,
+			color 0.12s ease;
+	}
+
+	.cal-grid .day:hover:not(:disabled):not(.selected) {
+		background: var(--bg);
+		border-color: var(--text-2);
+	}
+
+	.cal-grid .day.selected {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: #fff;
+		font-weight: 600;
+	}
+
+	.cal-grid .day:disabled {
+		color: var(--text-2);
+		opacity: 0.4;
+		border-color: var(--border);
+		cursor: not-allowed;
+	}
+
+	/* slot preview */
+	.slot-table {
+		margin: 0.75rem auto;
+	}
+
+	.slot-table th,
+	.slot-table td {
+		border: 1px solid var(--border);
+		padding: 0.375rem 0.75rem;
+		font-size: 0.875rem;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.slot-table th {
+		background: var(--bg);
+		font-weight: 600;
+	}
+
+	#slot-preview p {
+		color: var(--text-2);
+		font-size: 0.875rem;
+	}
+
+	/* chips */
+	.chips {
+		margin-top: 0.75rem;
+		min-height: 28px;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
+
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		background: var(--accent-soft);
+		color: var(--accent-hover);
+		border-radius: 999px;
+		padding: 0.25rem 0.75rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.chip-x {
+		border: none;
+		background: none;
+		padding: 0;
+		color: var(--accent-hover);
+		font-size: 0.75rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.chip-x:hover {
+		color: var(--mark-red-text);
+	}
+
+	/* quiet clear-all buttons */
+	.clear-btn {
+		font-size: 0.875rem;
+		background: none;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 0.375rem 0.75rem;
+		margin-top: 0.5rem;
+		color: var(--text-2);
+		cursor: pointer;
+		transition: background-color 0.12s ease, border-color 0.12s ease,
+			color 0.12s ease;
+	}
+
+	.clear-btn:hover {
+		color: var(--mark-red-text);
+		border-color: var(--mark-red-text);
+		background: var(--mark-red-bg);
+	}
 }
 
-header h1{
-    font-size: xx-large;
-    font-weight: bold;
+/* ---- media preferences ---------------------------------------------------- */
+
+/* honor reduced-motion: no transitions */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+	}
 }
 
-
-
-/* Boxes */
-#choose{
-    margin-top:60px;
+/* OS high-contrast mode: keep a visible border on every control */
+@media (forced-colors: active) {
+	.btn,
+	.btn-secondary,
+	.icon-btn,
+	button.mark,
+	button[type="submit"],
+	input[type="submit"],
+	.cal-grid .day,
+	.cal-nav button,
+	.clear-btn,
+	input,
+	select,
+	textarea,
+	.table-scroll {
+		border: 1px solid ButtonText;
+	}
 }
 
-.box{
-    margin:30px;
-    text-align: center;
-    padding:40px;
-    background-color:var(--shiny-shamrock);
+/* small screens */
+@media (max-width: 640px) {
+	.container {
+		padding-inline: 0.75rem;
+	}
+
+	#choose {
+		grid-template-columns: 1fr;
+	}
 }
-
-.choose-box {
-    float: left;
-    width:33%;
-}
-
-.choose-box a {
-    text-decoration: none;
-}
-
-.choose-box a:hover {
-    text-transform: uppercase;
-}
-
-/* Footer */
-footer {
-    padding: 20px;
-    text-align: center;
-}
-
-
-/* Date picker (calendar + chips) */
-fieldset.dates-picker,
-fieldset.times-picker {
-    border: 1px solid var(--rich-black);
-    background-color: var(--wheat);
-    border-radius: 4px;
-    margin: 20px 0;
-    padding: 10px 15px;
-}
-
-fieldset legend {
-    font-weight: bold;
-    color: var(--rich-black);
-}
-
-.cal-nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    margin-bottom: 8px;
-}
-
-.cal-title {
-    min-width: 140px;
-    text-align: center;
-    font-weight: bold;
-}
-
-.cal-grid,
-.slot-table {
-    border-collapse: collapse;
-    margin: 0 auto;
-}
-
-.cal-grid th,
-.cal-grid td {
-    padding: 0;
-}
-
-.cal-grid th {
-    font-size: 12px;
-    color: var(--rich-black);
-    padding: 2px 4px;
-}
-
-.cal-grid .day {
-    width: 36px;
-    height: 36px;
-    border: 1px solid var(--rich-black);
-    background-color: transparent;
-    color: var(--rich-black);
-    cursor: pointer;
-    font-size: 13px;
-}
-
-.cal-grid .day:hover:not(:disabled) {
-    background-color: var(--bud-green);
-}
-
-.cal-grid .day.selected {
-    background-color: var(--mahogany);
-    color: var(--wheat);
-    font-weight: bold;
-}
-
-.cal-grid .day:disabled {
-    color: #999;
-    cursor: default;
-    border-color: #bbb;
-}
-
-.slot-table th,
-.slot-table td {
-    border: 1px solid var(--rich-black);
-    padding: 2px 10px;
-    font-size: 13px;
-}
-
-.chips {
-    margin-top: 10px;
-    min-height: 24px;
-}
-
-.chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background-color: var(--dark-slate-blue);
-    color: var(--wheat);
-    border-radius: 14px;
-    padding: 3px 10px;
-    margin: 2px;
-    font-size: 13px;
-}
-
-.chip-x {
-    border: none;
-    background: none;
-    color: var(--wheat);
-    cursor: pointer;
-    font-size: 12px;
-    padding: 0;
-}
-
-.chip-x:hover {
-    color: var(--mahogany);
-}
-
-.clear-btn {
-    margin-top: 8px;
-    font-size: 12px;
-}
-
-/* Poll page (answer table, results, admin extras) */
-.meta {
-    color: var(--rich-black);
-    font-size: 13px;
-}
-
-.description {
-    background-color: var(--wheat);
-    border: 1px solid var(--rich-black);
-    border-radius: 4px;
-    padding: 10px 15px;
-    white-space: pre-line;
-}
-
-.ended {
-    color: var(--mahogany);
-    font-weight: bold;
-}
-
-/* Admin extras: copyable links + edit poll */
-.links {
-    margin: 20px 0;
-}
-
-.copybox {
-    width: 100%;
-    max-width: 480px;
-    font-size: 13px;
-    margin: 2px 0 12px;
-}
-
-.btn {
-    display: inline-block;
-    background-color: var(--dark-slate-blue);
-    color: var(--wheat);
-    padding: 8px 16px;
-    border-radius: 4px;
-    text-decoration: none;
-}
-
-/* Unified answers table: a row per respondent, plus one form row */
-.answers-table th,
-.answers-table td {
-    border: 1px solid var(--rich-black);
-    padding: 4px 10px;
-    font-size: 13px;
-    text-align: center;
-}
-
-.answers-table th {
-    white-space: nowrap;
-}
-
-.answers-table td:first-child {
-    text-align: left;
-    white-space: nowrap;
-}
-
-/* The form row and the own row stand out in the name column */
-tr.form-row td:first-child,
-tr.own td:first-child {
-    background-color: var(--wheat);
-}
-
-.form-row input[name="name"] {
-    min-width: 130px;
-}
-
-/* Pencil / trash icons in front of a name */
-a.icon-btn,
-button.icon-btn {
-    display: inline-block;
-    vertical-align: middle;
-    margin-right: 3px;
-    padding: 2px 4px;
-    border: 1px solid var(--rich-black);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--rich-black);
-    text-decoration: none;
-    cursor: pointer;
-    line-height: 1;
-}
-
-a.icon-btn:hover {
-    background-color: var(--wheat);
-}
-
-button.icon-btn:hover {
-    background-color: #f6d9cd;
-}
-
-button.icon-btn:hover svg {
-    color: var(--mahogany);
-}
-
-/* Mark toggles in the form row's cells */
-button.mark {
-    border: 2px solid var(--rich-black);
-    background: transparent;
-    color: var(--rich-black);
-    cursor: pointer;
-    font-size: 14px;
-    padding: 2px 8px;
-    border-radius: 4px;
-}
-
-button.mark:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-}
-
-button.mark-g[aria-pressed="true"] {
-    background-color: var(--bud-green);
-    color: var(--rich-black);
-}
-
-button.mark-y[aria-pressed="true"] {
-    background-color: #e5c460;
-    color: var(--rich-black);
-}
-
-button.mark-r[aria-pressed="true"] {
-    border-color: var(--mahogany);
-    color: var(--mahogany);
-    font-weight: bold;
-}
-
-/* Single-slot grey-out */
-td.form-cell.greyed {
-    opacity: 0.4;
-}
-
-.st-g { color: var(--mark-green); }
-.st-y { color: var(--mark-gold); }
-.st-r { color: var(--mahogany); }
-
-/* Tinted backgrounds so marks read as colour at a glance */
-td.st-g { background-color: #dcebdb; }
-td.st-y { background-color: #f6ead0; }
-td.st-r { background-color: #f6d9cd; }
-
-.form-actions {
-    margin: 12px 0;
-    display: flex;
-    gap: 12px;
-}
-

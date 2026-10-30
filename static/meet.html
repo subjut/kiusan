@@ -27,9 +27,11 @@
 	<form method="POST" action="{{.formaction}}" id="answer-form" data-single="{{if .single}}true{{else}}false{{end}}">
 		{{if .answercsrf}}<input type="hidden" name="csrftoken" value="{{.csrftoken}}">{{end}}
 		{{if .formrespondentid}}<input type="hidden" name="respondentid" value="{{.formrespondentid}}">{{end}}
-		<table class="answers-table">
-			<tr>
-				<th scope="col">Respondent</th>
+		<div class="table-scroll" tabindex="0" role="region" aria-label="Answers">
+			<table class="answers-table">
+				<caption>Submitted answers: one row per respondent, one column per time slot.</caption>
+				<tr>
+					<th scope="col">Respondent</th>
 				{{range .slots}}<th scope="col">{{.Label}}</th>{{end}}
 			</tr>
 			{{range $col := .cols}}
@@ -83,7 +85,8 @@
 				{{end}}
 			</tr>
 			{{end}}
-		</table>
+			</table>
+		</div>
 		{{if or $.formnew $.formid}}
 		<div class="form-actions">
 			<button type="submit">{{if $.formid}}Save changes{{else}}Submit answer{{end}}</button>

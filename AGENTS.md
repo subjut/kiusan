@@ -89,11 +89,24 @@ Feature state (see `static/index.html`):
   layout: `static/layouts/home.html`, partials in `static/partials/`),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
   widget and `poll.js` — answer-table toggling, single-slot grey-out,
-  delete confirmations, copy-box selection; both vanilla, no deps) and
-  `static/favicon/`, served from the site root via
-  the static middleware: one `app.Get("/*", static.New(dir))` registration
-  per dir in `initRoutes` (a file miss resets the response and calls
-  `c.Next()`, so later registrations and routes still run).
+  delete confirmations, copy-box selection; both vanilla, no deps),
+  `static/fonts/` (the self-hosted Inter variable font
+  `InterVariable.woff2` + its OFL `LICENSE.txt`, served as
+  `/InterVariable.woff2`) and `static/favicon/`, all served from the
+  site root via the static middleware: one
+  `app.Get("/*", static.New(dir))` registration per dir in `initRoutes`
+  (a file miss resets the response and calls `c.Next()`, so later
+  registrations and routes still run).
+  `static/css/style.css` is the design system: all colors are
+  `:root` custom properties (warm light theme, single teal accent,
+  semantic green/amber/red answer marks with dark-glyph-on-light-tint
+  AA pairs), organized as `@layer theme, base, components`, with a
+  global `:focus-visible` ring, `prefers-reduced-motion` and
+  `forced-colors` support, and 44px calendar-day targets. Templates
+  carry the a11y structure: `lang="en"`, a skip link, one `h1`
+  (the wordmark) with `h2` page/card titles, a `<main id="main">`
+  landmark, and the answers table wrapped in a focusable
+  `.table-scroll` region with a visually-hidden `<caption>`.
 - `data/timezones.txt` — the IANA zones offered in the form's timezone
   select (a curated list, grouped by UTC offset for maintainers: the 1-2
   most important zones per offset per region, plus UTC; `#` lines are

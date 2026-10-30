@@ -122,12 +122,19 @@ func runSmokeSuite(t *testing.T) {
 		}
 	}
 
-	// Favicon from memory, css from the static dir.
+	// Favicon from memory, css and the self-hosted font from the static dir.
 	if r := get("/favicon.ico"); r.StatusCode != http.StatusOK {
 		t.Fatalf("GET /favicon.ico: status %d", r.StatusCode)
 	}
 	if r := get("/style.css"); r.StatusCode != http.StatusOK {
 		t.Fatalf("GET /style.css: status %d", r.StatusCode)
+	}
+	fr := get("/InterVariable.woff2")
+	if fr.StatusCode != http.StatusOK {
+		t.Fatalf("GET /InterVariable.woff2: status %d", fr.StatusCode)
+	}
+	if fb := body(fr); len(fb) < 4 || fb[:4] != "wOF2" {
+		t.Fatalf("GET /InterVariable.woff2: not a valid woff2 (%d bytes)", len(fb))
 	}
 
 	// Unknown paths (and unknown meetings) fall through the statics to the 404 handler.

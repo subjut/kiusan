@@ -1,8 +1,11 @@
 {{template "partials/head" .}}
-<html>    
+<html lang="en">
     <body>
+        <a class="skip-link" href="#main">Skip to content</a>
         {{template "partials/header" .}}
-        {{embed}}
+        <main id="main">
+            {{embed}}
+        </main>
         {{template "partials/footer" .}}
     </body>
 </html>
