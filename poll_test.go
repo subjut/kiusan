@@ -428,6 +428,9 @@ func runPollSuite(t *testing.T) {
 	for _, want := range []string{
 		`value="Poll A"`, `value="` + adminA + `"`, `value="2026-12-31"`,
 		`<option value="Europe/Berlin" selected>`, "Pick a time",
+		// the edit page is GET-only; the form must POST to /1-1-form
+		// (without the action, a browser edit lands on 404)
+		`action="/1-1-form"`,
 	} {
 		if !strings.Contains(bEdForm, want) {
 			t.Fatalf("edit form missing %q", want)

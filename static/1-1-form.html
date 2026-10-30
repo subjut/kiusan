@@ -1,5 +1,8 @@
 <div class="container">
-	<form id="form" method="POST" data-slots="{{.slotsAttr}}">
+	<!-- action: the edit page lives on /1-1-form/edit/<key> (GET-only), so
+	     without an explicit action the browser would POST the edit there
+	     and fall through to 404 -->
+	<form id="form" method="POST" action="/1-1-form" data-slots="{{.slotsAttr}}">
 		{{if .meetingkey}}<input type="hidden" name="meetingkey" value="{{.meetingkey}}">{{end}}
 		<h2>{{if .meetingkey}}Edit poll{{else}}Schedule a meeting{{end}}</h2>
 		<label for="title">Title:</label><br>
