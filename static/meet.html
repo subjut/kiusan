@@ -30,23 +30,34 @@
 		<div class="table-scroll" tabindex="0" role="region" aria-label="Answers">
 			<table class="answers-table">
 				<caption>Submitted answers: one row per respondent, one column per time slot.</caption>
+				{{if .hasTime}}
 				<tr>
-					<th scope="col">Respondent</th>
-				{{range .slots}}<th scope="col">{{.Label}}</th>{{end}}
-			</tr>
+					<th scope="col" rowspan="2">Name</th>
+					{{range .header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}"{{if .Title}} title="{{.Title}}"{{end}}>{{.Label}}</th>{{end}}
+				</tr>
+				<tr>
+					{{range .header}}{{range .Times}}<th scope="col" class="th-time">{{.}}</th>{{end}}{{end}}
+				</tr>
+				{{else}}
+				<tr>
+					<th scope="col">Name</th>
+					{{range .header}}<th scope="col" class="th-date"{{if .Title}} title="{{.Title}}"{{end}}>{{.Label}}</th>{{end}}
+				</tr>
+				{{end}}
 			{{range $col := .cols}}
 			{{if eq $col.ID $.formid}}
 			<tr class="form-row">
 				<td>
-					<label for="name">Name:</label>
-					<input type="text" id="name" name="name" maxlength="50" value="{{$.formname}}" required>
+					<input type="text" id="name" name="name" aria-label="Name" maxlength="50" value="{{$.formname}}" required>
 				</td>
 				{{range $j, $s := $.slots}}
 				<td class="cell form-cell st-{{index $col.Csls $j}}" data-slot="{{$s.Key}}" data-status="{{index $col.Marks $j}}">
 					<input type="hidden" name="a{{$s.Key}}" value="{{index $col.Marks $j}}">
-					<button type="button" class="mark mark-g" aria-pressed="{{index $col.PressG $j}}">&#10003;</button>
-					{{if not $.single}}<button type="button" class="mark mark-y" aria-pressed="{{index $col.PressY $j}}">(&#10003;)</button>{{end}}
-					<button type="button" class="mark mark-r" aria-pressed="{{index $col.PressR $j}}">&#10007;</button>
+					<div class="mark-stack">
+						<button type="button" class="mark mark-g" aria-pressed="{{index $col.PressG $j}}">&#10003;</button>
+						{{if not $.single}}<button type="button" class="mark mark-y" aria-pressed="{{index $col.PressY $j}}">(&#10003;)</button>{{end}}
+						<button type="button" class="mark mark-r" aria-pressed="{{index $col.PressR $j}}">&#10007;</button>
+					</div>
 				</td>
 				{{end}}
 			</tr>
@@ -72,16 +83,17 @@
 			{{if $.formnew}}
 			<tr class="form-row">
 				<td>
-					<label for="name">Name:</label>
-					<input type="text" id="name" name="name" maxlength="50" placeholder="Your name" required>
+					<input type="text" id="name" name="name" aria-label="Name" maxlength="50" placeholder="Your name" required>
 				</td>
 				{{range $.slots}}
-				<td class="cell form-cell st-r" data-slot="{{.Key}}" data-status="">
-					<input type="hidden" name="a{{.Key}}" value="">
-					<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
-					{{if not $.single}}<button type="button" class="mark mark-y" aria-pressed="false">(&#10003;)</button>{{end}}
-					<button type="button" class="mark mark-r" aria-pressed="{{.PressR}}">&#10007;</button>
-				</td>
+					<td class="cell form-cell st-r" data-slot="{{.Key}}" data-status="">
+						<input type="hidden" name="a{{.Key}}" value="">
+						<div class="mark-stack">
+							<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
+							{{if not $.single}}<button type="button" class="mark mark-y" aria-pressed="false">(&#10003;)</button>{{end}}
+							<button type="button" class="mark mark-r" aria-pressed="{{.PressR}}">&#10007;</button>
+						</div>
+					</td>
 				{{end}}
 			</tr>
 			{{end}}

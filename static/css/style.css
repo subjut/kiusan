@@ -381,11 +381,13 @@
 	}
 
 	/* ---- mark toggles (form-row cells) ---------------------------------- */
+	/* one square button wide — the stack below makes the slot column as
+	   narrow as a single button */
 	button.mark {
 		font-size: 0.875rem;
 		line-height: 1;
-		padding: 0.3125rem 0.625rem;
-		min-height: 34px;
+		width: 100%;
+		aspect-ratio: 1;
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		background: var(--surface);
@@ -393,6 +395,16 @@
 		cursor: pointer;
 		transition: background-color 0.12s ease, border-color 0.12s ease,
 			color 0.12s ease;
+	}
+
+	/* the mark toggles stack vertically, one button per line */
+	.mark-stack {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+		min-height: 44px;
 	}
 
 	button.mark:hover:not(:disabled) {
@@ -427,7 +439,12 @@
 	}
 
 	/* ---- answers table --------------------------------------------------- */
+	/* inline-block: the card hugs the content-sized table, clamping to
+	   the container width (and scrolling) when the table is wider;
+	   vertical-align removes the baseline gap an inline box leaves below */
 	.table-scroll {
+		display: inline-block;
+		vertical-align: bottom;
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		background: var(--surface);
@@ -435,9 +452,11 @@
 		border-radius: var(--radius-card);
 	}
 
+	/* width follows the content: narrow polls shrink to their slots,
+	   long polls grow until .table-scroll starts scrolling (which stays
+	   within the viewport) */
 	.answers-table {
 		border-collapse: collapse;
-		width: 100%;
 		font-variant-numeric: tabular-nums;
 	}
 
@@ -467,7 +486,33 @@
 	.answers-table th {
 		background: var(--bg);
 		font-weight: 600;
-		white-space: nowrap;
+	}
+
+	/* every slot column is one 44px square: submitted-answer cells are
+	   uniform squares, form cells hold the stacked mark buttons */
+	.answers-table td.cell,
+	.answers-table td.form-cell {
+		width: 44px;
+		min-width: 44px;
+		max-width: 44px;
+		height: 44px;
+		padding: 0;
+	}
+
+	/* two-row slot header: the date spans that date's time columns and may
+	   wrap onto two lines in a narrow span */
+	.answers-table th.th-date {
+		padding: 0.5rem 0.25rem;
+		line-height: 1.25;
+	}
+
+	.answers-table th.th-time {
+		width: 44px;
+		min-width: 44px;
+		max-width: 44px;
+		padding: 0.375rem 0.125rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
 	}
 
 	.answers-table th:first-child,
@@ -546,13 +591,20 @@
 		margin-top: 1rem;
 	}
 
+	/* hugs the text — clamped to the container width, so never wider than
+	   the old full-width box; pre-line keeps the author's line breaks and
+	   overflow-wrap breaks unbreakable strings (URLs), so the text always
+	   wraps instead of scrolling */
 	.description {
+		display: inline-block;
+		vertical-align: bottom;
 		background: var(--surface);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-card);
 		box-shadow: var(--shadow);
 		padding: 1rem 1.25rem;
 		white-space: pre-line;
+		overflow-wrap: anywhere;
 	}
 
 	.ended {
@@ -572,6 +624,12 @@
 		align-content: start;
 		font-size: 0.875rem;
 		color: var(--text-2);
+	}
+
+	/* the grid stretches its items — the copy boxes want that, the edit
+	   button must keep its intrinsic (text-fitting) width */
+	.links .btn {
+		justify-self: start;
 	}
 
 	.copybox {

@@ -177,7 +177,8 @@ func runPollSuite(t *testing.T) {
 	bUser := p.body(r)
 	for _, want := range []string{
 		"Poll A", "Pick a time", "Timezone: Europe/Berlin",
-		"2026-11-01 10:00", "2026-11-01 14:00",
+		"Sun 2026-11-01", `colspan="2"`,
+		`class="th-time"`, "10:00", "14:00",
 		`id="answer-form"`, `data-single="false"`,
 		`name="csrftoken"`, `value="` + csrfToken(alice) + `"`,
 	} {

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -166,12 +167,19 @@ func runSmokeSuite(t *testing.T) {
 		"Smoke Meeting",
 		"smoke@example.com",
 		"Timezone: Europe/Berlin",
-		"2026-11-01 10:00",
-		"2026-11-02 14:00",
+		"Sun 2026-11-01", "Mon 2026-11-02",
+		`colspan="2"`,
+		`class="th-time"`, "10:00", "14:00",
 	} {
 		if !strings.Contains(mb, want) {
 			t.Fatalf("GET %s: expected %q in body, got:\n%s", loc, want, mb)
 		}
+	}
+
+	// The time sub-row's cells must sit inside their own <tr>: a stray
+	// </tr> would orphan them and the browser would reflow the header.
+	if regexp.MustCompile(`</tr>\s*<th class="th-time"`).MatchString(mb) {
+		t.Fatalf("GET %s: time header cells orphaned from their <tr>", loc)
 	}
 }
 

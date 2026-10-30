@@ -501,10 +501,17 @@ func meetingHandler(c fiber.Ctx) error {
 	tzName = strings.ReplaceAll(tzName, "_", " ")
 	ends := m.Expires.In(loc).Format("2006-01-02")
 
+	// Display order: chronological. Storage order follows the form's chip
+	// order, which can be out of order, and marks are keyed by the slot's
+	// absolute instant, so sorting a display copy is safe.
+	dates := make([]time.Time, len(m.Dates))
+	copy(dates, m.Dates)
+	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
+
 	// Table column slots, prefilled with the form target's marks.
 	type formSlot struct {
-		Key, Label string
-		PressR     string
+		Key    string
+		PressR string
 	}
 	press := func(on bool) string {
 		if on {
@@ -521,14 +528,50 @@ func meetingHandler(c fiber.Ctx) error {
 		}
 		return "\u2717", "r"
 	}
-	slots := make([]formSlot, 0, len(m.Dates))
-	for _, d := range m.Dates {
+	slots := make([]formSlot, 0, len(dates))
+	for _, d := range dates {
 		status := ""
 		if formTarget != nil {
 			status = formTarget.Marks[slotKey(d)]
 		}
-		slots = append(slots, formSlot{Key: slotKey(d), Label: d.In(loc).Format("Mon 2006-01-02 15:04"),
-			PressR: press(status == "")})
+		slots = append(slots, formSlot{Key: slotKey(d), PressR: press(status == "")})
+	}
+
+	// Two-row header: one date cell per date (spanning that date's slot
+	// columns) plus a time sub-row when any slot has a time. A single-slot
+	// date gets the short label ("Sun 1 Nov") that fits the 44px column;
+	// the full date then moves to the tooltip.
+	type headerGroup struct {
+		day   time.Time
+		Label string
+		Title string
+		Span  int
+		Times []string
+	}
+	header := make([]headerGroup, 0)
+	hasTime := false
+	for _, d := range dates {
+		t := d.In(loc)
+		if n := len(header); n == 0 || header[n-1].day.Format("2006-01-02") != t.Format("2006-01-02") {
+			header = append(header, headerGroup{day: t})
+		}
+		g := &header[len(header)-1]
+		g.Span++
+		sub := "\u2014" // —: a date-only (midnight) slot in a timed poll
+		if t.Hour() != 0 || t.Minute() != 0 {
+			sub = t.Format("15:04")
+			hasTime = true
+		}
+		g.Times = append(g.Times, sub)
+	}
+	for i := range header {
+		t := header[i].day
+		if header[i].Span == 1 {
+			header[i].Label = t.Format("Mon") + " " + t.Format("2 Jan")
+			header[i].Title = t.Format("Mon 2006-01-02")
+		} else {
+			header[i].Label = t.Format("Mon 2006-01-02")
+		}
 	}
 
 	// The respondents visible on this page.
@@ -551,13 +594,13 @@ func meetingHandler(c fiber.Ctx) error {
 	}
 	cols := make([]respCol, 0, len(shown))
 	for i := range shown {
-		marks := make([]string, len(m.Dates))
-		syms := make([]string, len(m.Dates))
-		csls := make([]string, len(m.Dates))
-		pg := make([]string, len(m.Dates))
-		py := make([]string, len(m.Dates))
-		pr := make([]string, len(m.Dates))
-		for j, d := range m.Dates {
+		marks := make([]string, len(dates))
+		syms := make([]string, len(dates))
+		csls := make([]string, len(dates))
+		pg := make([]string, len(dates))
+		py := make([]string, len(dates))
+		pr := make([]string, len(dates))
+		for j, d := range dates {
 			v := shown[i].Marks[slotKey(d)]
 			marks[j] = v
 			s, cl := markSym(v)
@@ -592,6 +635,8 @@ func meetingHandler(c fiber.Ctx) error {
 		"editlink":         "/1-1-form/edit/" + m.AdminKey,
 		"single":           m.SingleSignup,
 		"slots":            slots,
+		"header":           header,
+		"hasTime":          hasTime,
 		"cols":             cols,
 		"selflink":         "/meet/" + viewKey,
 		"formnew":          formNew,
