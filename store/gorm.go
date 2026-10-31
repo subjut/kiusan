@@ -3,6 +3,8 @@ package store
 import (
 	"errors"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 
 	"github.com/glebarez/sqlite"
@@ -47,6 +49,15 @@ func openGorm(engine, dsn string) (MeetingStore, error) {
 		return nil, fmt.Errorf("store: open %s: %w", engine, err)
 	}
 
+	// The sqlite data file holds the admin capability keys; keep it
+	// private once it exists (non-fatal if it can't be chmodded, e.g.
+	// a :memory: DSN).
+	if engine == BackendSQLite {
+		if cerr := os.Chmod(dsn, 0o600); cerr != nil {
+			log.Printf("store: could not chmod %s: %v", dsn, cerr)
+		}
+	}
+
 	// AutoMigrate keeps the schema in sync at startup. It is additive-only:
 	// column additions and new tables. Destructive changes need explicit
 	// SQL migrations (none exist yet).
@@ -61,7 +72,9 @@ func openGorm(engine, dsn string) (MeetingStore, error) {
 }
 
 func (g *gormStore) Create(m *database.Meeting) (string, error) {
-	for {
+	// Cap the collision retries so a misclassified error can't loop forever.
+	const maxAttempts = 10
+	for attempt := 0; attempt < maxAttempts; attempt++ {
 		userKey, err := RandomKey(16)
 		if err != nil {
 			return "", err
@@ -93,15 +106,17 @@ func (g *gormStore) Create(m *database.Meeting) (string, error) {
 		}
 		return userKey, nil
 	}
+	return "", fmt.Errorf("store: create: too many key collisions")
 }
 
 // isUniqueViolation recognizes duplicate-key/unique errors from the
-// supported engines (mysql/mariadb/postgres/sqlite).
+// supported engines (mysql/mariadb/postgres/sqlite). It deliberately
+// does not match the generic word "constraint", so a NOT NULL
+// violation can't be mistaken for a key collision.
 func isUniqueViolation(err error) bool {
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "duplicate") ||
-		strings.Contains(s, "unique") ||
-		strings.Contains(s, "constraint")
+		strings.Contains(s, "unique")
 }
 
 func (g *gormStore) Get(key string) (*database.Meeting, error) {

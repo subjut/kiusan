@@ -50,7 +50,7 @@ func ensureIdentityCookie(c fiber.Ctx, m *database.Meeting, now time.Time) strin
 	}
 	c.Cookie(&fiber.Cookie{
 		Name: name, Value: token, Expires: m.Expires,
-		HTTPOnly: true, SameSite: "Lax", Path: "/",
+		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
 	})
 	return token
 }
@@ -60,7 +60,7 @@ func ensureIdentityCookie(c fiber.Ctx, m *database.Meeting, now time.Time) strin
 func dropIdentityCookie(c fiber.Ctx, m *database.Meeting) {
 	c.Cookie(&fiber.Cookie{
 		Name: cookieName(m), Value: "", Expires: time.Unix(0, 0), MaxAge: 0,
-		HTTPOnly: true, SameSite: "Lax", Path: "/",
+		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
 	})
 }
 

@@ -10,7 +10,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
+	"unicode/utf8"
 
 	// Bundle Go's zoneinfo so time.LoadLocation works on hosts without
 	// system tzdata (Alpine, minimal containers).
@@ -18,6 +20,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/favicon"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/gofiber/template/html/v3"
@@ -29,6 +32,34 @@ import (
 // db is the storage backend for the whole app. Handlers talk to storage
 // only through it; tests swap it for a throwaway instance per run.
 var db store.MeetingStore
+
+// Runtime configuration, read once from the environment in loadConfig.
+// devMode enables template reload + parse logging (off by default);
+// baseURL is the public origin (KIUSAN_BASE_URL) for the copyable link
+// boxes, empty falls back to the request's scheme+host; secureCookies sets
+// the Secure cookie flag, derived from baseURL being https.
+var (
+	devMode       bool
+	baseURL       string
+	secureCookies bool
+)
+
+// Per-client rate limits on the unauthenticated write routes.
+const (
+	rateWindow         = time.Minute
+	createMaxPerMinute = 20
+	answerMaxPerMinute = 30
+)
+
+// loadConfig reads the runtime configuration from the environment.
+func loadConfig() {
+	baseURL = strings.TrimRight(os.Getenv("KIUSAN_BASE_URL"), "/")
+	secureCookies = strings.HasPrefix(baseURL, "https://")
+	switch strings.ToLower(os.Getenv("KIUSAN_DEV")) {
+	case "1", "true", "yes", "on":
+		devMode = true
+	}
+}
 
 //go:embed data/timezones.txt
 var timezoneNamesRaw string
@@ -65,10 +96,17 @@ func loadableTimezones(names []string) []string {
 }
 
 func initRoutes(app *fiber.App, staticDir string) {
-	// Refuse to render inside any frame (clickjacking).
+	// Security headers on every response: refuse to render inside any frame
+	// (clickjacking), a strict same-origin CSP (the site uses no inline
+	// scripts or styles), no MIME sniffing, and a minimal referrer policy.
 	app.Use(func(c fiber.Ctx) error {
 		c.Set("X-Frame-Options", "DENY")
-		c.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		c.Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self'; style-src 'self'; "+
+				"img-src 'self' data:; object-src 'none'; base-uri 'self'; "+
+				"frame-ancestors 'none'")
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("Referrer-Policy", "same-origin")
 		return c.Next()
 	})
 
@@ -79,18 +117,24 @@ func initRoutes(app *fiber.App, staticDir string) {
 	app.Get("/*", static.New(filepath.Join(staticDir, "fonts")))
 	app.Get("/*", static.New(filepath.Join(staticDir, "favicon")))
 
+	// Rate limits on the unauthenticated write routes: poll creation and
+	// answering are open, so bound the per-client request rate. Per-poll
+	// cost is already capped (slot count, field lengths); this caps the rate.
+	createLimit := limiter.New(limiter.Config{Max: createMaxPerMinute, Expiration: rateWindow})
+	answerLimit := limiter.New(limiter.Config{Max: answerMaxPerMinute, Expiration: rateWindow})
+
 	// Normal routes
 	app.Get("/", homeHandler)
 	app.Get("/1-1-form", formHandler)
-	app.Post("/1-1-form", formPostHandler)
+	app.Post("/1-1-form", createLimit, formPostHandler)
 	// The edit form is reachable by the admin link only.
 	app.Get("/1-1-form/edit/+", formEditHandler)
 
 	// Meeting page routes; the gobbler takes either link key of the poll.
 	app.Get("/meet/+", meetingHandler)
-	app.Post("/meet/+/answer", answerPostHandler)
-	app.Post("/meet/+/answer/edit", answerEditPostHandler)
-	app.Post("/meet/+/answer/delete", answerDeletePostHandler)
+	app.Post("/meet/+/answer", answerLimit, answerPostHandler)
+	app.Post("/meet/+/answer/edit", answerLimit, answerEditPostHandler)
+	app.Post("/meet/+/answer/delete", answerLimit, answerDeletePostHandler)
 
 	// 404 Handler
 	app.Use(func(c fiber.Ctx) error {
@@ -112,17 +156,17 @@ func newApp(staticDir string) *fiber.App {
 		return strings.ReplaceAll(z, "_", " ")
 	})
 
-	// For debugging, set to false or comment for production
-	// Reload the templates on each render, good for development
-	engine.Reload(true)
-
-	// Debug will print each template that is parsed, good for debugging
-	engine.Debug(true)
+	// Template reload and parse logging are development conveniences, off by
+	// default (enable with KIUSAN_DEV); reload re-reads the templates from
+	// disk on every render.
+	engine.Reload(devMode)
+	engine.Debug(devMode)
 
 	// Create app
 	app := fiber.New(fiber.Config{
 		Views:       engine,
 		ReadTimeout: 10 * time.Second, // Don't keep cons alive for too long
+		IdleTimeout: 60 * time.Second, // Drop idle keep-alive connections
 	})
 
 	// Serve favicon.ico from memory instead of disk
@@ -130,8 +174,15 @@ func newApp(staticDir string) *fiber.App {
 		File: filepath.Join(staticDir, "favicon", "favicon.ico"),
 	}))
 
-	// Logging middleware
-	app.Use(logger.New())
+	// Logging middleware; the random link keys (capability URLs) are never
+	// written to the log, so an exposed log can't be used to reach polls.
+	app.Use(logger.New(logger.Config{
+		Skip: func(c fiber.Ctx) bool {
+			p := c.Path()
+			return strings.HasPrefix(p, "/meet/") ||
+				strings.HasPrefix(p, "/1-1-form/edit/")
+		},
+	}))
 
 	// Set up all routes
 	initRoutes(app, staticDir)
@@ -140,6 +191,8 @@ func newApp(staticDir string) *fiber.App {
 }
 
 func main() {
+	loadConfig()
+
 	// Open the storage backend selected by KIUSAN_STORE / KIUSAN_DSN.
 	var err error
 	db, err = store.Open(os.Getenv("KIUSAN_STORE"), os.Getenv("KIUSAN_DSN"))
@@ -159,7 +212,7 @@ func main() {
 	// Wait for interrupt signal to gracefully shutdown the server.
 	// Must be registered before Listen, since Listen blocks.
 	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	// Start the server and listen on http connections
 	go func() {
@@ -180,6 +233,21 @@ func main() {
 
 func notFoundHandler(c fiber.Ctx) error {
 	return c.SendStatus(404)
+}
+
+// sendErr writes a plain-text error body (never HTML-sniffable) with the
+// given status. The message must be server-authored, never echoed input.
+func sendErr(c fiber.Ctx, status int, msg string) error {
+	c.Set("Content-Type", "text/plain; charset=utf-8")
+	return c.Status(status).SendString(msg)
+}
+
+// sendInternal logs the real error and returns a generic 500, so driver
+// and storage details never reach the client.
+func sendInternal(c fiber.Ctx, err error) error {
+	log.Printf("internal error: %v", err)
+	c.Set("Content-Type", "text/plain; charset=utf-8")
+	return c.Status(500).SendString("Internal server error")
 }
 
 func homeHandler(c fiber.Ctx) error {
@@ -218,14 +286,17 @@ func formEditHandler(c fiber.Ctx) error {
 		if errors.Is(err, store.ErrNotFound) {
 			return notFoundHandler(c)
 		}
-		return c.Status(500).SendString(err.Error())
+		return sendInternal(c, err)
 	}
 
 	// The picker state the poll was created with: its slots in the
 	// meeting's zone, one entry per slot — "YYYY-MM-DD" for midnight
 	// slots, "YYYY-MM-DDTHH:MM" for timed ones. The picker groups them
 	// by date and sorts.
-	loc, _ := time.LoadLocation(m.TimeZone)
+	loc, lerr := time.LoadLocation(m.TimeZone)
+	if lerr != nil {
+		loc = time.UTC
+	}
 	slots := make([]string, 0, len(m.Dates))
 	for _, d := range m.Dates {
 		t := d.In(loc)
@@ -282,7 +353,12 @@ func formPostHandler(c fiber.Ctx) error {
 	//// Get the form data
 	// General fields
 	if err := c.Bind().Body(form); err != nil {
-		return c.Status(400).SendString(err.Error())
+		return sendErr(c, 400, "Invalid form data")
+	}
+	// Cap the free-text fields so one submission can't bloat storage or
+	// the rendered page.
+	if msg := validateFieldLengths(form); msg != "" {
+		return sendErr(c, 400, msg)
 	}
 
 	// The two poll options; read explicitly so the checkbox values never
@@ -295,24 +371,27 @@ func formPostHandler(c fiber.Ctx) error {
 	form.TimeZone = strings.TrimSpace(c.FormValue("timezone"))
 	loc, err := time.LoadLocation(form.TimeZone)
 	if err != nil {
-		return c.Status(400).SendString("Invalid timezone: " + form.TimeZone)
+		return sendErr(c, 400, "Invalid timezone")
 	}
 
 	// Candidate slots, one per field: "YYYY-MM-DD" (a date-only slot,
 	// midnight in the meeting zone) or "YYYY-MM-DDTHH:MM" (a timed slot).
 	// Each date may carry any set of times; the picker sends them per
 	// date.
-	for i := 0; true; i++ {
+	for i := 0; ; i++ {
 		v := c.FormValue("slot" + strconv.Itoa(i))
 		if v == "" {
 			break
+		}
+		if i >= maxCandidateSlots {
+			return sendErr(c, 400, "Too many candidate slots (max 100)")
 		}
 		datePart, timePart, _ := strings.Cut(v, "T")
 
 		// HTML date inputs submit YYYY-MM-DD
 		newDate, err := time.Parse("2006-01-02", datePart)
 		if err != nil {
-			return c.Status(400).SendString("Invalid date: " + v)
+			return sendErr(c, 400, "Invalid date")
 		}
 		if timePart == "" {
 			form.Dates = append(form.Dates,
@@ -322,7 +401,7 @@ func formPostHandler(c fiber.Ctx) error {
 		// HTML time inputs submit HH:MM
 		newTime, err := time.Parse("15:04", timePart)
 		if err != nil {
-			return c.Status(400).SendString("Invalid time: " + v)
+			return sendErr(c, 400, "Invalid time")
 		}
 		form.Dates = append(form.Dates,
 			time.Date(newDate.Year(), newDate.Month(), newDate.Day(),
@@ -334,7 +413,7 @@ func formPostHandler(c fiber.Ctx) error {
 	// Empty means the 3-month default.
 	endDate, msg := parseEndDate(c.FormValue("enddate"), time.Now())
 	if msg != "" {
-		return c.Status(400).SendString(msg)
+		return sendErr(c, 400, msg)
 	}
 	form.Expires = endOf(endDate, loc)
 
@@ -361,7 +440,7 @@ func formPostHandler(c fiber.Ctx) error {
 	}
 
 	if _, err := db.Create(form); err != nil {
-		return c.Status(500).SendString(err.Error())
+		return sendInternal(c, err)
 	}
 	// New poll: straight to its admin page, where both links live.
 	return c.Redirect().To("/meet/" + form.AdminKey)
@@ -376,11 +455,15 @@ func parseEndDate(raw string, now time.Time) (time.Time, string) {
 	}
 	d, err := time.Parse("2006-01-02", raw)
 	if err != nil {
-		return time.Time{}, "Invalid end date: " + raw
+		return time.Time{}, "Invalid end date"
 	}
 	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
 	if d.Before(today) {
 		return time.Time{}, "End date is in the past"
+	}
+	// Cap the horizon so a poll can't be set to expire in the far future.
+	if d.After(today.AddDate(5, 0, 0)) {
+		return time.Time{}, "End date is too far in the future"
 	}
 	return d, ""
 }
@@ -391,15 +474,37 @@ func endOf(d time.Time, loc *time.Location) time.Time {
 	return time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, loc)
 }
 
+// Poll size limits: they bound what one submission can store and render,
+// so a single poll can't bloat the database or its page.
+const (
+	maxCandidateSlots = 100
+	maxTitleLen       = 100
+	maxEmailLen       = 320
+	maxDescriptionLen = 5000
+)
+
+// validateFieldLengths caps the poll's free-text fields.
+func validateFieldLengths(m *database.Meeting) string {
+	switch {
+	case utf8.RuneCountInString(m.Title) > maxTitleLen:
+		return "Title is too long (max 100 characters)"
+	case utf8.RuneCountInString(m.Email) > maxEmailLen:
+		return "Email is too long (max 320 characters)"
+	case utf8.RuneCountInString(m.Description) > maxDescriptionLen:
+		return "Description is too long (max 5000 characters)"
+	}
+	return ""
+}
+
 // meetingSaveError maps the saveMeeting outcomes onto responses.
 func meetingSaveError(c fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, errNotFoundPoll):
 		return notFoundHandler(c)
 	case errors.Is(err, errConflict):
-		return c.Status(500).SendString("Too many concurrent edits, try again")
+		return sendErr(c, 500, "Too many concurrent edits, try again")
 	}
-	return c.Status(500).SendString(err.Error())
+	return sendInternal(c, err)
 }
 
 // ---- poll page ----
@@ -410,7 +515,7 @@ func meetingSaveError(c fiber.Ctx, err error) error {
 func meetingHandler(c fiber.Ctx) error {
 	m, isAdmin, err := resolveMeeting(c.Params("+"))
 	if err != nil {
-		return c.Status(500).SendString(err.Error())
+		return sendInternal(c, err)
 	}
 	if m == nil {
 		return notFoundHandler(c)
@@ -462,7 +567,10 @@ func meetingHandler(c fiber.Ctx) error {
 
 	// All slots are shown in the meeting's timezone (UTC when none was
 	// set) so the display never depends on the server's timezone.
-	loc, _ := time.LoadLocation(m.TimeZone)
+	loc, lerr := time.LoadLocation(m.TimeZone)
+	if lerr != nil {
+		loc = time.UTC
+	}
 	tzName := m.TimeZone
 	if tzName == "" {
 		tzName = "UTC"
@@ -656,8 +764,13 @@ func meetingHandler(c fiber.Ctx) error {
 }
 
 // absURL renders a site-absolute URL for the copyable link boxes on the
-// admin page.
+// admin page. It prefers the configured public origin (KIUSAN_BASE_URL)
+// so the links stay correct behind a proxy; without it, it falls back to
+// the request's scheme+host.
 func absURL(c fiber.Ctx, path string) string {
+	if baseURL != "" {
+		return baseURL + path
+	}
 	return c.Scheme() + "://" + c.Host() + path
 }
 
@@ -669,7 +782,7 @@ func answerPostHandler(c fiber.Ctx) error {
 	}
 	m, _, err := resolveMeeting(c.Params("+"))
 	if err != nil {
-		return c.Status(500).SendString(err.Error())
+		return sendInternal(c, err)
 	}
 	if m == nil {
 		return notFoundHandler(c)
@@ -706,7 +819,7 @@ func answerEditPostHandler(c fiber.Ctx) error {
 	key := c.Params("+")
 	m, isAdmin, err := resolveMeeting(key)
 	if err != nil {
-		return c.Status(500).SendString(err.Error())
+		return sendInternal(c, err)
 	}
 	// The route exists for both link shapes; only the admin link may use
 	// it, so a user key looks up like a missing link.
@@ -746,7 +859,7 @@ func answerDeletePostHandler(c fiber.Ctx) error {
 	key := c.Params("+")
 	m, isAdmin, err := resolveMeeting(key)
 	if err != nil {
-		return c.Status(500).SendString(err.Error())
+		return sendInternal(c, err)
 	}
 	if m == nil {
 		return notFoundHandler(c)

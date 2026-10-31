@@ -274,7 +274,16 @@
 		// select with no selected option still reports its first option
 		// as .value, so test the attribute, not the value.)
 		if (localTz && !tzSel.querySelector("option[selected]")) {
-			if (tzSel.querySelector('option[value="' + localTz + '"]') === null) {
+			// Compare option values directly (not via a built selector
+			// string), so a zone name with quotes can't break the selector.
+			var hasOpt = false;
+			for (var k = 0; k < tzSel.options.length; k++) {
+				if (tzSel.options[k].value === localTz) {
+					hasOpt = true;
+					break;
+				}
+			}
+			if (!hasOpt) {
 				var tzOpt = document.createElement("option");
 				tzOpt.value = localTz;
 				tzOpt.textContent = localTz.replace(/_/g, " ");
