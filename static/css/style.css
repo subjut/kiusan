@@ -384,13 +384,27 @@
 	}
 
 	#time-input,
-	.date-time-input {
+	input[type="time"].date-time-input {
 		width: auto;
 		max-width: 130px;
 	}
 
+	/* date + timezone: fit their content instead of stretching to 480px */
+	#enddate,
+	#timezone {
+		width: auto;
+	}
+
 	#add-time {
 		margin-left: 0.5rem;
+	}
+
+	/* live "n / max" character counters for the capped text fields */
+	.char-count {
+		font-size: 0.75rem;
+		color: var(--text-2);
+		margin-left: 0.5rem;
+		font-variant-numeric: tabular-nums;
 	}
 
 	/* ---- icon buttons (pencil / trash) --------------------------------- */

@@ -199,6 +199,19 @@
 			renderAll();
 		}
 	});
+	// Enter in a per-date time input adds that time to its date (same as
+	// clicking that row's "Add"), for parity with the "add to all dates" input.
+	dateTimesEl.addEventListener("keydown", function (e) {
+		if (e.key !== "Enter") return;
+		var input = e.target.closest(".date-time-input");
+		if (!input) return;
+		e.preventDefault();
+		var d = input.getAttribute("data-date");
+		if (dateTimes[d] && /^\d{2}:\d{2}$/.test(input.value)) {
+			dateTimes[d][input.value] = true;
+			renderAll();
+		}
+	});
 
 	document.getElementById("clear-dates").addEventListener("click", function () {
 		dateTimes = {};
@@ -226,7 +239,6 @@
 		}
 	}
 	document.getElementById("add-time").addEventListener("click", addTimeToAll);
-	timeInput.addEventListener("change", addTimeToAll);
 	timeInput.addEventListener("keydown", function (e) {
 		if (e.key === "Enter") {
 			e.preventDefault();
@@ -299,6 +311,23 @@
 			tzSel.value = localTz;
 		}
 	} catch (err) { /* very old browsers: no prefill */ }
+
+	// ---- character counters ------------------------------------------------
+	// title/email/description have server-side caps (main.go); mirror them
+	// as maxlength and show a live "n / max" count. Count by code points
+	// ([...s]) to match the server's utf8.RuneCountInString, so one emoji
+	// reads as one character, not two.
+	var fieldCaps = { title: 100, email: 320, description: 5000 };
+	Object.keys(fieldCaps).forEach(function (id) {
+		var el = document.getElementById(id);
+		var label = document.getElementById(id + "-count");
+		if (!el || !label) return;
+		function update() {
+			label.textContent = [...el.value].length + " / " + fieldCaps[id];
+		}
+		el.addEventListener("input", update);
+		update(); // show the count for prefilled (edit-mode) values
+	});
 
 	// ---- submit ----------------------------------------------------------------
 	// The picker state serializes into slot0..n hidden fields, one per
