@@ -117,4 +117,59 @@
 	Array.prototype.forEach.call(document.querySelectorAll("input.copybox"), function (i) {
 		i.addEventListener("click", function () { i.select(); });
 	});
+
+	// Copy buttons in front of the link boxes: copy the URL, flash
+	// "Copied!". navigator.clipboard needs a secure context (https /
+	// localhost); on plain http fall back to select + execCommand on the
+	// readonly box.
+	function legacyCopy(box, ok) {
+		box.select();
+		var done = false;
+		try { done = document.execCommand("copy"); } catch (e) { /* denied */ }
+		if (done) ok();
+	}
+	Array.prototype.forEach.call(document.querySelectorAll(".copy-btn"), function (btn) {
+		btn.addEventListener("click", function () {
+			var field = btn.closest(".link-field");
+			var box = field ? field.querySelector("input.copybox") : null;
+			if (!box) return;
+			var done = function () {
+				btn.textContent = "Copied!";
+				setTimeout(function () { btn.textContent = "Copy"; }, 1500);
+			};
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(box.value).then(done, function () {
+					legacyCopy(box, done);
+				});
+			} else {
+				legacyCopy(box, done);
+			}
+		});
+	});
+
+	// Size each link box to its URL: the boxes are monospace, so width is
+	// chars x char-width + padding/borders (border-box). The CSS
+	// max-width: 100% caps it at the container for very long domains, and
+	// the value then scrolls in place. The links are static per page load,
+	// so measure once.
+	(function () {
+		var boxes = document.querySelectorAll("input.copybox");
+		if (!boxes.length) return;
+		var cs = getComputedStyle(boxes[0]);
+		var probe = document.createElement("span");
+		probe.textContent = "0000000000";
+		probe.style.position = "absolute";
+		probe.style.visibility = "hidden";
+		probe.style.whiteSpace = "pre";
+		probe.style.fontFamily = cs.fontFamily;
+		probe.style.fontSize = cs.fontSize;
+		document.body.appendChild(probe);
+		var charW = probe.getBoundingClientRect().width / probe.textContent.length;
+		probe.remove();
+		var extra = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) +
+			parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth);
+		boxes.forEach(function (i) {
+			i.style.width = Math.ceil(i.value.length * charW) + extra + "px";
+		});
+	})();
 })();

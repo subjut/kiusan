@@ -1,13 +1,19 @@
 <div class="container">
 	<h2>{{.title}}</h2>
-	<p class="meta">Timezone: {{.tzname}} &middot; Ends {{.ends}}{{if .email}} &middot; {{.email}}{{end}}</p>
+	<p class="meta">Timezone: {{.tzname}} &middot; Poll ends {{.ends}}{{if .email}} &middot; {{.email}}{{end}}</p>
 
 	{{if .isadmin}}
 	<section class="links">
 		Respondent link (share this):
-		<input type="text" class="copybox" readonly value="{{.userlink}}">
+		<div class="link-field">
+			<button type="button" class="btn-secondary copy-btn" title="Copy link">Copy</button>
+			<input type="text" class="copybox" readonly value="{{.userlink}}">
+		</div>
 		Admin link (keep this to yourself):
-		<input type="text" class="copybox" readonly value="{{.adminlink}}">
+		<div class="link-field">
+			<button type="button" class="btn-secondary copy-btn" title="Copy link">Copy</button>
+			<input type="text" class="copybox" readonly value="{{.adminlink}}">
+		</div>
 		<a class="btn" href="{{.editlink}}">Edit poll</a>
 	</section>
 	{{end}}

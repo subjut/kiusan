@@ -724,15 +724,34 @@
 		color: var(--text-2);
 	}
 
-	/* the grid stretches its items — the copy boxes want that, the edit
+	/* the grid stretches its items — the link rows want that, the edit
 	   button must keep its intrinsic (text-fitting) width */
 	.links .btn {
 		justify-self: start;
 	}
 
-	.copybox {
-		max-width: 480px;
+	/* one row per link: copy button + box. The box is sized to its URL by
+	   poll.js (monospace math) and capped at the row width, so very long
+	   domains scroll in place instead of outgrowing .container */
+	.link-field {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 		margin-bottom: 0.5rem;
+	}
+
+	/* the button text flips Copy -> Copied!; fix its width so the box
+	   doesn't shift when it does */
+	.copy-btn {
+		min-width: 4.5rem;
+	}
+
+	/* input.copybox (not bare .copybox): the generic input[type="text"]
+	   rule has higher specificity and would keep width: 100% / 480px */
+	input.copybox {
+		width: auto;
+		max-width: 100%;
+		flex: 0 1 auto;
 		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 		font-size: 0.8125rem;
 		color: var(--text-2);
