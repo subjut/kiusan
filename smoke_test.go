@@ -123,9 +123,9 @@ func runSmokeSuite(t *testing.T) {
 		}
 	}
 
-	// Favicon from memory, css and the self-hosted font from the static dir.
-	if r := get("/favicon.ico"); r.StatusCode != http.StatusOK {
-		t.Fatalf("GET /favicon.ico: status %d", r.StatusCode)
+	// The SVG favicon, css and the self-hosted font from the static dir.
+	if r := get("/logo.svg"); r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /logo.svg: status %d", r.StatusCode)
 	}
 	if r := get("/style.css"); r.StatusCode != http.StatusOK {
 		t.Fatalf("GET /style.css: status %d", r.StatusCode)

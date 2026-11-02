@@ -19,7 +19,6 @@ import (
 	_ "time/tzdata"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/favicon"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/static"
@@ -168,11 +167,6 @@ func newApp(staticDir string) *fiber.App {
 		ReadTimeout: 10 * time.Second, // Don't keep cons alive for too long
 		IdleTimeout: 60 * time.Second, // Drop idle keep-alive connections
 	})
-
-	// Serve favicon.ico from memory instead of disk
-	app.Use(favicon.New(favicon.Config{
-		File: filepath.Join(staticDir, "favicon", "favicon.ico"),
-	}))
 
 	// Logging middleware; the random link keys (capability URLs) are never
 	// written to the log, so an exposed log can't be used to reach polls.
