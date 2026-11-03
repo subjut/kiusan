@@ -1,13 +1,22 @@
-// locale.js — browser-locale date display for the poll + form pages
-// (vanilla, no deps).
+// locale.js — viewer language + date display for the site (vanilla, no
+// deps).
 //
-// Every date/time *value* the server rendered (its English labels stay as
-// the no-JS fallback) is rewritten in place with Intl.DateTimeFormat in the
-// viewer's locale: the `kiusan-locale` cookie set by the "Display"
-// dropdown wins, else navigator.language. Date values are always shown in
-// the poll's timezone — the [data-tz] container attribute — so all viewers
-// see the poll's wall time, just spelled in their own language; the
-// viewer's own zone is never used for the values.
+// The server renders every page in the viewer's language (the
+// kiusan-locale cookie set by the "Language" dropdown wins, else
+// Accept-Language, else English) and marks the translatable nodes with
+// data-i18n* attributes. Switching the dropdown fetches the new
+// language's dictionary from /i18n and swaps the marked nodes in place —
+// no reload, so a half-filled form keeps its state. The same BCP-47 tag
+// also drives the date/time *values*: every value the server rendered
+// (its English label stays as the no-JS fallback) is rewritten in place
+// with Intl.DateTimeFormat. Date values are always shown in the poll's
+// timezone — the [data-tz] container attribute — so all viewers see the
+// poll's wall time, just spelled in their own language; the viewer's own
+// zone is never used for the values.
+//
+// window.I18N = {lang, t} is set by /i18n/boot (loaded in the head) and
+// refreshed on every switch; dater.js and poll.js read their strings
+// from it.
 //
 // dater.js (the form's calendar) formats its wall-clock picker labels
 // through Locale.dtf (no timeZone) and re-renders on locale changes.
@@ -17,24 +26,6 @@
 
 	var COOKIE = "kiusan-locale";
 	var MAX_AGE = 31536000; // 1 year: a display preference, not an identity
-	// Curated dropdown list; the browser's own language is auto-inserted
-	// at its alphabetical position when it is not already listed (same
-	// pattern as the timezone prefill in dater.js).
-	var LOCALES = ["en", "de", "de-CH", "fr", "es", "it", "pt", "pt-BR",
-		"nl", "pl", "sv", "tr", "ja", "ko", "zh"];
-	// The options show native language names; the value stays the BCP-47
-	// tag. A browser language not in the list shows its raw tag.
-	var LOCALE_NAMES = {
-		"en": "English", "de": "Deutsch", "de-CH": "Deutsch (Schweiz)",
-		"fr": "Français", "es": "Español", "it": "Italiano",
-		"pt": "Português", "pt-BR": "Português (Brasil)",
-		"nl": "Nederlands", "pl": "Polski", "sv": "Svenska",
-		"tr": "Türkçe", "ja": "日本語", "ko": "한국어", "zh": "中文"
-	};
-
-	function localeName(loc) {
-		return LOCALE_NAMES[loc] || loc;
-	}
 
 	var formatters = {}; // "locale|opts-json" -> Intl.DateTimeFormat
 	var listeners = [];
@@ -178,31 +169,71 @@
 		}
 	}
 
-	// ---- "Display" dropdown ----------------------------------------------
+	// ---- language switching ---------------------------------------------
+	// applyDict rewrites every marked node from the dictionary. Text goes
+	// through textContent (a dictionary value can never inject markup) and
+	// the rest through setAttribute. data-i18n-prefix carries the user's
+	// poll title in data-suffix, which the swap keeps.
+	function applyDict(d) {
+		var t = (d && d.t) || {};
+		var i, els, key, v;
+
+		els = document.querySelectorAll("[data-i18n]");
+		for (i = 0; i < els.length; i++) {
+			v = t[els[i].getAttribute("data-i18n")];
+			if (v != null) els[i].textContent = v;
+		}
+		els = document.querySelectorAll("[data-i18n-prefix]");
+		for (i = 0; i < els.length; i++) {
+			key = els[i].getAttribute("data-i18n-prefix");
+			v = t[key];
+			if (v != null)
+				els[i].textContent = v + (els[i].getAttribute("data-suffix") || "");
+		}
+		function attr(sel, name) {
+			els = document.querySelectorAll(sel);
+			for (i = 0; i < els.length; i++) {
+				v = t[els[i].getAttribute(sel.slice(1, -1))];
+				if (v != null) els[i].setAttribute(name, v);
+			}
+		}
+		attr("[data-i18n-ph]", "placeholder");
+		attr("[data-i18n-title]", "title");
+		attr("[data-i18n-aria]", "aria-label");
+		attr("[data-i18n-meta]", "content");
+		document.documentElement.lang = (d && d.lang) || "en";
+	}
+
+	// Re-run the locale-dependent bits after a switch: the date values
+	// (resolve() now sees the new cookie) and the picker widgets.
+	function applyLocale() {
+		locale = resolve();
+		reformat();
+		for (var j = 0; j < listeners.length; j++) listeners[j]();
+	}
+
 	var sel = document.getElementById("locale");
 	if (sel) {
-		var browser = browserLocale();
-		var list = LOCALES.slice();
-		if (list.indexOf(browser) < 0) {
-			var i = 0;
-			while (i < list.length && list[i] < browser) i++;
-			list.splice(i, 0, browser);
-		}
-		var c0 = cookieValue();
-		var chosen = valid(c0) ? c0 : "";
-		var html = '<option value="">Browser default (' + localeName(browser) + ")</option>";
-		for (i = 0; i < list.length; i++) {
-			html += '<option value="' + list[i] + '"' +
-				(list[i] === chosen ? " selected" : "") + ">" +
-				localeName(list[i]) + "</option>";
-		}
-		sel.innerHTML = html;
-		sel.value = chosen;
 		sel.addEventListener("change", function () {
 			cookieSet(sel.value);
-			locale = resolve();
-			reformat();
-			for (var j = 0; j < listeners.length; j++) listeners[j]();
+			// "" (Browser default) fetches the browser's own language; the
+			// server resolves it onto a shipped language, so an unshipped
+			// one simply serves the English dictionary.
+			fetch("/i18n/" + encodeURIComponent(sel.value || browserLocale()))
+				.then(function (r) {
+					if (!r.ok) throw new Error("status " + r.status);
+					return r.json();
+				})
+				.then(function (d) {
+					window.I18N = d;
+					applyDict(d);
+					applyLocale();
+				})
+				.catch(function () {
+					// Dictionary unreachable: a reload gets the
+					// server-rendered language for the new cookie.
+					location.reload();
+				});
 		});
 	}
 

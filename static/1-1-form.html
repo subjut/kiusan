@@ -2,57 +2,57 @@
 	<!-- action: the edit page lives on /1-1-form/edit/<key> (GET-only), so
 	     without an explicit action the browser would POST the edit there
 	     and fall through to 404 -->
-	<form id="form" method="POST" action="/1-1-form" data-slots="{{.slotsAttr}}">
-		{{if .meetingkey}}<input type="hidden" name="meetingkey" value="{{.meetingkey}}">{{end}}
-		<h2>{{if .meetingkey}}Edit poll{{else}}Schedule a meeting{{end}}</h2>
-		<label for="title">Title:</label><br>
-		<input type="text" id="title" name="title" value="{{.title}}" maxlength="100">
+	<form id="form" method="POST" action="/1-1-form" data-slots="{{.SlotsAttr}}">
+		{{if .MeetingKey}}<input type="hidden" name="meetingkey" value="{{.MeetingKey}}">{{end}}
+		<h2 data-i18n="{{.FormTitleKey}}">{{.T .FormTitleKey}}</h2>
+		<label for="title" data-i18n="form.title">{{.T "form.title"}}</label><br>
+		<input type="text" id="title" name="title" value="{{.Title}}" maxlength="100">
 			<span class="char-count" id="title-count"></span><br>
-		<label for="email">Email:</label><br>
-		<input type="text" id="email" name="email" value="{{.email}}" maxlength="320">
+		<label for="email" data-i18n="form.email">{{.T "form.email"}}</label><br>
+		<input type="text" id="email" name="email" value="{{.Email}}" maxlength="320">
 			<span class="char-count" id="email-count"></span><br>
-		<label for="description">Description:</label><br>
-		<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.description}}</textarea>
+		<label for="description" data-i18n="form.description">{{.T "form.description"}}</label><br>
+		<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.Description}}</textarea>
 			<span class="char-count" id="description-count"></span><br>
-		<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .hideusers}} checked{{end}}>
-		<label for="hide-users">Respondents can't see each others answers</label><br>
-		<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .singlesignup}} checked{{end}}>
-		<label for="single-signup">People can only sign up to one time slot</label><br>
-		<label for="enddate">Poll ends:</label>
-		<input type="date" id="enddate" name="enddate" min="{{.minExp}}" value="{{if .expiry}}{{.expiry}}{{else}}{{.defaultExp}}{{end}}"><br>
+		<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .HideUsers}} checked{{end}}>
+		<label for="hide-users" data-i18n="form.hideUsers">{{.T "form.hideUsers"}}</label><br>
+		<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .SingleSignup}} checked{{end}}>
+		<label for="single-signup" data-i18n="form.singleSignup">{{.T "form.singleSignup"}}</label><br>
+		<label for="enddate" data-i18n="form.endDate">{{.T "form.endDate"}}</label>
+		<input type="date" id="enddate" name="enddate" min="{{.MinExp}}" value="{{if .Expiry}}{{.Expiry}}{{else}}{{.DefaultExp}}{{end}}"><br>
 		<br>
 
-		<label for="timezone">Timezone:</label>
+		<label for="timezone" data-i18n="form.timezone">{{.T "form.timezone"}}</label>
 		<select id="timezone" name="timezone">
-{{range .timezones}}<option value="{{.}}"{{if eq . $.timezone}} selected{{end}}>{{zoneDisplay .}}</option>
-{{end}}{{if .extraTz}}<option value="{{.extraTz}}" selected>{{zoneDisplay .extraTz}}</option>
+{{range .Timezones}}<option value="{{.}}"{{if eq . $.Timezone}} selected{{end}}>{{zoneDisplay .}}</option>
+{{end}}{{if .ExtraTz}}<option value="{{.ExtraTz}}" selected>{{zoneDisplay .ExtraTz}}</option>
 {{end}}</select><br><br>
 
 		<fieldset class="dates-picker">
-			<legend>Select date(s)</legend>
+			<legend data-i18n="form.selectDates">{{.T "form.selectDates"}}</legend>
 			<div class="cal-nav">
-				<button type="button" id="cal-prev" aria-label="Previous month">‹</button>
+				<button type="button" id="cal-prev" aria-label="{{.CalPrev}}">‹</button>
 				<span class="cal-title" id="cal-title"></span>
-				<button type="button" id="cal-next" aria-label="Next month">›</button>
+				<button type="button" id="cal-next" aria-label="{{.CalNext}}">›</button>
 			</div>
 			<table class="cal-grid" id="cal-grid"></table>
 			<div class="chips" id="date-chips"></div>
-			<button type="button" class="clear-btn" id="clear-dates">Clear all dates</button>
+			<button type="button" class="clear-btn" id="clear-dates" data-i18n="form.clearDates">{{.T "form.clearDates"}}</button>
 		</fieldset>
 
 		<fieldset class="times-picker">
-			<legend>Time(s) — per date, or add to all dates at once</legend>
+			<legend data-i18n="form.timesLegend">{{.T "form.timesLegend"}}</legend>
 			<div class="times-all">
 				<input type="time" id="time-input">
-				<button type="button" id="add-time" class="btn-secondary">Add to all dates</button>
+				<button type="button" id="add-time" class="btn-secondary" data-i18n="form.addTimeAll">{{.T "form.addTimeAll"}}</button>
 			</div>
 			<div id="date-times"></div>
-			<button type="button" class="clear-btn" id="clear-times">Clear all times</button>
+			<button type="button" class="clear-btn" id="clear-times" data-i18n="form.clearTimes">{{.T "form.clearTimes"}}</button>
 		</fieldset>
 
 		<div id="slot-preview"></div>
 
-		<input type="submit" value="{{if .meetingkey}}Save changes{{else}}submit{{end}}">
+		<input type="submit" value="{{.SubmitLabel}}">
 	</form>
 	<script src="/dater.js"></script>
 </div>

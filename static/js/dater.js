@@ -14,6 +14,20 @@
 	var form = document.getElementById("form");
 	if (!form) return;
 
+	// UI strings from the server's catalogs (window.I18N, set by
+	// /i18n/boot and refreshed on language switches).
+	function t(key) {
+		var d = window.I18N && window.I18N.t;
+		return (d && d[key]) || key;
+	}
+	// One-pass {placeholder} substitution; the catalogs never use {{...}}
+	// and the single replace pass keeps values from re-entering it.
+	function fill(s, vars) {
+		return s.replace(/\{(\w+)\}/g, function (m, k) {
+			return Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m;
+		});
+	}
+
 	// ---- state -----------------------------------------------------------
 	// "YYYY-MM-DD" -> { "HH:MM" -> true }
 	var dateTimes = {};
@@ -175,10 +189,12 @@
 		return Object.keys(obj).sort();
 	}
 
-	function timeChip(d, t) {
-		return '<span class="chip">' + timeLabel(t) +
+	function timeChip(d, tm) {
+		var label = timeLabel(tm);
+		return '<span class="chip">' + label +
 			'<button type="button" class="chip-x" data-date="' + d +
-			'" data-time="' + t + '" title="Remove ' + timeLabel(t) + ' on ' + chipDate(d) +
+			'" data-time="' + tm + '" title="' +
+			fill(t("dater.removeTime"), { time: label, date: chipDate(d) }) +
 			'">✕</button></span>';
 	}
 
@@ -186,7 +202,8 @@
 		dateChips.innerHTML = sorted(dateTimes).map(function (d) {
 			return '<span class="chip">' + chipDate(d) +
 				'<button type="button" class="chip-x" data-date="' + d +
-				'" title="Remove ' + chipDate(d) + '">✕</button></span>';
+				'" title="' + fill(t("dater.removeDate"), { date: chipDate(d) }) +
+				'">✕</button></span>';
 		}).join("");
 	}
 
@@ -200,7 +217,8 @@
 				'<span class="date-times-label">' + chipDate(d) + "</span>" +
 				'<span class="chips">' + chips + "</span>" +
 				'<input type="time" class="date-time-input" data-date="' + d + '">' +
-				'<button type="button" class="btn-secondary date-time-add" data-date="' + d + '">Add</button>' +
+				'<button type="button" class="btn-secondary date-time-add" data-date="' + d + '">' +
+				t("dater.add") + "</button>" +
 				"</div>";
 		}).join("");
 	}
@@ -283,8 +301,7 @@
 	function renderPreview() {
 		var ds = sorted(dateTimes);
 		if (ds.length === 0) {
-			preview.textContent =
-				"Select date(s) to see the candidate slots.";
+			preview.textContent = t("dater.previewEmpty");
 			return;
 		}
 		var timed = 0, midnights = 0;
@@ -294,7 +311,8 @@
 			var ts = sorted(dateTimes[d]);
 			if (ts.length === 0) {
 				midnights++;
-				lines.push("<p><b>" + chipDate(d) + "</b> — no times: midnight slot</p>");
+				lines.push("<p><b>" + chipDate(d) + "</b> — " +
+					t("dater.previewMidnight") + "</p>");
 			} else {
 				timed += ts.length;
 				lines.push("<p><b>" + chipDate(d) + "</b> — " +
@@ -302,9 +320,11 @@
 			}
 		}
 		var html = lines.join("");
-		html += "<p>" + timed + " timed slot(s)";
-		if (midnights) html += " + " + midnights + " midnight slot(s)";
-		html += " = " + (timed + midnights) + " slot(s) total</p>";
+		var key = midnights ? "dater.previewSummary"
+			: "dater.previewSummaryNoMidnight";
+		html += "<p>" + fill(t(key),
+			{ timed: timed, midnight: midnights, total: timed + midnights }) +
+			"</p>";
 		preview.innerHTML = html;
 	}
 

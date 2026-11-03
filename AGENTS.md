@@ -68,6 +68,15 @@ Feature state (see `static/index.html`):
   UTC instant, seconds stripped), the answer-list operations
   (find/upsert/remove/prune), and `saveMeeting` (fresh read, mutate,
   compare-and-set `Update`, retry on conflict).
+- `i18n.go` — the interface-localization plumbing: the `translator`
+  (`gofiber/contrib/v3/i18n` over `go-i18n/v2` with a YAML
+  `EmbedLoader` on the `locales/` directory), the `langHandler` hook
+  (locale resolution: `kiusan-locale` cookie → `Accept-Language` →
+  English), `matchLang` (base-tag matching so `de-CH` → `de`), the
+  `/i18n/boot` handler (serves `window.I18N = {…}` as same-origin JS),
+  and the `/i18n/:lang` handler (serves the JSON dict built live from
+  the in-memory bundle with English fallback). The `pageData` struct
+  and its `T` method live in `main.go`.
 - `database/database.go` — model types only: `Meeting` (incl. the IANA
   `TimeZone` (empty renders as UTC), the `uniqueIndex`ed `AdminKey`, the
   always-set `Expires`, `Answers`, and the CAS stamp `Generation`),
@@ -112,6 +121,15 @@ Feature state (see `static/index.html`):
   (the wordmark) with `h2` page/card titles, a `<main id="main">`
   landmark, and the answers table wrapped in a focusable
   `.table-scroll` region with a visually-hidden `<caption>`.
+- `locales/` — the i18n YAML catalogs (`en.yaml` is the source of
+  truth, `de.yaml` is the German translation; one file per language).
+  Embedded via `go:embed` in `i18n.go` and loaded at process start.
+  To add a language: create `<lang>.yaml` with the same keys (or a
+  subset — missing keys fall back to English) and add the tag to
+  `AcceptLanguages` in `i18n.go`. To update a translation: edit the
+  YAML and restart. Never use `{{...}}` in values (go-i18n treats it
+  as a template action); client-side placeholders use single braces
+  (`{name}`, `{date}`).
 - `data/timezones.txt` — the IANA zones offered in the form's timezone
   select (a curated list, grouped by UTC offset for maintainers: the 1-2
   most important zones per offset per region, plus UTC; `#` lines are
@@ -139,7 +157,11 @@ Feature state (see `static/index.html`):
   per date, see `dater.js`) and are bound separately. Redirects go
   through `c.Redirect().To(url)`. There is no `app.Static` any more —
   use the static middleware.
-- Pages render with `c.Render("<name>", fiber.Map{...}, "layouts/home")`.
+- Pages render with `c.Render("<name>", &pageData{...}, "layouts/home")`
+  where `pageData` is a typed struct (exported fields + a `T` method
+  that calls `translator.MustLocalize`). Templates reference fields as
+  `{{.FieldName}}` (or `{{$.FieldName}}` inside `{{range}}`) and
+  localized strings as `{{.T "key"}}` (or `{{$.T "key"}}`).
 - **Prompt logging (automatic)**: after processing every user prompt,
   **before** sending the summary of what was done, append an entry to
   `docs/prompts/<YYYY-MM-DD>.md` (one file per date; when a new day
@@ -203,8 +225,32 @@ Feature state (see `static/index.html`):
   formats its wall-clock labels through `Locale.dtf` (no `timeZone`),
   follows the locale's first weekday best-effort
   (`resolvedOptions().firstDay`, Sunday fallback) and re-renders on
-  locale change. UI strings stay English (`lang="en"`) — only the
-  date/time values are localized.
+  locale change. UI strings are localized via the i18n system below.
+- **Interface localization (i18n)**: UI strings are server-rendered in
+  the viewer's language (no-JS stays localized) and switchable
+  client-side without a reload (half-filled forms survive). The
+  `kiusan-locale` cookie (the same one that drives date-value
+  formatting) is the single locale setting: it drives both the UI
+  language (server-side, via the `LangHandler` hook: cookie →
+  `Accept-Language` → English) and the date-value locale (client-side,
+  `Intl.DateTimeFormat`). The `<html lang>` attribute and the page
+  `<title>` are localized. Templates carry `data-i18n` (text content),
+  `data-i18n-ph` (placeholder), `data-i18n-title` (title attr),
+  `data-i18n-aria` (aria-label), `data-i18n-meta` (meta content), and
+  `data-i18n-prefix` (title prefix, keeps `data-suffix` = user's poll
+  title) markers. The client swapper (`locale.js` `applyDict`) uses
+  only `textContent`/`setAttribute` — no innerHTML — and re-renders
+  the `dater.js`/`poll.js` widget strings. Language switch: the
+  dropdown `change` handler fetches `GET /i18n/<tag>` (JSON dict
+  built live from the in-memory bundle, English fallback for missing
+  keys) and calls `applyDict` — no page reload. The initial dict is
+  served by `GET /i18n/boot` as `window.I18N = {…}` (same-origin JS
+  file, CSP `script-src 'self'` — no inline scripts). Catalogs are
+  YAML in `locales/` (embedded, loaded at startup); maintenance =
+  edit YAML + restart. Per-viewer language is intentional (no
+  global setting). Base-tag auto-match: `de-CH` → `de`, `pt-BR` →
+  `pt` (unshipped → English). The "never `{{` in YAML" rule prevents
+  go-i18n template-action parse failures.
 - **AutoMigrate is additive-only**: it creates tables and adds columns at
   startup but does not drop or modify anything; destructive schema changes
   need explicit SQL migrations (none exist yet).

@@ -12,6 +12,20 @@
 (function () {
 	"use strict";
 
+	// UI strings from the server's catalogs (window.I18N, set by
+	// /i18n/boot and refreshed on language switches).
+	function t(key) {
+		var d = window.I18N && window.I18N.t;
+		return (d && d[key]) || key;
+	}
+	// One-pass {placeholder} substitution; the catalogs never use {{...}}
+	// and the single replace pass keeps values from re-entering it.
+	function fill(s, vars) {
+		return s.replace(/\{(\w+)\}/g, function (m, k) {
+			return Object.prototype.hasOwnProperty.call(vars, k) ? vars[k] : m;
+		});
+	}
+
 	function paintCell(cell) {
 		var v = cell.getAttribute("data-status") || "";
 		cell.classList.remove("st-g", "st-y", "st-r");
@@ -106,7 +120,10 @@
 		Array.prototype.forEach.call(document.querySelectorAll(".del-btn"), function (b) {
 			b.addEventListener("click", function () {
 				var name = b.getAttribute("data-name") || "";
-				if (!confirm(name ? "Delete " + name + "'s answer?" : "Delete this answer?")) return;
+				var msg = name
+					? fill(t("poll.deleteWithName"), { name: name })
+					: t("poll.deleteThis");
+				if (!confirm(msg)) return;
 				target.value = b.getAttribute("data-id") || "";
 				delForm.submit();
 			});
@@ -134,8 +151,8 @@
 			var box = field ? field.querySelector("input.copybox") : null;
 			if (!box) return;
 			var done = function () {
-				btn.textContent = "Copied!";
-				setTimeout(function () { btn.textContent = "Copy"; }, 1500);
+				btn.textContent = t("poll.copied");
+				setTimeout(function () { btn.textContent = t("poll.copy"); }, 1500);
 			};
 			if (navigator.clipboard && navigator.clipboard.writeText) {
 				navigator.clipboard.writeText(box.value).then(done, function () {

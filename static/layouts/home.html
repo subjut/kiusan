@@ -1,7 +1,7 @@
 {{template "partials/head" .}}
-<html lang="en">
+<html lang="{{.Lang}}">
     <body>
-        <a class="skip-link" href="#main">Skip to content</a>
+        <a class="skip-link" href="#main" data-i18n="nav.skip">{{.T "nav.skip"}}</a>
         {{template "partials/header" .}}
         <main id="main">
             {{embed}}

@@ -249,9 +249,11 @@ func runPollSuite(t *testing.T) {
 		t.Fatalf("answer not stored as submitted: %+v", gotA.Answers)
 	}
 	// The submitted answer renders as a static row: name with the
-	// edit/delete icons in front, tinted marks per slot.
+	// edit/delete icons in front, tinted marks per slot. The "you" marker
+	// is a client-swappable i18n span (data-i18n="meet.you").
 	bOwn := p.body(p.get("/meet/"+mA.Key, cookie+"="+alice))
-	contains(bOwn, "Alice (you)")
+	contains(bOwn, "Alice")
+	contains(bOwn, `data-i18n="meet.you"`)
 	contains(bOwn, `?edit=`+alice)
 	contains(bOwn, `data-id="`+alice+`"`)
 	contains(bOwn, "st-g")
@@ -320,7 +322,8 @@ func runPollSuite(t *testing.T) {
 		t.Fatalf("unmarked slot must drop from the marks: %+v", aliceAns.Marks)
 	}
 	bEd := p.body(p.get("/meet/"+mA.Key, cookie+"="+alice))
-	contains(bEd, "Alice J (you)")
+	contains(bEd, "Alice J")
+	contains(bEd, `data-i18n="meet.you"`)
 	absent(bEd, "st-y")
 
 	// ... and deleting it, which also expires the identity cookie.
@@ -378,7 +381,7 @@ func runPollSuite(t *testing.T) {
 	if findAnswer(gotA.Answers, adminTok) == nil {
 		t.Fatalf("organizer answer not stored: %+v", gotA.Answers)
 	}
-	contains(p.body(p.get("/meet/"+adminA, cookie+"="+adminTok)), "(you)")
+	contains(p.body(p.get("/meet/"+adminA, cookie+"="+adminTok)), `data-i18n="meet.you"`) // the organizer's own row is marked with the i18n "you" span
 	// Both views post their answer forms through their own link, so the
 	// back-redirect lands on the page the form came from; the organizer's
 	// row carries the edit/delete icons in both.
@@ -477,7 +480,9 @@ func runPollSuite(t *testing.T) {
 	status(rEnd, http.StatusOK)
 	bEnd := p.body(rEnd)
 	contains(bEnd, "This poll has ended")
-	contains(bEnd, `on <span class="f-date" data-slot="2026-10-01T00:00Z" data-style="long">2026-10-01</span>`)
+	// the expiry date renders as a data-slot f-date span; the "on " prefix
+	// lives inside the i18n meet.endedPre span, so we assert the span alone.
+	contains(bEnd, `<span class="f-date" data-slot="2026-10-01T00:00Z" data-style="long">2026-10-01</span>`)
 	absent(bEnd, `id="answer-form"`)
 	if p.hasCookie(rEnd, cd) {
 		t.Fatalf("no identity cookie may be minted for an ended poll")

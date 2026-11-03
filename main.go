@@ -23,6 +23,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/logger"
 	"github.com/gofiber/fiber/v3/middleware/static"
 	"github.com/gofiber/template/html/v3"
+	"golang.org/x/text/language"
 
 	"github.com/subjut/kiusan/database"
 	"github.com/subjut/kiusan/store"
@@ -108,6 +109,12 @@ func initRoutes(app *fiber.App, staticDir string) {
 		c.Set("Referrer-Policy", "same-origin")
 		return c.Next()
 	})
+
+	// The i18n endpoints: the page's initial dictionary as a same-origin
+	// script (the CSP allows no inline scripts) and the per-language
+	// dictionaries the dropdown fetches on a switch.
+	app.Get("/i18n/boot", i18nBootHandler)
+	app.Get("/i18n/:lang", i18nDictHandler)
 
 	// Make sure style files, fonts, and favicons are available
 	// (served from the site root; a file miss resets the response and calls Next)
@@ -244,32 +251,136 @@ func sendInternal(c fiber.Ctx, err error) error {
 	return c.Status(500).SendString("Internal server error")
 }
 
+// pageData is the binding every page renders through the home layout. A
+// typed struct (not a fiber.Map) so the templates can call the T method
+// with arguments — text/template only lets FuncMap functions and methods
+// take arguments, not function values in a data map. c stays unexported:
+// it feeds T, the templates never see it.
+type pageData struct {
+	c fiber.Ctx
+
+	// i18n base, filled by renderPage.
+	Lang          string
+	TitleKey      string
+	TitleSuffix   string
+	PageTitle     string
+	Metadesc      string
+	LocaleChosen  string
+	LocaleOptions []localeOption
+
+	// 1-1 form (create + edit).
+	Timezones    []string
+	MeetingKey   string
+	Title        string
+	Email        string
+	Description  string
+	Timezone     string
+	ExtraTz      string
+	HideUsers    bool
+	SingleSignup bool
+	SlotsAttr    string
+	FormTitleKey string
+	Expiry       string
+	DefaultExp   string
+	MinExp       string
+	CalPrev      string
+	CalNext      string
+	SubmitLabel  string
+
+	// Meeting page.
+	Tz                string
+	TzName            string
+	Ends              string
+	EndsKey           string
+	Ended             bool
+	IsAdmin           bool
+	UserLink          string
+	AdminLink         string
+	EditLink          string
+	Single            bool
+	Slots             []formSlot
+	Header            []headerDate
+	HeaderYears       []headerYear
+	HasTime           bool
+	Cols              []respCol
+	SelfLink          string
+	FormNew           bool
+	FormID            string
+	FormName          string
+	FormAction        string
+	FormRespondentID  string
+	DeleteAction      string
+	AnswerCSRF        bool
+	DelCSRF           bool
+	CSRFToken         string
+	CopyTitle         string
+	TableAria         string
+	NameAria          string
+	EditAnswer        string
+	DeleteAnswer      string
+	NamePh            string
+	SubmitAnswerKey   string
+	SubmitAnswerLabel string
+}
+
+// T translates one catalog key in the viewer's language for this
+// request; the templates call it as {{.T "key"}}.
+func (p *pageData) T(id string) string {
+	return translator.MustLocalize(p.c, id)
+}
+
+// renderPage renders a page through the home layout, filling the i18n
+// base every page needs: the viewer's language (html lang attribute),
+// the <title> (catalog key + optional user suffix), the localized meta
+// description, and the language dropdown state. titleSuffix is the
+// user's poll title on the two dynamic titles (meet page, edit form)
+// and "" elsewhere.
+func renderPage(c fiber.Ctx, page, titleKey, titleSuffix string, d *pageData) error {
+	d.c = c
+	d.Lang = langHandler(c, "en")
+	d.TitleKey = titleKey
+	d.TitleSuffix = titleSuffix
+	d.PageTitle = translator.MustLocalize(c, titleKey) + titleSuffix
+	d.Metadesc = translator.MustLocalize(c, "meta.description")
+	d.LocaleChosen = localeChosen(c)
+	d.LocaleOptions = localeOptions
+	return c.Render(page, d, "layouts/home")
+}
+
+// localeChosen is the language the dropdown marks selected: the resolved
+// cookie choice, "" while the browser default is in effect (so the
+// "Browser default" row stays marked).
+func localeChosen(c fiber.Ctx) string {
+	v := c.Cookies(localeCookieName)
+	if v == "" {
+		return ""
+	}
+	if _, err := language.Parse(v); err != nil {
+		return ""
+	}
+	return matchLang(v)
+}
+
 func homeHandler(c fiber.Ctx) error {
-	return c.Render("index", fiber.Map{
-		"pagetitle": "kiusan | Hi!",
-	}, "layouts/home")
+	return renderPage(c, "index", "pagetitle.home", "", &pageData{})
 }
 
 // ---- 1-1 form: create & edit ----
 
 func formHandler(c fiber.Ctx) error {
 	now := time.Now()
-	return c.Render("1-1-form", fiber.Map{
-		"pagetitle":    "kiusan | Meeting Form!",
-		"timezones":    timezoneList,
-		"meetingkey":   "",
-		"title":        "",
-		"email":        "",
-		"description":  "",
-		"timezone":     "",
-		"extraTz":      "",
-		"hideusers":    false,
-		"singlesignup": false,
-		"slotsAttr":    "",
-		"expiry":       "",
-		"defaultExp":   now.UTC().AddDate(0, 3, 0).Format("2006-01-02"),
-		"minExp":       now.UTC().Format("2006-01-02"),
-	}, "layouts/home")
+	return renderPage(c, "1-1-form", "pagetitle.form", "", &pageData{
+		Timezones:    timezoneList,
+		FormTitleKey: "form.createTitle",
+		DefaultExp:   now.UTC().AddDate(0, 3, 0).Format("2006-01-02"),
+		MinExp:       now.UTC().Format("2006-01-02"),
+		// Attribute-context strings, precomputed: a literal inside a
+		// {{...}} action in an attribute value breaks html/template's
+		// tokenization.
+		CalPrev:     translator.MustLocalize(c, "form.calPrev"),
+		CalNext:     translator.MustLocalize(c, "form.calNext"),
+		SubmitLabel: translator.MustLocalize(c, "form.submit"),
+	})
 }
 
 // formEditHandler renders the 1-1 form prefilled with the poll's stored
@@ -303,22 +414,25 @@ func formEditHandler(c fiber.Ctx) error {
 
 	expiry := m.Expires.In(loc).Format("2006-01-02")
 
-	return c.Render("1-1-form", fiber.Map{
-		"pagetitle":    "kiusan | Edit: " + m.Title,
-		"timezones":    timezoneList,
-		"meetingkey":   m.AdminKey,
-		"title":        m.Title,
-		"email":        m.Email,
-		"description":  m.Description,
-		"timezone":     m.TimeZone,
-		"extraTz":      extraTimezone(m.TimeZone),
-		"hideusers":    m.HideUsers,
-		"singlesignup": m.SingleSignup,
-		"slotsAttr":    strings.Join(slots, ","),
-		"expiry":       expiry,
-		"defaultExp":   "",
-		"minExp":       time.Now().UTC().Format("2006-01-02"),
-	}, "layouts/home")
+	return renderPage(c, "1-1-form", "pagetitle.formEdit", m.Title, &pageData{
+		Timezones:    timezoneList,
+		MeetingKey:   m.AdminKey,
+		Title:        m.Title,
+		Email:        m.Email,
+		Description:  m.Description,
+		Timezone:     m.TimeZone,
+		ExtraTz:      extraTimezone(m.TimeZone),
+		HideUsers:    m.HideUsers,
+		SingleSignup: m.SingleSignup,
+		SlotsAttr:    strings.Join(slots, ","),
+		FormTitleKey: "form.editTitle",
+		Expiry:       expiry,
+		MinExp:       time.Now().UTC().Format("2006-01-02"),
+		// Attribute-context strings, precomputed (see formHandler).
+		CalPrev:     translator.MustLocalize(c, "form.calPrev"),
+		CalNext:     translator.MustLocalize(c, "form.calNext"),
+		SubmitLabel: translator.MustLocalize(c, "form.saveChanges"),
+	})
 }
 
 // extraTimezone returns the meeting's zone when it is not among the
@@ -503,6 +617,56 @@ func meetingSaveError(c fiber.Ctx, err error) error {
 
 // ---- poll page ----
 
+// The answers table's column slot: the slot's absolute instant as the
+// form row's field name, plus the red button's pressed state (a slot the
+// form target has not marked is red on submit).
+type formSlot struct {
+	Key    string
+	PressR string
+}
+
+// The table header's cells: a year row (each year cell spanning that
+// year's date columns), a date row (day/month/weekday in as few lines as
+// the narrowest date column allows — consistently, on every date — each
+// cell spanning that date's time columns), and a time sub-row when any
+// slot has a time.
+type timeCell struct {
+	Slot string // "" for a midnight slot in a timed poll (renders the dash)
+	Text string
+}
+
+type headerYear struct {
+	year  int
+	Label string
+	Slot  string // first slot of the year (the client formats the label)
+	Span  int
+}
+
+type headerDate struct {
+	dayKey string
+	day    time.Time
+	Label  string // day/month/weekday, newline-separated per line
+	Title  string // tooltip: "Mon 30 Nov 2026"
+	Slot   string // first slot of the date (the client formats the label)
+	Lines  int    // label line count 1|2|3 (data-lines)
+	Span   int
+	Times  []timeCell
+}
+
+// One visible respondent's row: their name, the per-slot marks (the form
+// row's hidden-input values), the mark glyphs for a static row's cells,
+// and the mark buttons' pressed states.
+type respCol struct {
+	ID, Name string
+	IsOwn    bool
+	Marks    []string // per slot: "g" | "y" | "" (the form row's hidden-input values)
+	Syms     []string // per slot: the mark glyph in a static row's cell
+	Csls     []string // per slot: st-g | st-y | st-r
+	PressG   []string
+	PressY   []string
+	PressR   []string
+}
+
 // meetingHandler renders the poll page for a user or admin link: the same
 // page, with the admin link adding the copyable links, the edit-poll
 // button and the per-row edit/delete icons on every answer.
@@ -583,10 +747,6 @@ func meetingHandler(c fiber.Ctx) error {
 	sort.Slice(dates, func(i, j int) bool { return dates[i].Before(dates[j]) })
 
 	// Table column slots, prefilled with the form target's marks.
-	type formSlot struct {
-		Key    string
-		PressR string
-	}
 	press := func(on bool) string {
 		if on {
 			return "true"
@@ -616,26 +776,6 @@ func meetingHandler(c fiber.Ctx) error {
 	// narrowest date column allows — consistently, on every date — each
 	// cell spanning that date's time columns), and a time sub-row when any
 	// slot has a time.
-	type timeCell struct {
-		Slot string // "" for a midnight slot in a timed poll (renders the dash)
-		Text string
-	}
-	type headerYear struct {
-		year  int
-		Label string
-		Slot  string // first slot of the year (the client formats the label)
-		Span  int
-	}
-	type headerDate struct {
-		dayKey string
-		day    time.Time
-		Label  string // day/month/weekday, newline-separated per line
-		Title  string // tooltip: "Mon 30 Nov 2026"
-		Slot   string // first slot of the date (the client formats the label)
-		Lines  int    // label line count 1|2|3 (data-lines)
-		Span   int
-		Times  []timeCell
-	}
 	headerYears := make([]headerYear, 0)
 	header := make([]headerDate, 0)
 	hasTime := false
@@ -696,16 +836,6 @@ func meetingHandler(c fiber.Ctx) error {
 	case own != nil:
 		shown = database.AnswerList{*own}
 	}
-	type respCol struct {
-		ID, Name string
-		IsOwn    bool
-		Marks    []string // per slot: "g" | "y" | "" (the form row's hidden-input values)
-		Syms     []string // per slot: the mark glyph in a static row's cell
-		Csls     []string // per slot: st-g | st-y | st-r
-		PressG   []string
-		PressY   []string
-		PressR   []string
-	}
 	cols := make([]respCol, 0, len(shown))
 	for i := range shown {
 		marks := make([]string, len(dates))
@@ -735,41 +865,52 @@ func meetingHandler(c fiber.Ctx) error {
 	if identity != "" && !ended {
 		csrf = csrfToken(identity)
 	}
-	data := fiber.Map{
-		"pagetitle":        "kiusan | " + m.Title,
-		"title":            m.Title,
-		"description":      m.Description,
-		"email":            m.Email,
-		"tz":               tz,
-		"tzname":           tzName,
-		"ends":             ends,
-		"endsKey":          endsKey,
-		"ended":            ended,
-		"isadmin":          isAdmin,
-		"userlink":         absURL(c, "/meet/"+m.Key),
-		"adminlink":        absURL(c, "/meet/"+m.AdminKey),
-		"editlink":         "/1-1-form/edit/" + m.AdminKey,
-		"single":           m.SingleSignup,
-		"slots":            slots,
-		"header":           header,
-		"headerYears":      headerYears,
-		"hasTime":          hasTime,
-		"cols":             cols,
-		"selflink":         "/meet/" + viewKey,
-		"formnew":          formNew,
-		"formid":           formID,
-		"formname":         formName,
-		"formaction":       formAction,
-		"formrespondentid": formRespondentID,
-		"deleteaction":     "/meet/" + viewKey + "/answer/delete",
+	submitKey := "meet.submitAnswer"
+	if formID != "" {
+		submitKey = "meet.saveChanges"
+	}
+	return renderPage(c, "meet", "pagetitle.meet", m.Title, &pageData{
+		Title:            m.Title,
+		Description:      m.Description,
+		Email:            m.Email,
+		Tz:               tz,
+		TzName:           tzName,
+		Ends:             ends,
+		EndsKey:          endsKey,
+		Ended:            ended,
+		IsAdmin:          isAdmin,
+		UserLink:         absURL(c, "/meet/"+m.Key),
+		AdminLink:        absURL(c, "/meet/"+m.AdminKey),
+		EditLink:         "/1-1-form/edit/" + m.AdminKey,
+		Single:           m.SingleSignup,
+		Slots:            slots,
+		Header:           header,
+		HeaderYears:      headerYears,
+		HasTime:          hasTime,
+		Cols:             cols,
+		SelfLink:         "/meet/" + viewKey,
+		FormNew:          formNew,
+		FormID:           formID,
+		FormName:         formName,
+		FormAction:       formAction,
+		FormRespondentID: formRespondentID,
+		DeleteAction:     "/meet/" + viewKey + "/answer/delete",
 		// CSRF travels with the forms that post through the cookie
 		// identity: the form row (unless it posts through the capability
 		// admin edit endpoint) and, in the user view, the delete form.
-		"answercsrf": csrf != "" && formRespondentID == "" && (formNew || formID != ""),
-		"delcsrf":    csrf != "" && !isAdmin,
-		"csrftoken":  csrf,
-	}
-	return c.Render("meet", data, "layouts/home")
+		AnswerCSRF: csrf != "" && formRespondentID == "" && (formNew || formID != ""),
+		DelCSRF:    csrf != "" && !isAdmin,
+		CSRFToken:  csrf,
+		// Attribute-context strings, precomputed (see formHandler).
+		CopyTitle:         translator.MustLocalize(c, "meet.copyTitle"),
+		TableAria:         translator.MustLocalize(c, "meet.tableAria"),
+		NameAria:          translator.MustLocalize(c, "meet.nameAria"),
+		EditAnswer:        translator.MustLocalize(c, "meet.editAnswer"),
+		DeleteAnswer:      translator.MustLocalize(c, "meet.deleteAnswer"),
+		NamePh:            translator.MustLocalize(c, "meet.namePh"),
+		SubmitAnswerKey:   submitKey,
+		SubmitAnswerLabel: translator.MustLocalize(c, submitKey),
+	})
 }
 
 // absURL renders a site-absolute URL for the copyable link boxes on the
