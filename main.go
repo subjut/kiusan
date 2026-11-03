@@ -565,12 +565,15 @@ func meetingHandler(c fiber.Ctx) error {
 	if lerr != nil {
 		loc = time.UTC
 	}
-	tzName := m.TimeZone
-	if tzName == "" {
-		tzName = "UTC"
+	// tz is the raw IANA name for the client's Intl formatting (data-tz);
+	// tzName is the same name with underscores as spaces for display.
+	tz := m.TimeZone
+	if tz == "" {
+		tz = "UTC"
 	}
-	tzName = strings.ReplaceAll(tzName, "_", " ")
+	tzName := strings.ReplaceAll(tz, "_", " ")
 	ends := m.Expires.In(loc).Format("2006-01-02")
+	endsKey := slotKey(m.Expires)
 
 	// Display order: chronological. Storage order follows the form's chip
 	// order, which can be out of order, and marks are keyed by the slot's
@@ -613,9 +616,14 @@ func meetingHandler(c fiber.Ctx) error {
 	// narrowest date column allows — consistently, on every date — each
 	// cell spanning that date's time columns), and a time sub-row when any
 	// slot has a time.
+	type timeCell struct {
+		Slot string // "" for a midnight slot in a timed poll (renders the dash)
+		Text string
+	}
 	type headerYear struct {
 		year  int
 		Label string
+		Slot  string // first slot of the year (the client formats the label)
 		Span  int
 	}
 	type headerDate struct {
@@ -623,8 +631,10 @@ func meetingHandler(c fiber.Ctx) error {
 		day    time.Time
 		Label  string // day/month/weekday, newline-separated per line
 		Title  string // tooltip: "Mon 30 Nov 2026"
+		Slot   string // first slot of the date (the client formats the label)
+		Lines  int    // label line count 1|2|3 (data-lines)
 		Span   int
-		Times  []string
+		Times  []timeCell
 	}
 	headerYears := make([]headerYear, 0)
 	header := make([]headerDate, 0)
@@ -634,22 +644,22 @@ func meetingHandler(c fiber.Ctx) error {
 		y := t.Year()
 		if n := len(headerYears); n == 0 || headerYears[n-1].year != y {
 			headerYears = append(headerYears, headerYear{year: y,
-				Label: strconv.Itoa(int(y))})
+				Label: strconv.Itoa(int(y)), Slot: slotKey(d)})
 		}
 		headerYears[len(headerYears)-1].Span++
 		dayKey := t.Format("2006-01-02")
 		if n := len(header); n == 0 || header[n-1].dayKey != dayKey {
 			header = append(header, headerDate{dayKey: dayKey, day: t,
-				Title: t.Format("Mon 2 Jan 2006")})
+				Title: t.Format("Mon 2 Jan 2006"), Slot: slotKey(d)})
 		}
 		g := &header[len(header)-1]
 		g.Span++
-		sub := "\u2014" // —: a date-only (midnight) slot in a timed poll
+		cell := timeCell{Text: "\u2014"} // —: a date-only slot in a timed poll
 		if t.Hour() != 0 || t.Minute() != 0 {
-			sub = t.Format("15:04")
+			cell = timeCell{Slot: slotKey(d), Text: t.Format("15:04")}
 			hasTime = true
 		}
-		g.Times = append(g.Times, sub)
+		g.Times = append(g.Times, cell)
 	}
 	// The date label uses as few lines as fit the narrowest date column
 	// (without stretching the 44px slot columns), applied to every date
@@ -666,11 +676,14 @@ func meetingHandler(c fiber.Ctx) error {
 		t := header[i].day
 		switch {
 		case minSpan <= 1:
+			header[i].Lines = 3
 			header[i].Label = t.Format("2") + "\n" +
 				t.Format("Jan") + "\n" + t.Format("Mon")
 		case minSpan == 2:
+			header[i].Lines = 2
 			header[i].Label = t.Format("2 Jan") + "\n" + t.Format("Mon")
 		default:
+			header[i].Lines = 1
 			header[i].Label = t.Format("2 Jan Mon")
 		}
 	}
@@ -727,8 +740,10 @@ func meetingHandler(c fiber.Ctx) error {
 		"title":            m.Title,
 		"description":      m.Description,
 		"email":            m.Email,
+		"tz":               tz,
 		"tzname":           tzName,
 		"ends":             ends,
+		"endsKey":          endsKey,
 		"ended":            ended,
 		"isadmin":          isAdmin,
 		"userlink":         absURL(c, "/meet/"+m.Key),

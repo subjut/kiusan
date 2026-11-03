@@ -176,7 +176,8 @@ func runPollSuite(t *testing.T) {
 	alice := p.cookie(r, cookie)
 	bUser := p.body(r)
 	for _, want := range []string{
-		"Poll A", "Pick a time", "Timezone: Europe/Berlin",
+		"Poll A", "Pick a time",
+		`class="tz-name" data-base="Europe/Berlin">Europe/Berlin</span>`,
 		`class="th-year" colspan="2"`, "2026",
 		`class="th-date" colspan="2"`, `title="Sun 1 Nov 2026"`,
 		"1 Nov\nSun",
@@ -476,7 +477,7 @@ func runPollSuite(t *testing.T) {
 	status(rEnd, http.StatusOK)
 	bEnd := p.body(rEnd)
 	contains(bEnd, "This poll has ended")
-	contains(bEnd, "on 2026-10-01")
+	contains(bEnd, `on <span class="f-date" data-slot="2026-10-01T00:00Z" data-style="long">2026-10-01</span>`)
 	absent(bEnd, `id="answer-form"`)
 	if p.hasCookie(rEnd, cd) {
 		t.Fatalf("no identity cookie may be minted for an ended poll")

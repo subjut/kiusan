@@ -82,23 +82,35 @@ func runSmokeSuite(t *testing.T) {
 		return r
 	}
 
-	// Pages render through the template engine.
-	if r := get("/"); r.StatusCode != http.StatusOK || !strings.Contains(body(r), "kiusan") {
-		t.Fatalf("GET /: status %d, body missing page content", r.StatusCode)
+	// Pages render through the template engine (and carry the header's
+	// locale dropdown on every page).
+	r := get("/")
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /: status %d", r.StatusCode)
+	}
+	if fb := body(r); !strings.Contains(fb, "kiusan") ||
+		!strings.Contains(fb, `id="locale"`) {
+		t.Fatalf("GET /: body missing page content or the header locale dropdown")
 	}
 	// The timezone select is rendered from data/timezones.txt (curated:
 	// 1-2 zones per UTC offset per region, plus UTC). The assertion is
 	// structural — the options must be inside the <select>, not loose text.
+	// The header's locale <select> precedes the form's, so slice from the
+	// timezone select to its own </select>.
 	rf := get("/1-1-form")
 	if rf.StatusCode != http.StatusOK {
 		t.Fatalf("GET /1-1-form: status %d", rf.StatusCode)
 	}
 	fb := body(rf)
 	selStart := strings.Index(fb, `<select id="timezone" name="timezone">`)
-	selEnd := strings.Index(fb, "</select>")
-	if selStart < 0 || selEnd <= selStart {
+	if selStart < 0 {
 		t.Fatalf("GET /1-1-form: timezone <select> not found in body")
 	}
+	relEnd := strings.Index(fb[selStart:], "</select>")
+	if relEnd < 0 {
+		t.Fatalf("GET /1-1-form: timezone </select> not found in body")
+	}
+	selEnd := selStart + relEnd
 	sel := fb[selStart:selEnd]
 	for _, want := range []string{
 		`<option value="Europe/Berlin">Europe/Berlin</option>`,
@@ -166,7 +178,7 @@ func runSmokeSuite(t *testing.T) {
 	for _, want := range []string{
 		"Smoke Meeting",
 		"smoke@example.com",
-		"Timezone: Europe/Berlin",
+		`class="tz-name" data-base="Europe/Berlin">Europe/Berlin</span>`,
 		`class="th-year" colspan="4"`,
 		`class="th-date" colspan="2"`,
 		`title="Sun 1 Nov 2026"`, "1 Nov\nSun",
@@ -253,6 +265,23 @@ func TestHeaderLabelConsistency(t *testing.T) {
 	for _, want := range []string{
 		`class="th-date" colspan="1"`, `class="th-date" colspan="2"`,
 		"1\nNov\nSun", "2\nNov\nMon",
+	} {
+		if !strings.Contains(mb, want) {
+			t.Fatalf("GET meeting: expected %q in body, got:\n%s", want, mb)
+		}
+	}
+	// The client-locale contract: the raw poll zone on the container and
+	// each header cell carrying the UTC instant of its group's first slot
+	// (Berlin is CET, UTC+1, in November), the label's line count, the
+	// expiry instant, and the dropdown base name.
+	for _, want := range []string{
+		`data-tz="Europe/Berlin"`,
+		`class="th-year" colspan="3" data-slot="2026-11-01T09:00Z`,
+		`class="th-date" colspan="1" data-slot="2026-11-01T09:00Z" data-lines="3"`,
+		`class="th-date" colspan="2" data-slot="2026-11-02T09:00Z" data-lines="3"`,
+		`class="th-time" data-slot="2026-11-02T13:00Z"`,
+		`class="tz-name" data-base="Europe/Berlin">Europe/Berlin</span>`,
+		`class="f-date" data-slot=`, `data-style="medium"`,
 	} {
 		if !strings.Contains(mb, want) {
 			t.Fatalf("GET meeting: expected %q in body, got:\n%s", want, mb)

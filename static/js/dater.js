@@ -39,10 +39,42 @@
 	var grid = document.getElementById("cal-grid");
 	var calTitle = document.getElementById("cal-title");
 
-	var DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-	var MONTH_NAMES = ["January", "February", "March", "April", "May",
-		"June", "July", "August", "September", "October", "November",
-		"December"];
+	// Weekday + month labels come from the viewer's locale (locale.js):
+	// the picker is a wall-calendar, so its dates are formatted without a
+	// timeZone — the y/m/d parts stay the ones the widget was built from.
+	function firstDow() {
+		// The locale's first weekday (0 = Sunday), best effort: some
+		// browsers don't report resolvedOptions().firstDay.
+		try {
+			var fd = new Intl.DateTimeFormat(Locale.get())
+				.resolvedOptions().firstDay;
+			if (typeof fd === "number" && fd >= 0 && fd <= 6) return fd;
+		} catch (e) { /* no firstDay: Sunday */ }
+		return 0;
+	}
+
+	function weekdayName(w) { // w: 0 = Sunday
+		// 2024-01-01 was a Monday.
+		return Locale.dtf({ weekday: "narrow" })
+			.format(new Date(2024, 0, 1 + ((w + 6) % 7)));
+	}
+
+	function monthTitle(y, m) {
+		return Locale.dtf({ month: "long", year: "numeric" })
+			.format(new Date(y, m, 1));
+	}
+
+	function chipDate(d) { // "YYYY-MM-DD" -> locale short date
+		var t = d.split("-");
+		return Locale.dtf({ day: "numeric", month: "short", year: "numeric" })
+			.format(new Date(+t[0], +t[1] - 1, +t[2]));
+	}
+
+	function timeLabel(t) { // "HH:MM" -> locale 12/24h time
+		var p = t.split(":");
+		return Locale.dtf({ hour: "numeric", minute: "2-digit" })
+			.format(new Date(2000, 0, 1, +p[0], +p[1]));
+	}
 
 	function pad(n, w) {
 		var s = String(n);
@@ -78,22 +110,23 @@
 
 	function renderCalendar() {
 		var min = localToday();
-		calTitle.textContent = MONTH_NAMES[view.m] + " " + view.y;
+		calTitle.textContent = monthTitle(view.y, view.m);
 
+		var dow0 = firstDow();
 		var html = "<tr>";
-		for (var n = 0; n < DAY_NAMES.length; n++) {
-			html += '<th scope="col">' + DAY_NAMES[n] + "</th>";
+		for (var n = 0; n < 7; n++) {
+			html += '<th scope="col">' + weekdayName((dow0 + n) % 7) + "</th>";
 		}
 		html += "</tr>";
 
-		var first = new Date(view.y, view.m, 1).getDay(); // 0 = Sunday
+		var lead = (new Date(view.y, view.m, 1).getDay() - dow0 + 7) % 7;
 		var dim = daysInMonth(view.y, view.m);
 		// A month always fits in six week-rows; cells outside the month
 		// are left empty.
 		for (var w = 0; w < 6; w++) {
 			html += "<tr>";
 			for (var col = 0; col < 7; col++) {
-				var idx = w * 7 + col - first + 1;
+				var idx = w * 7 + col - lead + 1;
 				if (idx < 1 || idx > dim) {
 					html += "<td></td>";
 					continue;
@@ -104,7 +137,7 @@
 				if (dateTimes[dateStr]) cls += " selected";
 				html += '<td><button type="button" class="' + cls + '"' +
 					(past ? " disabled" : "") + ' data-date="' + dateStr +
-					'" title="' + dateStr + '">' + idx + "</button></td>";
+					'" title="' + chipDate(dateStr) + '">' + idx + "</button></td>";
 			}
 			html += "</tr>";
 		}
@@ -143,17 +176,17 @@
 	}
 
 	function timeChip(d, t) {
-		return '<span class="chip">' + t +
+		return '<span class="chip">' + timeLabel(t) +
 			'<button type="button" class="chip-x" data-date="' + d +
-			'" data-time="' + t + '" title="Remove ' + t + ' on ' + d +
+			'" data-time="' + t + '" title="Remove ' + timeLabel(t) + ' on ' + chipDate(d) +
 			'">✕</button></span>';
 	}
 
 	function renderDateChips() {
 		dateChips.innerHTML = sorted(dateTimes).map(function (d) {
-			return '<span class="chip">' + d +
+			return '<span class="chip">' + chipDate(d) +
 				'<button type="button" class="chip-x" data-date="' + d +
-				'" title="Remove ' + d + '">✕</button></span>';
+				'" title="Remove ' + chipDate(d) + '">✕</button></span>';
 		}).join("");
 	}
 
@@ -164,7 +197,7 @@
 				return timeChip(d, t);
 			}).join("");
 			return '<div class="date-times-row">' +
-				'<span class="date-times-label">' + d + "</span>" +
+				'<span class="date-times-label">' + chipDate(d) + "</span>" +
 				'<span class="chips">' + chips + "</span>" +
 				'<input type="time" class="date-time-input" data-date="' + d + '">' +
 				'<button type="button" class="btn-secondary date-time-add" data-date="' + d + '">Add</button>' +
@@ -261,10 +294,11 @@
 			var ts = sorted(dateTimes[d]);
 			if (ts.length === 0) {
 				midnights++;
-				lines.push("<p><b>" + d + "</b> — no times: midnight slot</p>");
+				lines.push("<p><b>" + chipDate(d) + "</b> — no times: midnight slot</p>");
 			} else {
 				timed += ts.length;
-				lines.push("<p><b>" + d + "</b> — " + ts.join(", ") + "</p>");
+				lines.push("<p><b>" + chipDate(d) + "</b> — " +
+					ts.map(timeLabel).join(", ") + "</p>");
 			}
 		}
 		var html = lines.join("");
@@ -362,5 +396,6 @@
 		renderDateTimes();
 		renderPreview();
 	}
+	Locale.onChange(renderAll); // the "Display" dropdown re-renders the picker
 	renderAll();
 })();

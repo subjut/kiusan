@@ -199,8 +199,32 @@
 		border-bottom: 1px solid var(--border);
 	}
 
+	/* wordmark left, locale dropdown right */
 	header .container {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
 		padding-block: 0.875rem;
+	}
+
+	.locale-pick {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: none;
+	}
+
+	.locale-pick label {
+		color: var(--text-2);
+		font-size: 0.875rem;
+	}
+
+	#locale {
+		width: auto;
+		min-height: 0;
+		padding: 0.25rem 0.5rem;
+		font-size: 0.875rem;
 	}
 
 	/* wordmark (links home): the circular K mark — a teal circle with the
@@ -389,7 +413,8 @@
 		max-width: 130px;
 	}
 
-	/* date + timezone: fit their content instead of stretching to 480px */
+	/* date + timezone: fit their content instead of stretching to 480px;
+	   #locale fits content via its own rule in the header section */
 	#enddate,
 	#timezone {
 		width: auto;

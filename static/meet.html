@@ -1,6 +1,6 @@
-<div class="container">
+<div class="container" data-tz="{{.tz}}">
 	<h2>{{.title}}</h2>
-	<p class="meta">Timezone: {{.tzname}} &middot; Poll ends {{.ends}}{{if .email}} &middot; {{.email}}{{end}}</p>
+	<p class="meta">Timezone: <span class="tz-name" data-base="{{.tzname}}">{{.tzname}}</span> &middot; Poll ends <span class="f-date" data-slot="{{.endsKey}}" data-style="medium">{{.ends}}</span>{{if .email}} &middot; {{.email}}{{end}}</p>
 
 	{{if .isadmin}}
 	<section class="links">
@@ -23,7 +23,7 @@
 	{{end}}
 
 	{{if .ended}}
-	<p class="ended">This poll has ended on {{.ends}} — it no longer accepts answers.</p>
+	<p class="ended">This poll has ended on <span class="f-date" data-slot="{{.endsKey}}" data-style="long">{{.ends}}</span> — it no longer accepts answers.</p>
 	{{else if .slots}}
 	<!-- All answers in one table: a row per respondent, plus one form row —
 	     the empty last row while the viewer has no answer yet, or the row
@@ -40,21 +40,21 @@
 				{{if .hasTime}}
 				<tr>
 					<th scope="col" rowspan="3" class="th-name">Name</th>
-					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}">{{.Label}}</th>{{end}}
+					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
 				</tr>
 				<tr>
-					{{range .header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}" title="{{.Title}}">{{.Label}}</th>{{end}}
+					{{range .header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
 				</tr>
 				<tr>
-					{{range .header}}{{range .Times}}<th scope="col" class="th-time">{{.}}</th>{{end}}{{end}}
+					{{range .header}}{{range .Times}}<th scope="col" class="th-time" data-slot="{{.Slot}}">{{.Text}}</th>{{end}}{{end}}
 				</tr>
 				{{else}}
 				<tr>
 					<th scope="col" rowspan="2" class="th-name">Name</th>
-					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}">{{.Label}}</th>{{end}}
+					{{range .headerYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
 				</tr>
 				<tr>
-					{{range .header}}<th scope="col" class="th-date" title="{{.Title}}">{{.Label}}</th>{{end}}
+					{{range .header}}<th scope="col" class="th-date" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
 				</tr>
 				{{end}}
 				</thead>

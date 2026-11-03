@@ -88,8 +88,13 @@ Feature state (see `static/index.html`):
   (`static/index.html`, `static/1-1-form.html`, `static/meet.html`;
   layout: `static/layouts/home.html`, partials in `static/partials/`),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
-  widget and `poll.js` — answer-table toggling, single-slot grey-out,
-  delete confirmations, copy-box selection; both vanilla, no deps),
+  widget (locale-aware labels via `locale.js`), `poll.js` — answer-table
+  toggling, single-slot grey-out, delete confirmations, copy-box
+  selection, and `locale.js` — browser-locale date display: rewrites the
+  server-rendered date labels (kept as the no-JS fallback) in the
+  viewer's locale and owns the site-header Display dropdown
+  (`partials/locale-select.html`); loaded from `partials/header.html`,
+  so it runs on every page; all vanilla, no deps),
   `static/fonts/` (the self-hosted Inter variable font
   `InterVariable.woff2` + its OFL `LICENSE.txt`, served as
   `/InterVariable.woff2`) and `static/favicon/`, all served from the
@@ -178,6 +183,28 @@ Feature state (see `static/index.html`):
   the zone name with underscores as spaces (the `zoneDisplay` template
   function in `main.go`, also applied to the poll page's `Timezone:`
   line); option values and stored data keep the real IANA name.
+- **Locale display (client-side)**: date/time *values* show in the
+  viewer's browser locale — `static/js/locale.js` rewrites the
+  server-rendered labels (which stay as the no-JS fallback) with
+  `Intl.DateTimeFormat`. Locale resolution: the `kiusan-locale` cookie
+  (an unpersonalized BCP-47 tag, JS-only, 1-year `Lax`, set by the
+  site-header Display dropdown in `partials/locale-select.html`; curated
+  ~15 locales shown by native name + the browser's own language
+  auto-added) wins, else `navigator.language`. `locale.js` loads from
+  the header (before the page body), so its initial reformat waits for
+  `DOMContentLoaded`. Every value is formatted with the poll's zone —
+  the page container's `data-tz` (IANA name, `UTC` when the poll has
+  none); the viewer's own zone is never used for the values. The
+  contract: `data-slot` (a `slotKey` instant) on the year/date/time
+  header cells, `data-lines` (1|2|3) on date cells, `data-slot` +
+  `data-style` (`medium`|`long`) on the `f-date` expiry spans, and
+  `data-base` on the `tz-name` span (the client appends the UTC offset,
+  `longOffset` form e.g. `GMT+1`). The form's calendar (`dater.js`)
+  formats its wall-clock labels through `Locale.dtf` (no `timeZone`),
+  follows the locale's first weekday best-effort
+  (`resolvedOptions().firstDay`, Sunday fallback) and re-renders on
+  locale change. UI strings stay English (`lang="en"`) — only the
+  date/time values are localized.
 - **AutoMigrate is additive-only**: it creates tables and adds columns at
   startup but does not drop or modify anything; destructive schema changes
   need explicit SQL migrations (none exist yet).
