@@ -155,6 +155,7 @@ func (g *gormStore) Update(m *database.Meeting) error {
 			"email":         m.Email,
 			"hide_users":    m.HideUsers,
 			"single_signup": m.SingleSignup,
+			"closed":        m.Closed,
 			"dates":         m.Dates,
 			"time_zone":     m.TimeZone,
 			"expires":       m.Expires,

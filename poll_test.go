@@ -31,7 +31,8 @@ func newPollClient(t *testing.T, app *fiber.App) *pollClient {
 // do runs one request. form is the url-encoded body of a POST ("" for
 // GETs), cookie a raw name=value pair ("" for none), contentType overrides
 // the body content type (default: urlencoded — the only one the site's
-// forms produce).
+// forms produce). A POST always carries the urlencoded content type, even
+// with an empty body — as a field-less browser form submission does.
 func (p *pollClient) do(method, path, form, cookie, contentType string) *http.Response {
 	p.t.Helper()
 	ct := contentType
@@ -41,9 +42,11 @@ func (p *pollClient) do(method, path, form, cookie, contentType string) *http.Re
 	var req *http.Request
 	if form != "" {
 		req = httptest.NewRequest(method, path, strings.NewReader(form))
-		req.Header.Set("Content-Type", ct)
 	} else {
 		req = httptest.NewRequest(method, path, nil)
+	}
+	if form != "" || method == http.MethodPost {
+		req.Header.Set("Content-Type", ct)
 	}
 	if cookie != "" {
 		req.Header.Set("Cookie", cookie)
@@ -512,6 +515,101 @@ func runPollSuite(t *testing.T) {
 	if !p.hasCookie(rReopen, cd) {
 		t.Fatalf("reopened poll must mint identity cookies again")
 	}
+
+	// ---- poll A: close, re-open, delete ----
+	// The admin page offers closing and deleting, not re-opening; the
+	// respondent page carries neither.
+	bClAdm := p.body(p.get("/meet/"+adminA, ""))
+	contains(bClAdm, "Close poll")
+	contains(bClAdm, `action="/meet/`+adminA+`/close"`)
+	absent(bClAdm, `Re-open poll`)
+	contains(bClAdm, `Delete poll`)
+	bClUser := p.body(p.get("/meet/"+mA.Key, ""))
+	absent(bClUser, `Close poll`)
+	absent(bClUser, `Delete poll`)
+	// A user key can never close the poll.
+	status(p.post("/meet/"+mA.Key+"/close", "", ""), http.StatusNotFound)
+	// Closing stops the answers.
+	status(p.post("/meet/"+adminA+"/close", "", ""), http.StatusSeeOther)
+	gotA, err = db.Get(mA.Key)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	if !gotA.Closed {
+		t.Fatalf("poll must be closed after close: %+v", gotA)
+	}
+	// The respondent page shows the closed notice and the answers table
+	// (without the form), and mints no new identity cookie.
+	rCl := p.get("/meet/"+mA.Key, "")
+	status(rCl, http.StatusOK)
+	bClRsp := p.body(rCl)
+	contains(bClRsp, `data-i18n="meet.closedPre"`)
+	contains(bClRsp, `Bobby`)
+	absent(bClRsp, `id="answer-form"`)
+	absent(bClRsp, `id="del-form"`)
+	if p.hasCookie(rCl, cookie) {
+		t.Fatalf("no identity cookie may be minted for a closed poll")
+	}
+	// Answering, editing, and deleting are all refused while closed.
+	status(p.post("/meet/"+mA.Key+"/answer",
+		"name=Late&csrftoken="+csrfToken(bob), cookie+"="+bob), http.StatusGone)
+	status(p.post("/meet/"+adminA+"/answer/edit", "respondentid="+bob+"&name=Late", ""), http.StatusGone)
+	status(p.post("/meet/"+adminA+"/answer/delete", "respondentid="+bob, cookie+"="+adminTok), http.StatusGone)
+	// The admin page now offers re-opening, not closing.
+	bRo := p.body(p.get("/meet/"+adminA, ""))
+	contains(bRo, `Re-open poll`)
+	contains(bRo, `action="/meet/`+adminA+`/reopen"`)
+	absent(bRo, `action="/meet/`+adminA+`/close"`)
+	// Re-opening (admin key only) lets the answers flow again.
+	status(p.post("/meet/"+mA.Key+"/reopen", "", ""), http.StatusNotFound)
+	status(p.post("/meet/"+adminA+"/reopen", "", ""), http.StatusSeeOther)
+	gotA, _ = db.Get(mA.Key)
+	if gotA.Closed {
+		t.Fatalf("poll must be open after re-open: %+v", gotA)
+	}
+	slotA := slotKey(gotA.Dates[0])
+	status(p.post("/meet/"+mA.Key+"/answer",
+		"name=Late&csrftoken="+csrfToken(bob)+"&a"+slotA+"=g", cookie+"="+bob), http.StatusSeeOther)
+	gotA, _ = db.Get(mA.Key)
+	if a := findAnswer(gotA.Answers, bob); a == nil || a.Name != "Late" || a.Marks[slotA] != "g" {
+		t.Fatalf("a reopened poll must accept answers again: %+v", gotA.Answers)
+	}
+
+	// Deleting purges the poll: the row, the answers, both links.
+	status(p.post("/meet/"+mA.Key+"/delete", "", ""), http.StatusNotFound)
+	rDelPoll := p.post("/meet/"+adminA+"/delete", "", cookie+"="+adminTok)
+	status(rDelPoll, http.StatusSeeOther)
+	if loc := rDelPoll.Header.Get("Location"); loc != "/" {
+		t.Fatalf("delete redirect: %q", loc)
+	}
+	// The respondent identities go with the poll: the cookie is expired.
+	cookieDropped := false
+	for _, sc := range rDelPoll.Header.Values("Set-Cookie") {
+		if strings.HasPrefix(sc, cookie+"=") && strings.Contains(sc, "expires=Thu, 01 Jan 1970") {
+			cookieDropped = true
+		}
+	}
+	if !cookieDropped {
+		t.Fatalf("deleting the poll must expire the identity cookie: %v", rDelPoll.Header.Values("Set-Cookie"))
+	}
+	if _, err := db.Get(mA.Key); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("poll row not deleted (user key): %v", err)
+	}
+	if _, err := db.GetAdmin(adminA); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("poll row not deleted (admin key): %v", err)
+	}
+	// Both links and the edit form now render the gone page — a 404 with
+	// its own message, which the plain 404 of an unknown path lacks.
+	for _, path := range []string{"/meet/" + mA.Key, "/meet/" + adminA, "/1-1-form/edit/" + adminA} {
+		rGone := p.get(path, "")
+		status(rGone, http.StatusNotFound)
+		bGone := p.body(rGone)
+		contains(bGone, `data-i18n="meet.goneTitle"`)
+		contains(bGone, `kiusan | Poll not found`)
+	}
+	rPlain := p.get("/definitely-missing", "")
+	status(rPlain, http.StatusNotFound)
+	absent(p.body(rPlain), `meet.goneTitle`)
 
 	// The create route enforces the same content-type gate.
 	if r := p.do(http.MethodPost, "/1-1-form", `{"title":"X"}`, "", "application/json"); r.StatusCode != http.StatusUnsupportedMediaType {

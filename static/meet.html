@@ -14,7 +14,29 @@
 			<button type="button" class="btn-secondary copy-btn" data-i18n="meet.copy" data-i18n-title="meet.copyTitle" title="{{.CopyTitle}}">{{.T "meet.copy"}}</button>
 			<input type="text" class="copybox" readonly value="{{.AdminLink}}">
 		</div>
-		<a class="btn" href="{{.EditLink}}" data-i18n="meet.editPoll">{{.T "meet.editPoll"}}</a>
+		<div class="link-actions">
+			<a class="btn" href="{{.EditLink}}" data-i18n="meet.editPoll">{{.T "meet.editPoll"}}</a>
+			{{if and (not .Closed) (not .Ended)}}
+			<form method="POST" action="{{.CloseAction}}" class="inline-form">
+				<button type="submit" class="btn-secondary" data-i18n="meet.closePoll">{{.T "meet.closePoll"}}</button>
+			</form>
+			{{end}}
+			{{if .Closed}}
+			<form method="POST" action="{{.ReopenAction}}" class="inline-form">
+				<button type="submit" class="btn-secondary" data-i18n="meet.reopenPoll">{{.T "meet.reopenPoll"}}</button>
+			</form>
+			{{end}}
+			<form method="POST" action="{{.DeletePollAction}}" id="poll-del-form" class="inline-form">
+				<button type="button" class="btn-danger delete-poll-btn" data-i18n="meet.deletePoll">{{.T "meet.deletePoll"}}</button>
+			</form>
+		</div>
+		<div class="delete-warning" role="alert" hidden>
+			<p data-i18n="meet.deleteWarn">{{.T "meet.deleteWarn"}}</p>
+			<div class="form-actions">
+				<button type="submit" form="poll-del-form" class="btn-danger" data-i18n="meet.deleteConfirm">{{.T "meet.deleteConfirm"}}</button>
+				<button type="button" class="btn-secondary delete-cancel" data-i18n="meet.cancel">{{.T "meet.cancel"}}</button>
+			</div>
+		</div>
 	</section>
 	{{end}}
 
@@ -22,100 +44,24 @@
 	<p class="description">{{.Description}}</p>
 	{{end}}
 
-	{{if .Ended}}
+	{{if .Closed}}
+	<p class="closed"><span data-i18n="meet.closedPre">{{.T "meet.closedPre"}}</span><span data-i18n="meet.closedPost">{{.T "meet.closedPost"}}</span></p>
+	{{else if .Ended}}
 	<p class="ended"><span data-i18n="meet.endedPre">{{.T "meet.endedPre"}}</span><span class="f-date" data-slot="{{.EndsKey}}" data-style="long">{{.Ends}}</span><span data-i18n="meet.endedPost">{{.T "meet.endedPost"}}</span></p>
-	{{else if .Slots}}
-	<!-- All answers in one table: a row per respondent, plus one form row —
-	     the empty last row while the viewer has no answer yet, or the row
-	     of the respondent the page is editing (?edit=<id>), rendered in
-	     place. Submit / cancel live below the table; the trash icons fill
-	     and submit the hidden delete form. -->
+	{{end}}
+
+	{{if .Slots}}
+	{{if .Closed}}
+	{{/* A closed poll keeps the answers table visible on both links, as a
+	     static matrix — no form row, no edit/delete icons (the partial
+	     renders them only while the poll is open). An ended poll keeps
+	     the old behavior: the notice only, no table. */}}
+	{{template "partials/answers-table" .}}
+	{{else if not .Ended}}
 	<form method="POST" action="{{.FormAction}}" id="answer-form" data-single="{{if .Single}}true{{else}}false{{end}}">
 		{{if .AnswerCSRF}}<input type="hidden" name="csrftoken" value="{{.CSRFToken}}">{{end}}
 		{{if .FormRespondentID}}<input type="hidden" name="respondentid" value="{{.FormRespondentID}}">{{end}}
-		<div class="table-breakout">
-			<div class="table-scroll" tabindex="0" role="region" aria-label="{{.TableAria}}" data-i18n-aria="meet.tableAria">
-				<table class="answers-table">
-				<thead>
-				{{if .HasTime}}
-				<tr>
-					<th scope="col" rowspan="3" class="th-name" data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</th>
-					{{range .HeaderYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
-				</tr>
-				<tr>
-					{{range .Header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
-				</tr>
-				<tr>
-					{{range .Header}}{{range .Times}}<th scope="col" class="th-time" data-slot="{{.Slot}}">{{.Text}}</th>{{end}}{{end}}
-				</tr>
-				{{else}}
-				<tr>
-					<th scope="col" rowspan="2" class="th-name" data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</th>
-					{{range .HeaderYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
-				</tr>
-				<tr>
-					{{range .Header}}<th scope="col" class="th-date" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
-				</tr>
-				{{end}}
-				</thead>
-				<tbody>
-				{{range $col := .Cols}}
-			{{if eq $col.ID $.FormID}}
-			<tr class="form-row">
-				<td>
-					<input type="text" id="name" name="name" aria-label="{{$.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" value="{{$.FormName}}" required>
-				</td>
-				{{range $j, $s := $.Slots}}
-				<td class="cell form-cell st-{{index $col.Csls $j}}" data-slot="{{$s.Key}}" data-status="{{index $col.Marks $j}}">
-					<input type="hidden" name="a{{$s.Key}}" value="{{index $col.Marks $j}}">
-					<div class="mark-stack">
-						<button type="button" class="mark mark-g" aria-pressed="{{index $col.PressG $j}}">&#10003;</button>
-						{{if not $.Single}}<button type="button" class="mark mark-y" aria-pressed="{{index $col.PressY $j}}">(&#10003;)</button>{{end}}
-						<button type="button" class="mark mark-r" aria-pressed="{{index $col.PressR $j}}">&#10007;</button>
-					</div>
-				</td>
-				{{end}}
-			</tr>
-			{{else}}
-			<tr{{if $col.IsOwn}} class="own"{{end}}>
-				<td>
-					{{if or $.IsAdmin $col.IsOwn}}
-					<a class="icon-btn" href="{{$.SelfLink}}?edit={{$col.ID}}" title="{{$.EditAnswer}}" aria-label="{{$.EditAnswer}}" data-i18n-title="meet.editAnswer" data-i18n-aria="meet.editAnswer">
-						<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-					</a>
-					<button type="button" class="icon-btn del-btn" data-id="{{$col.ID}}" data-name="{{$col.Name}}" title="{{$.DeleteAnswer}}" aria-label="{{$.DeleteAnswer}}" data-i18n-title="meet.deleteAnswer" data-i18n-aria="meet.deleteAnswer">
-						<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-					</button>
-					{{end}}
-					{{$col.Name}}{{if $col.IsOwn}} <span data-i18n="meet.you">{{$.T "meet.you"}}</span>{{end}}
-				</td>
-				{{range $j, $sym := $col.Syms}}
-				<td class="cell st-{{index $col.Csls $j}}">{{.}}</td>
-				{{end}}
-			</tr>
-			{{end}}
-			{{end}}
-			{{if $.FormNew}}
-			<tr class="form-row">
-				<td>
-					<input type="text" id="name" name="name" aria-label="{{.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" placeholder="{{.NamePh}}" data-i18n-ph="meet.namePh" required>
-				</td>
-				{{range $.Slots}}
-					<td class="cell form-cell st-r" data-slot="{{.Key}}" data-status="">
-						<input type="hidden" name="a{{.Key}}" value="">
-						<div class="mark-stack">
-							<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
-							{{if not $.Single}}<button type="button" class="mark mark-y" aria-pressed="false">(&#10003;)</button>{{end}}
-							<button type="button" class="mark mark-r" aria-pressed="{{.PressR}}">&#10007;</button>
-						</div>
-					</td>
-				{{end}}
-			</tr>
-			{{end}}
-				</tbody>
-			</table>
-			</div>
-		</div>
+		{{template "partials/answers-table" .}}
 		{{if or $.FormNew $.FormID}}
 		<div class="form-actions">
 			<button type="submit" data-i18n="{{.SubmitAnswerKey}}">{{.SubmitAnswerLabel}}</button>
@@ -127,6 +73,7 @@
 		{{if .DelCSRF}}<input type="hidden" name="csrftoken" value="{{.CSRFToken}}">{{end}}
 		<input type="hidden" name="respondentid" value="">
 	</form>
+	{{end}}
 	{{else}}
 	<p data-i18n="meet.noSlots">{{.T "meet.noSlots"}}</p>
 	{{end}}

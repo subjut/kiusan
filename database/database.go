@@ -104,13 +104,18 @@ type Meeting struct {
 	Key string `gorm:"primaryKey"`
 	// AdminKey is the admin link, unique across the table; every poll
 	// has one, assigned by the store at creation and never changed.
-	AdminKey     string    `gorm:"not null;uniqueIndex"`
-	Title        string    `gorm:"not null"`
-	Description  string    `gorm:"not null"`
-	Email        string    `gorm:"not null"`
-	HideUsers    bool      `gorm:"not null;default:false"`
-	SingleSignup bool      `gorm:"not null;default:false"`
-	Dates        TimeSlice `gorm:"not null"`
+	AdminKey     string `gorm:"not null;uniqueIndex"`
+	Title        string `gorm:"not null"`
+	Description  string `gorm:"not null"`
+	Email        string `gorm:"not null"`
+	HideUsers    bool   `gorm:"not null;default:false"`
+	SingleSignup bool   `gorm:"not null;default:false"`
+	// Closed stops a poll from accepting answers before its end date:
+	// the admin closes a running poll and re-opens it at will. It is
+	// independent of Expires — a closed poll can expire, an expired one
+	// can be closed, and re-opening only clears the flag.
+	Closed bool      `gorm:"not null;default:false"`
+	Dates  TimeSlice `gorm:"not null"`
 	// TimeZone is the IANA zone (e.g. "Europe/Berlin") the meeting's
 	// dates and times are authored in; slots are absolute instants,
 	// rendered in this zone. Empty renders as UTC (the fallback a

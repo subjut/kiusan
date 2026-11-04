@@ -142,6 +142,12 @@ func initRoutes(app *fiber.App, staticDir string) {
 	app.Post("/meet/+/answer/edit", answerLimit, answerEditPostHandler)
 	app.Post("/meet/+/answer/delete", answerLimit, answerDeletePostHandler)
 
+	// Poll lifecycle, admin link only: close and re-open stop and restore
+	// answering, delete purges the poll and both of its links.
+	app.Post("/meet/+/close", closePollHandler)
+	app.Post("/meet/+/reopen", reopenPollHandler)
+	app.Post("/meet/+/delete", deletePollHandler)
+
 	// 404 Handler
 	app.Use(func(c fiber.Ctx) error {
 		return c.SendStatus(404) // => 404 "Not Found"
@@ -236,6 +242,18 @@ func notFoundHandler(c fiber.Ctx) error {
 	return c.SendStatus(404)
 }
 
+// meetingGone renders the 404 for a link that used to be a poll (or never
+// was): a full page with its own message, distinct from the plain-text
+// 404 of an unknown path. c.Render only sets the body and content type,
+// so the status set here is the one sent.
+func meetingGone(c fiber.Ctx) error {
+	if err := renderPage(c, "meet-gone", "pagetitle.meetGone", "", &pageData{}); err != nil {
+		return err
+	}
+	c.Status(404)
+	return nil
+}
+
 // sendErr writes a plain-text error body (never HTML-sniffable) with the
 // given status. The message must be server-authored, never echoed input.
 func sendErr(c fiber.Ctx, status int, msg string) error {
@@ -293,7 +311,11 @@ type pageData struct {
 	Ends              string
 	EndsKey           string
 	Ended             bool
+	Closed            bool
 	IsAdmin           bool
+	CloseAction       string
+	ReopenAction      string
+	DeletePollAction  string
 	UserLink          string
 	AdminLink         string
 	EditLink          string
@@ -389,7 +411,8 @@ func formEditHandler(c fiber.Ctx) error {
 	m, err := db.GetAdmin(c.Params("+"))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			return notFoundHandler(c)
+			// The admin link of a deleted poll renders the gone page.
+			return meetingGone(c)
 		}
 		return sendInternal(c, err)
 	}
@@ -676,11 +699,14 @@ func meetingHandler(c fiber.Ctx) error {
 		return sendInternal(c, err)
 	}
 	if m == nil {
-		return notFoundHandler(c)
+		// A link that resolves to no poll — deleted, or never created —
+		// gets the gone page, a 404 with its own message.
+		return meetingGone(c)
 	}
 
 	now := time.Now()
 	ended := pollEnded(m, now)
+	closed := m.Closed
 	identity := ensureIdentityCookie(c, m, now)
 	own := findAnswer(m.Answers, identity)
 
@@ -704,7 +730,7 @@ func meetingHandler(c fiber.Ctx) error {
 	formNew := false
 	formAction := "/meet/" + viewKey + "/answer"
 	formRespondentID := ""
-	if !ended {
+	if !ended && !closed {
 		switch {
 		case own != nil && editParam == identity:
 			formTarget = own
@@ -862,7 +888,7 @@ func meetingHandler(c fiber.Ctx) error {
 	// the handlers' back-redirect lands on this page (the admin stays on the
 	// admin page after answering, editing, or deleting an answer there).
 	csrf := ""
-	if identity != "" && !ended {
+	if identity != "" && !ended && !closed {
 		csrf = csrfToken(identity)
 	}
 	submitKey := "meet.submitAnswer"
@@ -870,18 +896,24 @@ func meetingHandler(c fiber.Ctx) error {
 		submitKey = "meet.saveChanges"
 	}
 	return renderPage(c, "meet", "pagetitle.meet", m.Title, &pageData{
-		Title:            m.Title,
-		Description:      m.Description,
-		Email:            m.Email,
-		Tz:               tz,
-		TzName:           tzName,
-		Ends:             ends,
-		EndsKey:          endsKey,
-		Ended:            ended,
-		IsAdmin:          isAdmin,
-		UserLink:         absURL(c, "/meet/"+m.Key),
-		AdminLink:        absURL(c, "/meet/"+m.AdminKey),
-		EditLink:         "/1-1-form/edit/" + m.AdminKey,
+		Title:       m.Title,
+		Description: m.Description,
+		Email:       m.Email,
+		Tz:          tz,
+		TzName:      tzName,
+		Ends:        ends,
+		EndsKey:     endsKey,
+		Ended:       ended,
+		Closed:      closed,
+		IsAdmin:     isAdmin,
+		UserLink:    absURL(c, "/meet/"+m.Key),
+		AdminLink:   absURL(c, "/meet/"+m.AdminKey),
+		EditLink:    "/1-1-form/edit/" + m.AdminKey,
+		// The lifecycle forms post through the admin link (a
+		// capability URL) — they only render in the admin view.
+		CloseAction:      "/meet/" + m.AdminKey + "/close",
+		ReopenAction:     "/meet/" + m.AdminKey + "/reopen",
+		DeletePollAction: "/meet/" + m.AdminKey + "/delete",
 		Single:           m.SingleSignup,
 		Slots:            slots,
 		Header:           header,
@@ -937,7 +969,7 @@ func answerPostHandler(c fiber.Ctx) error {
 	if m == nil {
 		return notFoundHandler(c)
 	}
-	if pollEnded(m, time.Now()) {
+	if m.Closed || pollEnded(m, time.Now()) {
 		return c.Status(410).SendString("This poll has ended")
 	}
 	identity := c.Cookies(cookieName(m))
@@ -976,7 +1008,7 @@ func answerEditPostHandler(c fiber.Ctx) error {
 	if m == nil || !isAdmin {
 		return notFoundHandler(c)
 	}
-	if pollEnded(m, time.Now()) {
+	if m.Closed || pollEnded(m, time.Now()) {
 		return c.Status(410).SendString("This poll has ended")
 	}
 	id := strings.TrimSpace(c.FormValue("respondentid"))
@@ -1014,7 +1046,7 @@ func answerDeletePostHandler(c fiber.Ctx) error {
 	if m == nil {
 		return notFoundHandler(c)
 	}
-	if pollEnded(m, time.Now()) {
+	if m.Closed || pollEnded(m, time.Now()) {
 		return c.Status(410).SendString("This poll has ended")
 	}
 	id := strings.TrimSpace(c.FormValue("respondentid"))
@@ -1041,4 +1073,77 @@ func answerDeletePostHandler(c fiber.Ctx) error {
 		dropIdentityCookie(c, m)
 	}
 	return c.Redirect().To("/meet/" + key)
+}
+
+// ---- poll lifecycle (admin link only) ----
+
+// closePollHandler closes a running poll: it stops accepting answers until
+// the admin re-opens it, while both links keep rendering the answers table.
+func closePollHandler(c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
+	key := c.Params("+")
+	m, isAdmin, err := resolveMeeting(key)
+	if err != nil {
+		return sendInternal(c, err)
+	}
+	// The route exists for both link shapes; only the admin link may use
+	// it, so a user key looks up like a missing link.
+	if m == nil || !isAdmin {
+		return notFoundHandler(c)
+	}
+	if pollEnded(m, time.Now()) {
+		return c.Status(410).SendString("This poll has ended")
+	}
+	if _, err := saveMeeting(key, true, func(mm *database.Meeting) {
+		mm.Closed = true
+	}); err != nil {
+		return meetingSaveError(c, err)
+	}
+	return c.Redirect().To("/meet/" + key)
+}
+
+// reopenPollHandler re-opens a closed poll: new answers can be submitted
+// and existing ones edited or deleted again.
+func reopenPollHandler(c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
+	key := c.Params("+")
+	m, isAdmin, err := resolveMeeting(key)
+	if err != nil {
+		return sendInternal(c, err)
+	}
+	if m == nil || !isAdmin {
+		return notFoundHandler(c)
+	}
+	if _, err := saveMeeting(key, true, func(mm *database.Meeting) {
+		mm.Closed = false
+	}); err != nil {
+		return meetingSaveError(c, err)
+	}
+	return c.Redirect().To("/meet/" + key)
+}
+
+// deletePollHandler purges the poll (admin link only): its row with every
+// answer, and with it each respondent's stored identity. The browser-side
+// identity cookie is dropped in the redirect, where it goes inert.
+func deletePollHandler(c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
+	key := c.Params("+")
+	m, isAdmin, err := resolveMeeting(key)
+	if err != nil {
+		return sendInternal(c, err)
+	}
+	if m == nil || !isAdmin {
+		return notFoundHandler(c)
+	}
+	if err := db.Delete(m.Key); err != nil {
+		return sendInternal(c, err)
+	}
+	dropIdentityCookie(c, m)
+	return c.Redirect().To("/")
 }

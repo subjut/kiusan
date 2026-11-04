@@ -130,6 +130,27 @@
 		});
 	}
 
+	// Deleting the poll is the site's most destructive action: the button
+	// opens the inline warning (a role=alert, so screen readers announce
+	// it) and its confirm button submits the form. The confirm button is
+	// the only submit path, so a plain browser (no JS) never reaches it —
+	// delete stays an explicit two-step confirmation.
+	var pollDel = document.getElementById("poll-del-form");
+	var warning = document.querySelector(".delete-warning");
+	if (pollDel && warning) {
+		var delBtn = pollDel.querySelector(".delete-poll-btn");
+		var confirmBtn = warning.querySelector('button[type="submit"]');
+		var cancelBtn = warning.querySelector(".delete-cancel");
+		delBtn.addEventListener("click", function () {
+			warning.hidden = false;
+			confirmBtn.focus();
+		});
+		cancelBtn.addEventListener("click", function () {
+			warning.hidden = true;
+			delBtn.focus();
+		});
+	}
+
 	// Clicking a link box selects the whole URL for copying.
 	Array.prototype.forEach.call(document.querySelectorAll("input.copybox"), function (i) {
 		i.addEventListener("click", function () { i.select(); });

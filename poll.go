@@ -35,13 +35,14 @@ func pollEnded(m *database.Meeting, now time.Time) bool {
 // request: the one the browser sent, or a freshly minted one (set on the
 // response) when the browser has none yet and the poll is still running.
 // Returning the value — not just setting the cookie — lets the very first
-// page load already carry a CSRF token matching the cookie it mints.
+// page load already carry a CSRF token matching the cookie it mints. A
+// closed poll mints nothing, like an expired one.
 func ensureIdentityCookie(c fiber.Ctx, m *database.Meeting, now time.Time) string {
 	name := cookieName(m)
 	if id := c.Cookies(name); id != "" {
 		return id
 	}
-	if !m.Expires.After(now) {
+	if m.Closed || !m.Expires.After(now) {
 		return ""
 	}
 	token, err := store.RandomKey(32)

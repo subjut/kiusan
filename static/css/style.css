@@ -739,6 +739,16 @@
 		padding: 0.75rem 1rem;
 	}
 
+	/* a closed poll is a deliberate state, not an error — amber, not red */
+	.closed {
+		background: var(--mark-amber-bg);
+		border: 1px solid var(--mark-amber-text);
+		border-radius: var(--radius-input);
+		color: var(--mark-amber-text);
+		font-weight: 600;
+		padding: 0.75rem 1rem;
+	}
+
 	/* admin extras: copyable links + edit poll */
 	.links {
 		margin: 1.5rem 0;
@@ -749,10 +759,59 @@
 		color: var(--text-2);
 	}
 
-	/* the grid stretches its items — the link rows want that, the edit
-	   button must keep its intrinsic (text-fitting) width */
-	.links .btn {
-		justify-self: start;
+	/* admin actions (edit / close|re-open / delete) in one row: grouped
+	   on the left, but with a gap wide enough to keep them from being
+	   clicked accidentally */
+	.link-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 3rem;
+	}
+
+	/* the lifecycle forms are inline so the buttons flow in the grid row */
+	.inline-form {
+		display: inline;
+	}
+
+	/* destructive action: solid red, distinct from the teal primary */
+	.btn-danger {
+		display: inline-block;
+		font-weight: 600;
+		background: var(--mark-red-text);
+		border: 1px solid var(--mark-red-text);
+		border-radius: var(--radius-input);
+		color: #fff;
+		padding: 0.5rem 1.125rem;
+		min-height: 40px;
+		cursor: pointer;
+		transition: background-color 0.15s ease, border-color 0.15s ease;
+	}
+
+	.btn-danger:hover {
+		background: #991b1b;
+		border-color: #991b1b;
+		color: #fff;
+	}
+
+	/* the delete-poll warning: a big, unmistakable box the button opens */
+	.delete-warning {
+		margin-top: 0.75rem;
+		background: var(--mark-red-bg);
+		border: 2px solid var(--mark-red-text);
+		border-radius: var(--radius-card);
+		padding: 1rem 1.25rem;
+		color: var(--mark-red-text);
+	}
+
+	.delete-warning p {
+		margin: 0 0 0.75rem;
+		font-size: 1.0625rem;
+		font-weight: 600;
+	}
+
+	.delete-warning .form-actions {
+		margin: 0;
 	}
 
 	/* one row per link: copy button + box. The box is sized to its URL by
@@ -1015,6 +1074,7 @@
 @media (forced-colors: active) {
 	.btn,
 	.btn-secondary,
+	.btn-danger,
 	.icon-btn,
 	button.mark,
 	button[type="submit"],

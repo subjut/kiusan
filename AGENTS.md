@@ -21,7 +21,9 @@ Feature state (see `static/index.html`):
   two-link meeting page (respondent answer form with green/yellow/red
   marks, submitted-answers matrix, admin link boxes, poll edit, answer
   management), the per-poll identity cookie with CSRF token, poll
-  expiry, and the prefilled poll edit that keeps both links.
+  expiry, the prefilled poll edit that keeps both links, and the
+  admin-side poll lifecycle (close / re-open / delete, with a
+  dedicated 404 page for deleted links).
 - "Vote on Something" — unimplemented (`static/choice-form.html` is a
   static stub, not templated and not routed)
 - "Find Date" — unimplemented (`static/date-form.html`, same)
@@ -46,7 +48,8 @@ Feature state (see `static/index.html`):
   lifecycle on the two-link model (identity cookie + CSRF, answering,
   visibility / hide-users, single-slot enforcement, answer edit/delete,
   admin answer management, poll edit with stable links and mark pruning,
-  expiry and prolongation, the
+  expiry and prolongation, the admin poll lifecycle (close / re-open /
+  delete, incl. the dedicated 404 page for deleted links), the
   clickjacking headers, and the urlencoded-only POST gate). The suites
   run on GORM-sqlite; each test chdirs into `t.TempDir()` and opens a
   throwaway store, so the dev data files are never touched.
@@ -56,13 +59,16 @@ Feature state (see `static/index.html`):
 - `main.go` — server setup, app wiring (`newApp`), routes (`initRoutes`,
   incl. the clickjacking-header middleware and the poll routes: `GET
   /1-1-form/edit/+` (admin key only), `POST /meet/+/answer`,
-  `POST /meet/+/answer/edit`, `POST /meet/+/answer/delete`), and the
-  thin handlers. The store is opened in `main` via `store.Open`
-  (env-selected); handlers reach it through the package-level `db`
-  global.
+  `POST /meet/+/answer/edit`, `POST /meet/+/answer/delete`, and the
+  admin lifecycle `POST /meet/+/close|reopen|delete`), and the
+  thin handlers — incl. `meetingGone`, the 404 page for a deleted poll
+  (`static/meet-gone.html` rendered with a 404 status). The store is
+  opened in `main` via `store.Open` (env-selected); handlers reach it
+  through the package-level `db` global.
 - `poll.go` — the poll plumbing shared by the handlers: the per-poll
   identity cookie (`kiusan-<userKey>`, HttpOnly + SameSite=Lax, valid
-  until the poll ends), the
+  until the poll ends; a closed poll mints none, like an expired one),
+  the
   stateless CSRF token (HMAC-SHA256 over the cookie value, secret from
   `KIUSAN_SECRET` or random per start), `slotKey` (the slot's absolute
   UTC instant, seconds stripped), the answer-list operations
@@ -79,7 +85,9 @@ Feature state (see `static/index.html`):
   and its `T` method live in `main.go`.
 - `database/database.go` — model types only: `Meeting` (incl. the IANA
   `TimeZone` (empty renders as UTC), the `uniqueIndex`ed `AdminKey`, the
-  always-set `Expires`, `Answers`, and the CAS stamp `Generation`),
+  always-set `Expires`, `Closed` (a closed poll stops accepting
+  answers, independent of `Expires`), `Answers`, and the CAS stamp
+  `Generation`),
   `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
   a JSON document in a TEXT column) and `TimeSlice` (candidate slots,
   same treatment). No handles or globals here.
@@ -94,11 +102,15 @@ Feature state (see `static/index.html`):
   builds the URL-safe keys. A new backend = implement `MeetingStore` +
   add a case in `Open`.
 - `static/` — HTML templates rendered by gofiber/template/html/v3
-  (`static/index.html`, `static/1-1-form.html`, `static/meet.html`;
-  layout: `static/layouts/home.html`, partials in `static/partials/`),
+  (`static/index.html`, `static/1-1-form.html`, `static/meet.html`,
+  `static/meet-gone.html` — the 404 page for a deleted poll; layout:
+  `static/layouts/home.html`, partials in `static/partials/` — incl.
+  `answers-table.html`, the shared answers-table markup the live form
+  and the closed poll's read-only matrix both render),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
   widget (locale-aware labels via `locale.js`), `poll.js` — answer-table
-  toggling, single-slot grey-out, delete confirmations, copy-box
+  toggling, single-slot grey-out, answer-delete confirmations, the
+  two-step delete-poll warning, copy-box
   selection, and `locale.js` — browser-locale date display: rewrites the
   server-rendered date labels (kept as the no-JS fallback) in the
   viewer's locale and owns the site-header Display dropdown
@@ -162,6 +174,16 @@ Feature state (see `static/index.html`):
   that calls `translator.MustLocalize`). Templates reference fields as
   `{{.FieldName}}` (or `{{$.FieldName}}` inside `{{range}}`) and
   localized strings as `{{.T "key"}}` (or `{{$.T "key"}}`).
+- **Re-read templates after writing them**: `write_file` has mangled
+  nested HTML in this project several times — the call succeeds, but the
+  file ends up with stray closing tags injected right after their opens
+  (`<thead></thead>`, `<tr></tr>`, `</tbody>` right after `<tbody>`,
+  `</td>` right after `<td>`). The result looks plausible at a glance and
+  some tests won't catch it. After every `write_file` (or any large
+  `edit_file`) of a `.html` file, re-read the written file and check that
+  the tag nesting is balanced. If a template looks broken, re-derive the
+  markup from `git show HEAD:<path>` (or the nearest known-good commit)
+  instead of patching it by guesswork.
 - **Prompt logging (automatic)**: after processing every user prompt,
   **before** sending the summary of what was done, append an entry to
   `docs/prompts/<YYYY-MM-DD>.md` (one file per date; when a new day
@@ -292,3 +314,25 @@ Feature state (see `static/index.html`):
   no new identity cookie, and hides the form — but the admin page keeps
   its edit button, so the organizer can prolong the poll and reopen
   answering.
+- **Poll lifecycle (close / re-open / delete)**: `Meeting.Closed` is
+  independent of `Expires`. A closed poll answers like an expired one
+  (410 on all three answer endpoints, no new identity cookie, no form
+  row), but both links keep rendering the answers table as a static
+  matrix (the shared `partials/answers-table.html`; the row
+  edit/delete icons render only while the poll is open). An expired
+  (not closed) poll keeps the old display: the notice only, no table.
+  The admin page shows "Close poll" while the poll is open, "Re-open
+  poll" while it is closed, and always a "Delete poll" button that
+  opens an inline warning (`role=alert`, a JS-gated two-step confirm —
+  the confirm button is the only submit path). The lifecycle routes are
+  capability URLs (admin key only, no CSRF) like the other admin
+  endpoints. Delete purges the row — with every answer and its stored
+  identity — and expires the requesting browser's identity cookie in
+  the redirect to `/`.
+- **Deleted-poll 404**: a link key that resolves to no poll renders
+  `static/meet-gone.html` with status 404 (`meetingGone`), for `GET
+  /meet/+` and `GET /1-1-form/edit/+` — a full page, deliberately
+  different from the plain-text 404 of an unknown path. Fiber v3's
+  `c.Render` only sets the body and content type, so the 404 status set
+  on the ctx around it is the one that ships; POST answer/lifecycle
+  endpoints keep the plain 404.
