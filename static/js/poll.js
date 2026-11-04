@@ -2,11 +2,12 @@
 //
 // The table holds a row per respondent and exactly one form row — the empty
 // last row while the viewer has no answer, or a row opened for editing via
-// ?edit=. Each form cell carries green / yellow / red toggle buttons
-// (yellow only when the poll is not single-slot) and a hidden input
-// holding the state ("g", "y" or "" = red X on submit; the red button
-// simply selects the unset state). Single-slot polls grey out every other
-// cell while one is marked; the server re-checks the constraint on submit.
+// ?edit=. Each form cell carries green / yellow toggle buttons (yellow only
+// when the poll is not single-slot) and a hidden input holding the state
+// ("g", "y" or "" — the empty state renders red with an ✗ in the
+// submitted-answers rows; there is no "no" button, toggling a mark off
+// simply clears it). Single-slot polls grey out every other cell while one
+// is marked; the server re-checks the constraint on submit.
 // Trash icons fill and submit the page's hidden delete form.
 
 (function () {
@@ -29,13 +30,14 @@
 	function paintCell(cell) {
 		var v = cell.getAttribute("data-status") || "";
 		cell.classList.remove("st-g", "st-y", "st-r");
-		cell.classList.add(v === "g" ? "st-g" : v === "y" ? "st-y" : "st-r");
+		if (v === "g") cell.classList.add("st-g");
+		else if (v === "y") cell.classList.add("st-y");
+		// Unmarked form cells stay neutral (no st-r) — the red tint with an
+		// ✗ appears only in the submitted-answers rows.
 		var g = cell.querySelector(".mark-g");
 		if (g) g.setAttribute("aria-pressed", v === "g" ? "true" : "false");
 		var y = cell.querySelector(".mark-y");
 		if (y) y.setAttribute("aria-pressed", v === "y" ? "true" : "false");
-		var r = cell.querySelector(".mark-r");
-		if (r) r.setAttribute("aria-pressed", v === "" ? "true" : "false");
 	}
 
 	// Wire one answers form: its form cells and their hidden inputs.
@@ -74,8 +76,6 @@
 				setStatus(cell, current === "g" ? "" : "g");
 			} else if (btn.classList.contains("mark-y")) {
 				setStatus(cell, current === "y" ? "" : "y");
-			} else if (btn.classList.contains("mark-r")) {
-				setStatus(cell, "");
 			}
 		});
 

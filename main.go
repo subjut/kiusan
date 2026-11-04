@@ -644,8 +644,7 @@ func meetingSaveError(c fiber.Ctx, err error) error {
 // form row's field name, plus the red button's pressed state (a slot the
 // form target has not marked is red on submit).
 type formSlot struct {
-	Key    string
-	PressR string
+	Key string
 }
 
 // The table header's cells: a year row (each year cell spanning that
@@ -684,10 +683,10 @@ type respCol struct {
 	IsOwn    bool
 	Marks    []string // per slot: "g" | "y" | "" (the form row's hidden-input values)
 	Syms     []string // per slot: the mark glyph in a static row's cell
-	Csls     []string // per slot: st-g | st-y | st-r
+	Csls     []string // per slot: g | y | r (static row cells: r renders red + ✗)
+	Fcls     []string // per slot: st-g | st-y | "" (form cells: unmarked stays neutral)
 	PressG   []string
 	PressY   []string
-	PressR   []string
 }
 
 // meetingHandler renders the poll page for a user or admin link: the same
@@ -790,11 +789,7 @@ func meetingHandler(c fiber.Ctx) error {
 	}
 	slots := make([]formSlot, 0, len(dates))
 	for _, d := range dates {
-		status := ""
-		if formTarget != nil {
-			status = formTarget.Marks[slotKey(d)]
-		}
-		slots = append(slots, formSlot{Key: slotKey(d), PressR: press(status == "")})
+		slots = append(slots, formSlot{Key: slotKey(d)})
 	}
 
 	// Header rows: a year row (each year cell spanning that year's date
@@ -867,21 +862,23 @@ func meetingHandler(c fiber.Ctx) error {
 		marks := make([]string, len(dates))
 		syms := make([]string, len(dates))
 		csls := make([]string, len(dates))
+		fcls := make([]string, len(dates))
 		pg := make([]string, len(dates))
 		py := make([]string, len(dates))
-		pr := make([]string, len(dates))
 		for j, d := range dates {
 			v := shown[i].Marks[slotKey(d)]
 			marks[j] = v
 			s, cl := markSym(v)
 			syms[j] = s
 			csls[j] = cl
+			if cl != "r" {
+				fcls[j] = "st-" + cl // form cells: unmarked stays neutral, no red
+			}
 			pg[j] = press(v == "g")
 			py[j] = press(v == "y")
-			pr[j] = press(v == "")
 		}
 		cols = append(cols, respCol{ID: shown[i].ID, Name: shown[i].Name, IsOwn: shown[i].ID == identity,
-			Marks: marks, Syms: syms, Csls: csls, PressG: pg, PressY: py, PressR: pr})
+			Marks: marks, Syms: syms, Csls: csls, Fcls: fcls, PressG: pg, PressY: py})
 	}
 
 	// The page's forms post through the same link the page is viewed on, so

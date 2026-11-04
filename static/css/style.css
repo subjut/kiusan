@@ -467,20 +467,25 @@
 	}
 
 	/* ---- mark toggles (form-row cells) ---------------------------------- */
-	/* one square button wide — the stack below makes the slot column as
-	   narrow as a single button */
+	/* flat, borderless toggles: the unpressed state is just the glyph in
+	   the cell, so nothing meets the cell borders. The glyph is
+	   deliberately large — the buttons are the only way to answer. The box
+	   stays the 44px slot (width: 100%), so bigger glyphs do not widen the
+	   table. The pressed state paints a chip 3px inside the cell edges
+	   (padding + background-clip: content-box), never touching the grid */
 	button.mark {
-		font-size: 0.875rem;
+		font-size: 1.25rem;
 		line-height: 1;
 		width: 100%;
 		aspect-ratio: 1;
-		border: 1px solid var(--border);
+		padding: 3px;
+		border: 0;
 		border-radius: 8px;
-		background: var(--surface);
+		background: transparent;
+		background-clip: content-box;
 		color: var(--text-2);
 		cursor: pointer;
-		transition: background-color 0.12s ease, border-color 0.12s ease,
-			color 0.12s ease;
+		transition: background-color 0.12s ease, color 0.12s ease;
 	}
 
 	/* the mark toggles stack vertically, one button per line */
@@ -493,8 +498,10 @@
 		min-height: 44px;
 	}
 
-	button.mark:hover:not(:disabled) {
-		border-color: var(--text-2);
+	/* hover: a quiet full-cell tint so the tap area reads as clickable —
+	   suppressed on the pressed cells, whose chip is the state */
+	button.mark:hover:not(:disabled):not([aria-pressed="true"]) {
+		background-color: var(--bg);
 		color: var(--text);
 	}
 
@@ -504,24 +511,23 @@
 	}
 
 	button.mark-g[aria-pressed="true"] {
-		background: var(--mark-green-bg);
-		border-color: var(--mark-green-text);
+		background-color: var(--mark-green-bg);
 		color: var(--mark-green-text);
 		font-weight: 600;
 	}
 
 	button.mark-y[aria-pressed="true"] {
-		background: var(--mark-amber-bg);
-		border-color: var(--mark-amber-text);
+		background-color: var(--mark-amber-bg);
 		color: var(--mark-amber-text);
 		font-weight: 600;
 	}
 
-	button.mark-r[aria-pressed="true"] {
-		background: var(--mark-red-bg);
-		border-color: var(--mark-red-text);
-		color: var(--mark-red-text);
-		font-weight: 600;
+	/* the mark legend above the answers table: tiny and quiet — it
+	   documents the glyphs, it is not content */
+	.legend {
+		margin: 0 0 0.375rem;
+		font-size: 0.75rem;
+		color: var(--text-2);
 	}
 
 	/* ---- answers table --------------------------------------------------- */
@@ -599,6 +605,12 @@
 		max-width: 44px;
 		height: 44px;
 		padding: 0;
+	}
+
+	/* the submitted-answer glyphs (✓ / (✓) / ✗) get the same size as the
+	   form buttons' ticks */
+	.answers-table td.cell {
+		font-size: 1.25rem;
 	}
 
 	/* the year spans its year's date columns, the date (with the weekday

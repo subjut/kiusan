@@ -4,6 +4,7 @@
      renders only while the poll is open (FormID / FormNew set by the
      handler) and the row's edit/delete icons only then, too — on a
      closed poll the table renders as a static matrix. */}}
+<p class="legend" data-i18n="meet.legend">{{.T "meet.legend"}}</p>
 <div class="table-breakout">
 	<div class="table-scroll" tabindex="0" role="region" aria-label="{{.TableAria}}" data-i18n-aria="meet.tableAria">
 		<table class="answers-table">
@@ -37,12 +38,11 @@
 				<input type="text" id="name" name="name" aria-label="{{$.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" value="{{$.FormName}}" required>
 			</td>
 			{{range $j, $s := $.Slots}}
-			<td class="cell form-cell st-{{index $col.Csls $j}}" data-slot="{{$s.Key}}" data-status="{{index $col.Marks $j}}">
+			<td class="cell form-cell {{index $col.Fcls $j}}" data-slot="{{$s.Key}}" data-status="{{index $col.Marks $j}}">
 				<input type="hidden" name="a{{$s.Key}}" value="{{index $col.Marks $j}}">
 				<div class="mark-stack">
 					<button type="button" class="mark mark-g" aria-pressed="{{index $col.PressG $j}}">&#10003;</button>
 					{{if not $.Single}}<button type="button" class="mark mark-y" aria-pressed="{{index $col.PressY $j}}">(&#10003;)</button>{{end}}
-					<button type="button" class="mark mark-r" aria-pressed="{{index $col.PressR $j}}">&#10007;</button>
 				</div>
 			</td>
 			{{end}}
@@ -72,12 +72,11 @@
 				<input type="text" id="name" name="name" aria-label="{{.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" placeholder="{{.NamePh}}" data-i18n-ph="meet.namePh" required>
 			</td>
 			{{range $.Slots}}
-			<td class="cell form-cell st-r" data-slot="{{.Key}}" data-status="">
+			<td class="cell form-cell" data-slot="{{.Key}}" data-status="">
 				<input type="hidden" name="a{{.Key}}" value="">
 				<div class="mark-stack">
 					<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
 					{{if not $.Single}}<button type="button" class="mark mark-y" aria-pressed="false">(&#10003;)</button>{{end}}
-					<button type="button" class="mark mark-r" aria-pressed="{{.PressR}}">&#10007;</button>
 				</div>
 			</td>
 			{{end}}

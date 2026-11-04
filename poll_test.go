@@ -192,7 +192,15 @@ func runPollSuite(t *testing.T) {
 			t.Fatalf("respondent page missing %q", want)
 		}
 	}
-	absent(p.body(p.get("/meet/"+mA.Key, cookie+"="+alice)), "Edit poll")
+	bPre := p.body(p.get("/meet/"+mA.Key, cookie+"="+alice))
+	absent(bPre, "Edit poll")
+	// The fresh form row carries no "no" button and unmarked cells stay
+	// neutral (no st-r tint) — the red ✗ appears only in the
+	// submitted-answers rows.
+	absent(bPre, "mark-r")
+	absent(bPre, "form-cell st-r")
+	contains(bPre, `class="cell form-cell"`)
+	contains(bPre, `data-i18n="meet.legend"`)
 	if got := r.Header.Get("X-Frame-Options"); got != "DENY" {
 		t.Fatalf("X-Frame-Options: %q, want DENY", got)
 	}
@@ -292,6 +300,8 @@ func runPollSuite(t *testing.T) {
 	bC := p.body(p.get("/meet/"+mC.Key, cc+"="+cy))
 	contains(bC, `data-single="true"`)
 	absent(bC, "mark-y")
+	absent(bC, "mark-r")
+	absent(bC, "form-cell st-r")
 	postC := func(form string) *http.Response {
 		return p.post("/meet/"+mC.Key+"/answer", form, cc+"="+cy)
 	}
@@ -309,6 +319,9 @@ func runPollSuite(t *testing.T) {
 	if len(gotC.Answers) != 1 || gotC.Answers[0].Name != "Cy" || len(gotC.Answers[0].Marks) != 1 || gotC.Answers[0].Marks[s1] != "g" {
 		t.Fatalf("single-slot answer stored wrong: %+v", gotC.Answers)
 	}
+	// The unmarked slot renders red with an ✗ in the result matrix —
+	// "no" is the absence of a mark, and the display keeps the red.
+	contains(p.body(p.get("/meet/"+mC.Key, cc+"="+cy)), `td class="cell st-r"`)
 
 	// ---- back to poll A: editing the own answer ----
 	status(p.post("/meet/"+mA.Key+"/answer",

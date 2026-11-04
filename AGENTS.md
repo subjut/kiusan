@@ -18,8 +18,9 @@ startup (additive-only).
 
 Feature state (see `static/index.html`):
 - "Schedule Meetings" — implemented end to end: the 1-1 form, the
-  two-link meeting page (respondent answer form with green/yellow/red
-  marks, submitted-answers matrix, admin link boxes, poll edit, answer
+  two-link meeting page (respondent answer form with green/yellow
+  marks — no "no" button; unmarked slots render red in the matrix —,
+  submitted-answers matrix, admin link boxes, poll edit, answer
   management), the per-poll identity cookie with CSRF token, poll
   expiry, the prefilled poll edit that keeps both links, and the
   admin-side poll lifecycle (close / re-open / delete, with a
@@ -299,6 +300,14 @@ Feature state (see `static/index.html`):
   editing the poll (adding/removing slots) never shifts stored marks;
   `pruneAnswers` drops marks for slots that no longer exist, and both
   links survive every edit.
+- **Marks: no "no" button**: the form cells offer only the green / yellow
+  toggles; "no" is the *absence* of a mark — `collectMarks` accepts
+  `""`, `g`, `y` only, and the stored answer map keeps no `r`. Unmarked
+  form cells render neutral (no `st-r`; `respCol.Fcls` maps unmarked to
+  an empty class), while the submitted-answers rows keep the red tint +
+  ✗ (`respCol.Csls`). Toggling a mark off clears it to the neutral
+  state. The small legend above the table (`meet.legend`) documents the
+  glyphs, which are rendered at 1.25rem inside the fixed 44px columns.
 - **Two links, one route**: `meetingHandler` tries the user key, then the
   admin key, to pick the view. The admin link is a capability URL:
   admin-keyed endpoints (answer edit/delete, the poll edit form and its
