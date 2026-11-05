@@ -11,7 +11,10 @@
             </span>
             <h1>kiusan</h1>
         </a>
-        {{template "partials/locale-select" .}}
+        <span class="header-actions">
+            {{template "partials/locale-select" .}}
+            {{template "partials/theme-toggle" .}}
+        </span>
         <script src="/locale.js"></script>
     </div>
 </header>

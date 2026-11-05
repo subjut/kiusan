@@ -286,6 +286,10 @@ type pageData struct {
 	LocaleChosen  string
 	LocaleOptions []localeOption
 
+	// themeClass: the viewer's explicit theme choice ("" / theme-dark /
+	// theme-light on <html>), filled by renderPage.
+	ThemeClass string
+
 	// 1-1 form (create + edit).
 	Timezones    []string
 	MeetingKey   string
@@ -354,9 +358,9 @@ func (p *pageData) T(id string) string {
 // renderPage renders a page through the home layout, filling the i18n
 // base every page needs: the viewer's language (html lang attribute),
 // the <title> (catalog key + optional user suffix), the localized meta
-// description, and the language dropdown state. titleSuffix is the
-// user's poll title on the two dynamic titles (meet page, edit form)
-// and "" elsewhere.
+// description, the language dropdown state, and the theme class.
+// titleSuffix is the user's poll title on the two dynamic titles (meet
+// page, edit form) and "" elsewhere.
 func renderPage(c fiber.Ctx, page, titleKey, titleSuffix string, d *pageData) error {
 	d.c = c
 	d.Lang = langHandler(c, "en")
@@ -366,7 +370,24 @@ func renderPage(c fiber.Ctx, page, titleKey, titleSuffix string, d *pageData) er
 	d.Metadesc = translator.MustLocalize(c, "meta.description")
 	d.LocaleChosen = localeChosen(c)
 	d.LocaleOptions = localeOptions
+	d.ThemeClass = themeClass(c)
 	return c.Render(page, d, "layouts/home")
+}
+
+// themeClass is the <html> class carrying the viewer's explicit theme
+// choice: the kiusan-theme cookie ("dark" / "light"). While no cookie is
+// set the class stays absent and the CSS media query follows the system
+// setting (static/js/theme.js mirrors a live choice onto the same class
+// and persists it to the cookie on the toggle click).
+func themeClass(c fiber.Ctx) string {
+	switch c.Cookies("kiusan-theme") {
+	case "dark":
+		return "theme-dark"
+	case "light":
+		return "theme-light"
+	default:
+		return ""
+	}
 }
 
 // localeChosen is the language the dropdown marks selected: the resolved

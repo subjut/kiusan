@@ -1,18 +1,24 @@
 /* kiusan — design system
  *
- * Warm & friendly, light theme, single teal accent. All colors live in
- * :root as tokens (layer `theme`); every page reuses them, so the look
- * is consistent by construction. Layer order:
+ * Warm & friendly, single teal accent. All colors live in :root as
+ * tokens (layer `theme`); every page reuses them, so the look is
+ * consistent by construction. Layer order:
  *
  *   @layer theme, base, components
+ *
+ * Two themes: the warm light theme is the :root default, the warm dark
+ * theme re-targets the same tokens (below) when the system prefers dark
+ * and the viewer has not chosen light, or always for an explicit
+ * kiusan-theme=dark choice — the server renders the choice as a class on
+ * <html> (main.go themeClass), static/js/theme.js keeps it in sync.
  *
  * Typography: self-hosted Inter variable font (see /InterVariable.woff2,
  * license in static/fonts/LICENSE.txt). No framework, no build step.
  *
- * Accessibility: AA contrast on all text/background pairs, a consistent
- * :focus-visible ring, glyphs (never color alone) for the answer marks,
- * >=44px targets for calendar days, prefers-reduced-motion and
- * forced-colors support.
+ * Accessibility: AA contrast on all text/background pairs in both
+ * themes, a consistent :focus-visible ring, glyphs (never color alone)
+ * for the answer marks, >=44px targets for calendar days,
+ * prefers-reduced-motion and forced-colors support.
  */
 
 @font-face {
@@ -44,6 +50,13 @@
 		--accent-hover: #115e59;
 		--accent-soft: #ccfbf1;
 		--accent-50: #f0fdfa;
+		/* text on the accent (buttons, selected calendar days) */
+		--on-accent: #ffffff;
+
+		/* destructive action (delete poll) — distinct from the teal */
+		--danger: #b91c1c;
+		--danger-hover: #991b1b;
+		--on-danger: #ffffff;
 
 		/* semantic answer marks — dark glyph on a light tint (AA) */
 		--mark-green-text: #15803d;
@@ -57,11 +70,96 @@
 		--radius-card: 16px;
 		--radius-input: 10px;
 		--shadow: 0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
+		--shadow-hover: 0 4px 12px rgba(28, 25, 23, 0.1);
 
 		/* type */
 		--font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
 			Roboto, "Helvetica Neue", Arial, sans-serif;
 	}
+}
+
+/* ------------------------------------------------------------------ */
+/* theme: dark — the same tokens re-targeted for dark surfaces         */
+/* ------------------------------------------------------------------ */
+/* Warm stone neutrals (not grey) and a brightened teal accent, with
+   high contrast throughout (primary text >= 14:1 on the background,
+   secondary text >= 9:1). Applied when the system prefers dark and the
+   viewer has not chosen light (class theme-light on <html>), and always
+   for an explicit kiusan-theme=dark choice (class theme-dark). The two
+   blocks must carry identical tokens; edit them together. */
+
+@layer theme {
+@media (prefers-color-scheme: dark) {
+	:root:not(.theme-light) {
+		/* surfaces (warm stone, bg dark) */
+		--bg: #171310;
+		--surface: #221d18;
+		--border: #756a5c;
+
+		/* text — AA+ on the surfaces above */
+		--text: #f5f1ea;
+		--text-2: #beb3a5;
+
+		/* accent (brightened teal) + text on it */
+		--accent: #2dd4bf;
+		--accent-hover: #5eead4;
+		--accent-soft: #0f3a35;
+		--accent-50: #1f2b25;
+		--on-accent: #042f2a;
+
+		/* destructive action */
+		--danger: #f87171;
+		--danger-hover: #fca5a5;
+		--on-danger: #450a0a;
+
+		/* semantic answer marks — light glyph on a dark tint (AA) */
+		--mark-green-text: #86efac;
+		--mark-green-bg: #0f2e1a;
+		--mark-amber-text: #fcd34d;
+		--mark-amber-bg: #2e2410;
+		--mark-red-text: #fca5a5;
+		--mark-red-bg: #331512;
+
+		/* elevation (darker, more opaque on dark surfaces) */
+		--shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+		--shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.55);
+	}
+}
+
+:root.theme-dark {
+	/* surfaces (warm stone, dark) */
+	--bg: #171310;
+	--surface: #221d18;
+	--border: #756a5c;
+
+	/* text — AA+ on the surfaces above */
+	--text: #f5f1ea;
+	--text-2: #beb3a5;
+
+	/* accent (brightened teal) + text on it */
+	--accent: #2dd4bf;
+	--accent-hover: #5eead4;
+	--accent-soft: #0f3a35;
+	--accent-50: #1f2b25;
+	--on-accent: #042f2a;
+
+	/* destructive action */
+	--danger: #f87171;
+	--danger-hover: #fca5a5;
+	--on-danger: #450a0a;
+
+	/* semantic answer marks — light glyph on a dark tint (AA) */
+	--mark-green-text: #86efac;
+	--mark-green-bg: #0f2e1a;
+	--mark-amber-text: #fcd34d;
+	--mark-amber-bg: #2e2410;
+	--mark-red-text: #fca5a5;
+	--mark-red-bg: #331512;
+
+	/* elevation (darker, more opaque on dark surfaces) */
+	--shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+	--shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.55);
+}
 }
 
 /* ------------------------------------------------------------------ */
@@ -199,13 +297,20 @@
 		border-bottom: 1px solid var(--border);
 	}
 
-	/* wordmark left, locale dropdown right */
+	/* wordmark left, locale dropdown + theme toggle right */
 	header .container {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
 		padding-block: 0.875rem;
+	}
+
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex: none;
 	}
 
 	.locale-pick {
@@ -226,6 +331,39 @@
 		padding: 0.25rem 0.5rem;
 		font-size: 0.875rem;
 	}
+
+	/* theme toggle: a ghost button beside the locale select. One fixed
+	   icon (sun top-left, slash, moon bottom-right) that switches color
+	   with the theme via currentColor; the click flips the <html> classes
+	   the server renders from the kiusan-theme cookie / static/js/theme.js
+	   keeps in sync (Gotchas: Theme in AGENTS.md). */
+	.theme-toggle {
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		padding: 0;
+		border: 1px solid transparent;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--text-2);
+		cursor: pointer;
+		transition: background-color 0.12s ease, border-color 0.12s ease,
+			color 0.12s ease;
+	}
+
+	.theme-toggle:hover {
+		color: var(--accent);
+		border-color: var(--accent);
+		background: var(--accent-soft);
+	}
+
+	.theme-toggle svg {
+		display: block;
+	}
+
+	/* the icon is one fixed symbol — always visible; its color follows
+	   the button color (--text-2, --accent on hover) via currentColor */
 
 	/* wordmark (links home): the circular K mark — a teal circle with the
 	   K knocked out in soft teal — plus the name */
@@ -316,7 +454,7 @@
 	.choose-box a:hover .box,
 	.choose-box a:focus-visible .box {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 12px rgba(28, 25, 23, 0.1);
+		box-shadow: var(--shadow-hover);
 	}
 
 	.box h2 {
@@ -373,7 +511,7 @@
 		background: var(--accent);
 		border: 1px solid var(--accent);
 		border-radius: var(--radius-input);
-		color: #fff;
+		color: var(--on-accent);
 		padding: 0.5rem 1.125rem;
 		min-height: 40px;
 		text-decoration: none;
@@ -386,7 +524,7 @@
 	input[type="submit"]:hover {
 		background: var(--accent-hover);
 		border-color: var(--accent-hover);
-		color: #fff;
+		color: var(--on-accent);
 	}
 
 	.btn-secondary {
@@ -790,10 +928,10 @@
 	.btn-danger {
 		display: inline-block;
 		font-weight: 600;
-		background: var(--mark-red-text);
-		border: 1px solid var(--mark-red-text);
+		background: var(--danger);
+		border: 1px solid var(--danger);
 		border-radius: var(--radius-input);
-		color: #fff;
+		color: var(--on-danger);
 		padding: 0.5rem 1.125rem;
 		min-height: 40px;
 		cursor: pointer;
@@ -801,9 +939,9 @@
 	}
 
 	.btn-danger:hover {
-		background: #991b1b;
-		border-color: #991b1b;
-		color: #fff;
+		background: var(--danger-hover);
+		border-color: var(--danger-hover);
+		color: var(--on-danger);
 	}
 
 	/* the delete-poll warning: a big, unmistakable box the button opens */
@@ -952,7 +1090,7 @@
 	.cal-grid .day.selected {
 		background: var(--accent);
 		border-color: var(--accent);
-		color: #fff;
+		color: var(--on-accent);
 		font-weight: 600;
 	}
 
@@ -1088,6 +1226,7 @@
 	.btn-secondary,
 	.btn-danger,
 	.icon-btn,
+	.theme-toggle,
 	button.mark,
 	button[type="submit"],
 	input[type="submit"],

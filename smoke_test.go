@@ -302,6 +302,47 @@ func TestFormPostSqlite(t *testing.T) {
 	runFormPostSuite(t)
 }
 
+// TestThemeCookieContract pins the no-flash theme contract: the
+// kiusan-theme cookie is rendered as a class on <html> (dark ->
+// theme-dark, light -> theme-light, absent/invalid -> no class, the CSS
+// media query then follows the system setting), and the header carries
+// the theme toggle on every page.
+func TestThemeCookieContract(t *testing.T) {
+	withStore(t, store.BackendSQLite, "meetings.db")
+	app := newTestApp(t)
+
+	get := func(cookie string) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		if cookie != "" {
+			req.Header.Set("Cookie", cookie)
+		}
+		r, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("GET /: %v", err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		return string(b)
+	}
+
+	if fb := get(""); strings.Contains(fb, `<html lang="en" class=`) {
+		t.Fatalf("GET / without a theme cookie: expected no class on <html>, got:\n%s", fb)
+	}
+	for cookie, want := range map[string]string{
+		"kiusan-theme=dark":   `<html lang="en" class="theme-dark">`,
+		"kiusan-theme=light":  `<html lang="en" class="theme-light">`,
+		"kiusan-theme=broken": `<html lang="en">`,
+	} {
+		fb := get(cookie)
+		if !strings.Contains(fb, want) {
+			t.Fatalf("GET / with %s: expected %q in body, got:\n%s", cookie, want, fb)
+		}
+	}
+	if fb := get("kiusan-theme=dark"); !strings.Contains(fb, `id="theme-toggle"`) {
+		t.Fatalf("GET /: theme toggle button missing from the header")
+	}
+}
+
 // TestRandomKey checks the key contract: exact length, URL-safe charset,
 // and no collisions across samples.
 func TestRandomKey(t *testing.T) {

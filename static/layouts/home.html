@@ -1,5 +1,5 @@
 {{template "partials/head" .}}
-<html lang="{{.Lang}}">
+<html lang="{{.Lang}}"{{if .ThemeClass}} class="{{.ThemeClass}}"{{end}}>
     <body>
         <a class="skip-link" href="#main" data-i18n="nav.skip">{{.T "nav.skip"}}</a>
         {{template "partials/header" .}}

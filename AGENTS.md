@@ -112,11 +112,16 @@ Feature state (see `static/index.html`):
   widget (locale-aware labels via `locale.js`), `poll.js` — answer-table
   toggling, single-slot grey-out, answer-delete confirmations, the
   two-step delete-poll warning, copy-box
-  selection, and `locale.js` — browser-locale date display: rewrites the
+  selection, `locale.js` — browser-locale date display: rewrites the
   server-rendered date labels (kept as the no-JS fallback) in the
   viewer's locale and owns the site-header Display dropdown
   (`partials/locale-select.html`); loaded from `partials/header.html`,
-  so it runs on every page; all vanilla, no deps),
+  so it runs on every page, and `theme.js` — the light/dark toggle
+  (`partials/theme-toggle.html`, a ghost button with a fixed
+  sun–slash–moon icon beside the locale select; see Gotchas → Theme) —
+  loaded from
+  `partials/head.html`, ahead of `style.css` and ahead of `locale.js`; all
+  vanilla, no deps),
   `static/fonts/` (the self-hosted Inter variable font
   `InterVariable.woff2` + its OFL `LICENSE.txt`, served as
   `/InterVariable.woff2`) and `static/favicon/`, all served from the
@@ -125,9 +130,11 @@ Feature state (see `static/index.html`):
   (a file miss resets the response and calls `c.Next()`, so later
   registrations and routes still run).
   `static/css/style.css` is the design system: all colors are
-  `:root` custom properties (warm light theme, single teal accent,
-  semantic green/amber/red answer marks with dark-glyph-on-light-tint
-  AA pairs), organized as `@layer theme, base, components`, with a
+  `:root` custom properties (warm light theme the `:root` default, plus
+  a warm dark theme that re-targets the same tokens — see Gotchas →
+  Theme), a single teal accent, semantic green/amber/red answer marks
+  (dark glyph on light tint in light mode, light glyph on dark tint in
+  dark mode), organized as `@layer theme, base, components`, with a
   global `:focus-visible` ring, `prefers-reduced-motion` and
   `forced-colors` support, and 44px calendar-day targets. Templates
   carry the a11y structure: `lang="en"`, a skip link, one `h1`
@@ -274,6 +281,28 @@ Feature state (see `static/index.html`):
   global setting). Base-tag auto-match: `de-CH` → `de`, `pt-BR` →
   `pt` (unshipped → English). The "never `{{` in YAML" rule prevents
   go-i18n template-action parse failures.
+- **Theme (light/dark)**: no flash on load, and the toggle needs no
+  reload. The `kiusan-theme` cookie (`dark`/`light`, 1-year, `Lax`,
+  JS-only) is the viewer's explicit choice; `main.go`'s `themeClass`
+  reads it in `renderPage` and `static/layouts/home.html` renders it as
+  a class on `<html>` (`theme-dark`/`theme-light`, no class when the
+  cookie is absent). The CSS dark theme is the same `:root` tokens
+  re-targeted (two identical blocks in `style.css` — edit them
+together): one under `@media (prefers-color-scheme: dark)` scoped to
+  `:root:not(.theme-light)`, one scoped to `:root.theme-dark`. Without
+  the cookie the media query follows the system setting (the default);
+  `static/js/theme.js` (loaded in `partials/head.html`) then follows
+  live system changes while no cookie is set, and the header toggle
+  the header toggle
+  (`partials/theme-toggle.html`, beside the locale select) flips the
+  theme, mirrors it onto the same classes, and persists it to the
+  cookie. The toggle's icon is one fixed symbol (sun top-left,
+  diagonal slash, moon bottom-right — all `currentColor`, always
+  visible; only its color changes with the theme, no icon swapping),
+  and its localized `aria-label` is managed by `theme.js` from
+  `window.I18N` (not a `data-i18n-aria` marker) and re-applied on
+  language changes via `Locale.onChange`. `meta theme-color` in `partials/head.html`
+  colors the mobile browser chrome per system scheme.
 - **AutoMigrate is additive-only**: it creates tables and adds columns at
   startup but does not drop or modify anything; destructive schema changes
   need explicit SQL migrations (none exist yet).
