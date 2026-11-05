@@ -337,6 +337,14 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   ✗ (`respCol.Csls`). Toggling a mark off clears it to the neutral
   state. The small legend above the table (`meet.legend`) documents the
   glyphs, which are rendered at 1.25rem inside the fixed 44px columns.
+- **The edit form row is the table's last row**: when editing an answer
+  (`?edit=<id>`), the respondent's row is *not* rendered in place — it is
+  skipped in the `{{range .Cols}}` loop and rendered as the table's last
+  row (prefilled from `pageData.FormCol`, the matching `respCol`),
+  directly above the save/cancel bar, so long tables need no scrolling.
+  Saving/canceling navigates to the plain page, where the row renders in
+  its normal list position again; the move is a render-only choice,
+  never persisted.
 - **Two links, one route**: `meetingHandler` tries the user key, then the
   admin key, to pick the view. The admin link is a capability URL:
   admin-keyed endpoints (answer edit/delete, the poll edit form and its

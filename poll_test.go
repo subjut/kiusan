@@ -422,15 +422,20 @@ func runPollSuite(t *testing.T) {
 		t.Fatalf("organizer answer not removed: %+v", gotA.Answers)
 	}
 
-	// The edit row renders in place: the opened respondent's row becomes
-	// the form, posting through the admin edit endpoint with their id and
-	// prefilled name.
+	// The edit row renders as the table's last row (the form, next to the
+	// save/cancel bar below the answers), posting through the admin edit
+	// endpoint with their id and prefilled name; their old position shows
+	// neither a static row nor an edit icon.
 	bEdRow := p.body(p.get("/meet/"+adminA+"?edit="+bob, cookie+"="+adminTok))
 	contains(bEdRow, `action="/meet/`+adminA+`/answer/edit"`)
 	contains(bEdRow, `name="respondentid" value="`+bob+`"`)
 	contains(bEdRow, `value="Bobby"`)
 	contains(bEdRow, "Save changes")
 	absent(bEdRow, `?edit=`+bob)
+	if i := strings.LastIndex(bEdRow, "<tr"); i < 0 ||
+		!strings.Contains(bEdRow[i:], `class="form-row"`) {
+		t.Fatalf("edit view: the form row must be the table's last row")
+	}
 	// A user link may never open someone else's row, and an unknown
 	// ?edit target just renders the plain page.
 	bUsrEd := p.body(p.get("/meet/"+mA.Key+"?edit="+bob, cookie+"="+adminTok))

@@ -335,6 +335,7 @@ type pageData struct {
 	FormName          string
 	FormAction        string
 	FormRespondentID  string
+	FormCol           respCol
 	DeleteAction      string
 	AnswerCSRF        bool
 	DelCSRF           bool
@@ -902,6 +903,20 @@ func meetingHandler(c fiber.Ctx) error {
 			Marks: marks, Syms: syms, Csls: csls, Fcls: fcls, PressG: pg, PressY: py})
 	}
 
+	// The form row renders as the table's last row (next to the save/
+	// cancel bar below the answers): the edited respondent's row is
+	// skipped in the loop above and carried here, prefilled. The row is
+	// found by id because cols' order follows the visible respondents.
+	var formCol respCol
+	if formID != "" {
+		for _, col := range cols {
+			if col.ID == formID {
+				formCol = col
+				break
+			}
+		}
+	}
+
 	// The page's forms post through the same link the page is viewed on, so
 	// the handlers' back-redirect lands on this page (the admin stays on the
 	// admin page after answering, editing, or deleting an answer there).
@@ -944,6 +959,7 @@ func meetingHandler(c fiber.Ctx) error {
 		FormName:         formName,
 		FormAction:       formAction,
 		FormRespondentID: formRespondentID,
+		FormCol:          formCol,
 		DeleteAction:     "/meet/" + viewKey + "/answer/delete",
 		// CSRF travels with the forms that post through the cookie
 		// identity: the form row (unless it posts through the capability
