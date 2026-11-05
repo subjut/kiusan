@@ -1,0 +1,25 @@
+{
+  "name": "kiusan",
+  "image": "mcr.microsoft.com/devcontainers/go",
+  "features": {
+    // installs nodejs into container
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "latest"
+    }
+  },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "Kiusan (web)",
+      "onAutoForward": "notify"
+    }
+  },
+  "containerEnv": {
+    "KIUSAN_SECRET": "dev-only-secret",
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go"]
+    }
+  }
+}
