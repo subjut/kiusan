@@ -63,10 +63,17 @@ type MeetingStore interface {
 // not set for the default sqlite backend.
 const defaultSqliteName = "meetings.db"
 
-// Open returns a MeetingStore for the given backend kind. An empty kind
+// Store combines the meeting and vote storage contracts. A single
+// backend serves both, so Open returns this combined interface.
+type Store interface {
+	MeetingStore
+	VoteStore
+}
+
+// Open returns a Store for the given backend kind. An empty kind
 // selects the default sqlite backend; mysql, mariadb and postgres need a
 // DSN (sqlite falls back to defaultSqliteName).
-func Open(kind, dsn string) (MeetingStore, error) {
+func Open(kind, dsn string) (Store, error) {
 	switch kind {
 	case "", BackendSQLite:
 		if dsn == "" {

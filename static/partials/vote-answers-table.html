@@ -1,0 +1,125 @@
+{{/* The vote's answers table: one row per visible voter, plus the one form
+     row — always the table's last row, next to the save/cancel bar below
+     the answers (the empty row while the viewer has no answer yet, or the
+     row of the voter the page is editing via ?edit=<id>, moved down from
+     its position). Mark-mode cells carry yes / maybe / no toggles (maybe
+     only while the vote is not single-choice); a single-choice vote offers
+     only yes and no, defaults to no, and an unvoted option reads as no.
+     Free-text cells carry one text input per option (150 chars). The form
+     row renders only while the vote is open; on a closed vote the table
+     renders as a static matrix. */}}
+{{if not .VoteFreeText}}
+{{if .Single}}
+<p class="legend" data-i18n="vote.legendSingle">{{.T "vote.legendSingle"}}</p>
+{{else}}
+<p class="legend" data-i18n="vote.legend">{{.T "vote.legend"}}</p>
+{{end}}
+{{end}}
+<div class="table-breakout">
+	<div class="table-scroll" tabindex="0" role="region" aria-label="{{.TableAria}}" data-i18n-aria="meet.tableAria">
+		<table class="answers-table vote-table{{if .VoteFreeText}} vote-freetext{{end}}">
+		<thead>
+		<tr>
+			<th scope="col" class="th-name" data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</th>
+			{{range $c := .Choices}}
+			<th scope="col" class="th-choice">{{ $c.Text }}</th>
+			{{end}}
+		</tr>
+		</thead>
+		<tbody>
+		{{range $col := .VoteCols}}
+		{{if eq $col.ID $.FormID}}
+		{{/* the edited row renders as the table's last row (next to the
+		     save/cancel bar below the answers); skipped in place */}}
+		{{else}}
+		<tr{{if $col.IsOwn}} class="own"{{end}}>
+			<td>
+				{{if and (or $.IsAdmin $col.IsOwn) (not $.Ended) (not $.Closed)}}
+				<a class="icon-btn" href="{{$.SelfLink}}?edit={{$col.ID}}" title="{{$.EditAnswer}}" aria-label="{{$.EditAnswer}}" data-i18n-title="meet.editAnswer" data-i18n-aria="meet.editAnswer">
+					<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+				</a>
+				<button type="button" class="icon-btn del-btn" data-id="{{$col.ID}}" data-name="{{$col.Name}}" title="{{$.DeleteAnswer}}" aria-label="{{$.DeleteAnswer}}" data-i18n-title="meet.deleteAnswer" data-i18n-aria="meet.deleteAnswer">
+					<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+				</button>
+				{{end}}
+				{{$col.Name}}{{if $col.IsOwn}} <span data-i18n="meet.you">{{$.T "meet.you"}}</span>{{end}}
+			</td>
+			{{range $j, $sym := $col.Syms}}
+			<td class="cell{{if index $col.Csls $j}} st-{{index $col.Csls $j}}{{end}}">{{ $sym }}</td>
+			{{end}}
+		</tr>
+		{{end}}
+		{{end}}
+		{{if $.FormNew}}
+		<tr class="form-row">
+			<td>
+				<input type="text" id="name" name="name" aria-label="{{.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" placeholder="{{.NamePh}}" data-i18n-ph="meet.namePh" required>
+			</td>
+			{{if $.VoteFreeText}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell">
+				<input type="text" name="n{{ $c.ID }}" maxlength="150">
+			</td>
+			{{end}}
+			{{else if $.Single}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell st-r" data-choice="{{ $c.ID }}" data-status="n">
+				<input type="hidden" name="a{{ $c.ID }}" value="n">
+				<div class="mark-stack">
+					<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
+					<button type="button" class="mark mark-r" aria-pressed="true">&#10007;</button>
+				</div>
+			</td>
+			{{end}}
+			{{else}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell" data-choice="{{ $c.ID }}" data-status="">
+				<input type="hidden" name="a{{ $c.ID }}" value="">
+				<div class="mark-stack">
+					<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
+					<button type="button" class="mark mark-y" aria-pressed="false">(&#10003;)</button>
+					<button type="button" class="mark mark-r" aria-pressed="false">&#10007;</button>
+				</div>
+			</td>
+			{{end}}
+			{{end}}
+		</tr>
+		{{else if $.FormID}}
+		<tr class="form-row">
+			<td>
+				<input type="text" id="name" name="name" aria-label="{{$.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" value="{{$.FormName}}" required>
+			</td>
+			{{if $.VoteFreeText}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell">
+				<input type="text" name="n{{ $c.ID }}" maxlength="150" value="{{index $.VoteFormCol.Notes $i}}">
+			</td>
+			{{end}}
+			{{else if $.Single}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell {{index $.VoteFormCol.Fcls $i}}" data-choice="{{ $c.ID }}" data-status="{{index $.VoteFormCol.Marks $i}}">
+				<input type="hidden" name="a{{ $c.ID }}" value="{{index $.VoteFormCol.Marks $i}}">
+				<div class="mark-stack">
+					<button type="button" class="mark mark-g" aria-pressed="{{index $.VoteFormCol.PressY $i}}">&#10003;</button>
+					<button type="button" class="mark mark-r" aria-pressed="{{index $.VoteFormCol.PressN $i}}">&#10007;</button>
+				</div>
+			</td>
+			{{end}}
+			{{else}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell{{if index $.VoteFormCol.Fcls $i}} {{index $.VoteFormCol.Fcls $i}}{{end}}" data-choice="{{ $c.ID }}" data-status="{{index $.VoteFormCol.Marks $i}}">
+				<input type="hidden" name="a{{ $c.ID }}" value="{{index $.VoteFormCol.Marks $i}}">
+				<div class="mark-stack">
+					<button type="button" class="mark mark-g" aria-pressed="{{index $.VoteFormCol.PressY $i}}">&#10003;</button>
+					<button type="button" class="mark mark-y" aria-pressed="{{index $.VoteFormCol.PressM $i}}">(&#10003;)</button>
+					<button type="button" class="mark mark-r" aria-pressed="{{index $.VoteFormCol.PressN $i}}">&#10007;</button>
+				</div>
+			</td>
+			{{end}}
+			{{end}}
+		</tr>
+		{{end}}
+		</tbody>
+		</table>
+	</div>
+</div>

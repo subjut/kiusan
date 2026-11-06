@@ -2,43 +2,7 @@
 	<h2>{{.Title}}</h2>
 	<p class="meta"><span data-i18n="meet.timezone">{{.T "meet.timezone"}}</span>: <span class="tz-name" data-base="{{.TzName}}">{{.TzName}}</span> &middot; <span data-i18n="meet.endsLabel">{{.T "meet.endsLabel"}}</span> <span class="f-date" data-slot="{{.EndsKey}}" data-style="medium">{{.Ends}}</span>{{if .Email}} &middot; {{.Email}}{{end}}</p>
 
-	{{if .IsAdmin}}
-	<section class="links">
-		<span data-i18n="meet.respondentLink">{{.T "meet.respondentLink"}}</span>
-		<div class="link-field">
-			<button type="button" class="btn-secondary copy-btn" data-i18n="meet.copy" data-i18n-title="meet.copyTitle" title="{{.CopyTitle}}">{{.T "meet.copy"}}</button>
-			<input type="text" class="copybox" readonly value="{{.UserLink}}">
-		</div>
-		<span data-i18n="meet.adminLink">{{.T "meet.adminLink"}}</span>
-		<div class="link-field">
-			<button type="button" class="btn-secondary copy-btn" data-i18n="meet.copy" data-i18n-title="meet.copyTitle" title="{{.CopyTitle}}">{{.T "meet.copy"}}</button>
-			<input type="text" class="copybox" readonly value="{{.AdminLink}}">
-		</div>
-		<div class="link-actions">
-			<a class="btn" href="{{.EditLink}}" data-i18n="meet.editPoll">{{.T "meet.editPoll"}}</a>
-			{{if and (not .Closed) (not .Ended)}}
-			<form method="POST" action="{{.CloseAction}}" class="inline-form">
-				<button type="submit" class="btn-secondary" data-i18n="meet.closePoll">{{.T "meet.closePoll"}}</button>
-			</form>
-			{{end}}
-			{{if .Closed}}
-			<form method="POST" action="{{.ReopenAction}}" class="inline-form">
-				<button type="submit" class="btn-secondary" data-i18n="meet.reopenPoll">{{.T "meet.reopenPoll"}}</button>
-			</form>
-			{{end}}
-			<form method="POST" action="{{.DeletePollAction}}" id="poll-del-form" class="inline-form">
-				<button type="button" class="btn-danger delete-poll-btn" data-i18n="meet.deletePoll">{{.T "meet.deletePoll"}}</button>
-			</form>
-		</div>
-		<div class="delete-warning" role="alert" hidden>
-			<p data-i18n="meet.deleteWarn">{{.T "meet.deleteWarn"}}</p>
-			<div class="form-actions">
-				<button type="submit" form="poll-del-form" class="btn-danger" data-i18n="meet.deleteConfirm">{{.T "meet.deleteConfirm"}}</button>
-				<button type="button" class="btn-secondary delete-cancel" data-i18n="meet.cancel">{{.T "meet.cancel"}}</button>
-			</div>
-		</div>
-	</section>
-	{{end}}
+	{{template "partials/links" .}}
 
 	{{if .Description}}
 	<p class="description">{{.Description}}</p>

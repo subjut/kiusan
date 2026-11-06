@@ -657,6 +657,12 @@
 	button.mark-y[aria-pressed="true"] {
 		background-color: var(--mark-amber-bg);
 		color: var(--mark-amber-text);
+	}
+
+	/* vote's explicit "no" toggle: the meeting's not-available tint */
+	button.mark-r[aria-pressed="true"] {
+		background-color: var(--mark-red-bg);
+		color: var(--mark-red-text);
 		font-weight: 600;
 	}
 
@@ -857,6 +863,68 @@
 		opacity: 0.4;
 	}
 
+	/* ---- vote table ---------------------------------------------------
+	   the choice columns are not the fixed 44px slot squares — they hold
+	   a stacked mark toggles or a text input and size to their content */
+	.answers-table.vote-table td.cell,
+	.answers-table.vote-table td.form-cell {
+		width: auto;
+		min-width: 52px;
+		max-width: none;
+		height: auto;
+		min-height: 44px;
+	}
+
+	/* the choice header wraps at 25 chars (breaking a word that has no
+	   boundary to break at) and sits at the cell's bottom like the name
+	   header — the full name stays visible without a hover tooltip */
+	.answers-table th.th-choice {
+		max-width: 25ch;
+		overflow-wrap: anywhere;
+		vertical-align: bottom;
+	}
+
+	/* uniform mark buttons: the 44px square of the meeting's slot cells,
+	   independent of the (wider) choice column width, so the stack — and
+	   the form row — stays the same height in every column */
+	.answers-table.vote-table button.mark {
+		width: 44px;
+		height: 44px;
+		aspect-ratio: auto;
+	}
+
+	/* free-text note cells wrap like the option headers: the same 25ch
+	   cap, the table's base type — the mark cells' 1.25rem glyph size is
+	   too big for a sentence — and the base cell padding the meeting's
+	   slot-cell rule drops (it centers a glyph, but note text runs to the
+	   cell edges without it) */
+	.answers-table.vote-freetext td.cell {
+		max-width: 25ch;
+		overflow-wrap: anywhere;
+		font-size: 0.875rem;
+		padding: 0.5rem 0.5rem;
+	}
+
+	/* the note cells keep the base cell padding the mark-mode form cells
+	   drop (that is what lets the mark buttons fill their squares), so
+	   the note fields do not touch the border — like the name field */
+	.answers-table.vote-freetext td.form-cell {
+		padding: 0.5rem 0.75rem;
+	}
+
+	/* the note fields are single-line inputs styled like the name field:
+	   the base form-field box (40px, vertically centered text) at the
+	   table's base type — capped to 25ch so the column never grows past
+	   the option header. The name cell's 600 weight is on td:first-child
+	   only, so the entered note text stays at the normal weight */
+	.answers-table.vote-freetext td.form-cell input[type="text"] {
+		max-width: 25ch;
+	}
+
+	.answers-table.vote-freetext td.form-cell input[type="text"]:disabled {
+		opacity: 0.4;
+	}
+
 	/* ---- poll page --------------------------------------------------------- */
 	.meta {
 		color: var(--text-2);
@@ -1001,9 +1069,10 @@
 		align-items: center;
 	}
 
-	/* ---- date/time picker ---------------------------------------------------- */
+	/* ---- date/time/choices picker -------------------------------------------- */
 	fieldset.dates-picker,
-	fieldset.times-picker {
+	fieldset.times-picker,
+	fieldset.choices-picker {
 		border: 1px solid var(--border);
 		background: var(--surface);
 		border-radius: var(--radius-card);
@@ -1184,6 +1253,53 @@
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 		min-width: 6.5rem;
+	}
+
+	/* the note under the single-choice checkbox (vote form) */
+	.form-note {
+		font-size: 0.8125rem;
+		color: var(--text-2);
+		margin: 0.25rem 0 0.5rem;
+		max-width: 42rem;
+	}
+
+	/* choice rows (vote form) */
+	.choice-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.375rem;
+	}
+
+	.choice-row input[type="text"] {
+		flex: 1;
+	}
+
+	.choice-remove {
+		border: 1px solid var(--border);
+		background: none;
+		border-radius: 8px;
+		min-width: 32px;
+		min-height: 32px;
+		font-size: 1rem;
+		line-height: 1;
+		color: var(--text-2);
+		cursor: pointer;
+		transition: background-color 0.12s ease, border-color 0.12s ease,
+			color 0.12s ease;
+	}
+
+	.choice-remove:hover {
+		color: var(--mark-red-text);
+		border-color: var(--mark-red-text);
+		background: var(--mark-red-bg);
+	}
+
+	.choice-count {
+		display: block;
+		margin-top: 0.375rem;
+		font-size: 0.8125rem;
+		color: var(--text-2);
 	}
 
 	/* quiet clear-all buttons */

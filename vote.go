@@ -1,0 +1,298 @@
+package main
+
+import (
+	"errors"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/gofiber/fiber/v3"
+
+	"github.com/subjut/kiusan/database"
+	"github.com/subjut/kiusan/store"
+)
+
+// ---- vote identity cookie ----
+
+// voteCookieName builds the per-vote identity cookie name from the user
+// link key. Both links share one identity this way, and the vote's cookie
+// can be dropped (answer deleted) without touching other votes' cookies.
+func voteCookieName(v *database.Vote) string {
+	return "kiusan-" + v.Key
+}
+
+// voteEnded reports whether the vote has reached its end.
+func voteEnded(v *database.Vote, now time.Time) bool {
+	return now.After(v.Expires)
+}
+
+// ensureVoteIdentityCookie returns the vote's identity value for this
+// request: the one the browser sent, or a freshly minted one (set on the
+// response) when the browser has none yet and the vote is still running.
+// A closed vote mints nothing, like an expired one.
+func ensureVoteIdentityCookie(c fiber.Ctx, v *database.Vote, now time.Time) string {
+	name := voteCookieName(v)
+	if id := c.Cookies(name); id != "" {
+		return id
+	}
+	if v.Closed || !v.Expires.After(now) {
+		return ""
+	}
+	token, err := store.RandomKey(32)
+	if err != nil {
+		return ""
+	}
+	c.Cookie(&fiber.Cookie{
+		Name: name, Value: token, Expires: v.Expires,
+		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
+	})
+	return token
+}
+
+// dropVoteIdentityCookie expires the vote's identity cookie, called when
+// the voter deletes their answer.
+func dropVoteIdentityCookie(c fiber.Ctx, v *database.Vote) {
+	c.Cookie(&fiber.Cookie{
+		Name: voteCookieName(v), Value: "", Expires: time.Unix(0, 0), MaxAge: 0,
+		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
+	})
+}
+
+// ---- vote answer lists ----
+
+// findVoteAnswer returns the answer stored under the identity token, if any.
+func findVoteAnswer(list database.VoteAnswerList, id string) *database.VoteAnswer {
+	for i := range list {
+		if list[i].ID == id {
+			return &list[i]
+		}
+	}
+	return nil
+}
+
+// upsertVoteAnswer replaces or appends the answer stored under the identity
+// token, so editing an answer keeps the entry.
+func upsertVoteAnswer(list database.VoteAnswerList, id, name string, marks, notes map[string]string, now time.Time) database.VoteAnswerList {
+	for i := range list {
+		if list[i].ID == id {
+			list[i].Name = name
+			list[i].Marks = marks
+			list[i].Notes = notes
+			list[i].UpdatedAt = now
+			return list
+		}
+	}
+	return append(list, database.VoteAnswer{ID: id, Name: name, Marks: marks, Notes: notes, UpdatedAt: now})
+}
+
+// removeVoteAnswer drops the answer stored under the identity token.
+func removeVoteAnswer(list database.VoteAnswerList, id string) (database.VoteAnswerList, bool) {
+	for i := range list {
+		if list[i].ID == id {
+			return append(list[:i], list[i+1:]...), true
+		}
+	}
+	return list, false
+}
+
+// collectVoteAnswers reads the per-choice answer fields of a submission:
+// mark mode reads a<choice ID> ("y", "m", "n", ""), free-text mode reads
+// n<choice ID> (plain text) — answers key off the option's stable ID, so
+// they stay with the option no matter how it is reordered. Single-choice
+// votes reject a second yes (mark mode) or a second filled note
+// (free-text mode) and normalize unmarked options to no — the
+// client-side disabling is UI, this is the tamper guard.
+func collectVoteAnswers(c fiber.Ctx, v *database.Vote) (marks, notes map[string]string, msg string) {
+	if v.FreeText {
+		notes = make(map[string]string, len(v.Choices))
+		nonEmpty := 0
+		for i := range v.Choices {
+			id := v.Choices[i].ID
+			txt := strings.TrimSpace(c.FormValue("n" + id))
+			if utf8.RuneCountInString(txt) > maxVoteNoteLen {
+				return nil, nil, "Note too long (max 150 characters)"
+			}
+			if txt != "" {
+				nonEmpty++
+				notes[id] = txt
+			}
+		}
+		if v.SingleChoice && nonEmpty > 1 {
+			return nil, nil, "This vote allows choosing only one option"
+		}
+		return nil, notes, ""
+	}
+	marks = make(map[string]string, len(v.Choices))
+	yes := 0
+	for i := range v.Choices {
+		id := v.Choices[i].ID
+		val := c.FormValue("a" + id)
+		switch val {
+		case "", "y", "m", "n":
+		default:
+			return nil, nil, "Invalid answer option"
+		}
+		if v.SingleChoice {
+			if val == "m" {
+				return nil, nil, "Invalid answer option"
+			}
+			if val == "" {
+				val = "n"
+			}
+		}
+		if val == "y" {
+			yes++
+		}
+		if val != "" {
+			marks[id] = val
+		}
+	}
+	if v.SingleChoice && yes > 1 {
+		return nil, nil, "This vote allows choosing only one option"
+	}
+	return marks, nil, ""
+}
+
+// ---- vote load/save with compare-and-set ----
+
+// loadVote fetches the vote by user key (byAdmin=false) or admin key.
+func loadVote(key string, byAdmin bool) (*database.Vote, error) {
+	if byAdmin {
+		return db.GetVoteAdmin(key)
+	}
+	return db.GetVote(key)
+}
+
+// saveVote re-reads the vote, applies mutate to it, and writes it back
+// under the compare-and-set, retrying on conflict so two concurrent
+// writers both land. It returns the stored copy, or errNotFoundPoll /
+// errConflict / a storage error.
+func saveVote(key string, byAdmin bool, mutate func(v *database.Vote)) (*database.Vote, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		v, err := loadVote(key, byAdmin)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, errNotFoundPoll
+			}
+			return nil, err
+		}
+		mutate(v)
+		if err := db.UpdateVote(v); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				continue
+			}
+			return nil, err
+		}
+		return v, nil
+	}
+	return nil, errConflict
+}
+
+// choiceRow is one option row of a vote form submission: the option's
+// text and, on edit, the ID the row was rendered with ("" on create).
+type choiceRow struct {
+	text  string
+	oldID string
+}
+
+// assignChoiceIDs mints the stable IDs of a vote's options: a row keeps
+// its ID only while its text is unchanged from the stored vote — a
+// changed text is a new option (a fresh ID, so the old option's answers
+// are pruned by pruneVoteAnswers), a deleted row drops its ID, and a new
+// row mints one. Reordering carries every ID, so the answers travel with
+// their option.
+func assignChoiceIDs(old database.ChoiceList, rows []choiceRow) (database.ChoiceList, error) {
+	kept := make(map[string]string, len(old))
+	for i := range old {
+		kept[old[i].ID] = old[i].Text
+	}
+	taken := make(map[string]struct{}, len(rows))
+	choices := make(database.ChoiceList, 0, len(rows))
+	for i := range rows {
+		id := ""
+		if oldID := rows[i].oldID; oldID != "" && kept[oldID] == rows[i].text {
+			if _, dup := taken[oldID]; !dup {
+				id = oldID
+			}
+		}
+		if id == "" {
+			for {
+				fresh, err := store.RandomKey(12)
+				if err != nil {
+					return nil, err
+				}
+				if _, dup := taken[fresh]; !dup {
+					id = fresh
+					break
+				}
+			}
+		}
+		taken[id] = struct{}{}
+		choices = append(choices, database.Choice{ID: id, Text: rows[i].text})
+	}
+	return choices, nil
+}
+
+// pruneVoteAnswers drops stored marks and notes for choices the vote no
+// longer offers — the keys that no longer match a choice ID — and the
+// whole map the vote's mode no longer uses (an edit that flips
+// free-text on/off), called when the vote is edited.
+func pruneVoteAnswers(v *database.Vote) {
+	valid := make(map[string]struct{}, len(v.Choices))
+	for i := range v.Choices {
+		valid[v.Choices[i].ID] = struct{}{}
+	}
+	for i := range v.Answers {
+		for k := range v.Answers[i].Marks {
+			if _, ok := valid[k]; !ok {
+				delete(v.Answers[i].Marks, k)
+			}
+		}
+		for k := range v.Answers[i].Notes {
+			if _, ok := valid[k]; !ok {
+				delete(v.Answers[i].Notes, k)
+			}
+		}
+	}
+	if v.FreeText {
+		for i := range v.Answers {
+			v.Answers[i].Marks = nil
+		}
+	} else {
+		for i := range v.Answers {
+			v.Answers[i].Notes = nil
+		}
+	}
+}
+
+// voteSaveError maps a store-level save error to an HTTP response.
+func voteSaveError(c fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, errNotFoundPoll):
+		return notFoundHandler(c)
+	case errors.Is(err, errConflict):
+		return sendErr(c, 500, "Too many concurrent edits, try again")
+	}
+	return sendInternal(c, err)
+}
+
+// resolveVote finds the vote behind a link key and reports which view the
+// key matched: the user key renders the respondent page, the admin key
+// the admin page. A missing key yields a nil vote, not an error.
+func resolveVote(key string) (*database.Vote, bool, error) {
+	v, err := db.GetVote(key)
+	if err == nil {
+		return v, false, nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, false, err
+	}
+	av, err := db.GetVoteAdmin(key)
+	if err == nil {
+		return av, true, nil
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, false, nil
+	}
+	return nil, false, err
+}

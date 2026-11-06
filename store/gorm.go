@@ -25,7 +25,7 @@ type gormStore struct {
 // openGorm connects to a relational backend and prepares the schema.
 // engine is one of mysql, mariadb, postgres, sqlite; dsn is the
 // connection string (KIUSAN_DSN).
-func openGorm(engine, dsn string) (MeetingStore, error) {
+func openGorm(engine, dsn string) (Store, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("store: %s backend needs a connection string (set KIUSAN_DSN)", engine)
 	}
@@ -61,7 +61,7 @@ func openGorm(engine, dsn string) (MeetingStore, error) {
 	// AutoMigrate keeps the schema in sync at startup. It is additive-only:
 	// column additions and new tables. Destructive changes need explicit
 	// SQL migrations (none exist yet).
-	if err := db.AutoMigrate(&database.Meeting{}); err != nil {
+	if err := db.AutoMigrate(&database.Meeting{}, &database.Vote{}); err != nil {
 		if sqlDB, cerr := db.DB(); cerr == nil {
 			_ = sqlDB.Close()
 		}
@@ -183,4 +183,93 @@ func (g *gormStore) Close() error {
 		return err
 	}
 	return sqlDB.Close()
+}
+
+// ---- VoteStore ----
+
+func (g *gormStore) CreateVote(v *database.Vote) (string, error) {
+	const maxAttempts = 10
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		userKey, err := RandomKey(16)
+		if err != nil {
+			return "", err
+		}
+		adminKey, err := RandomKey(16)
+		if err != nil {
+			return "", err
+		}
+		var count int64
+		res := g.db.Model(&database.Vote{}).
+			Where("key IN ? OR admin_key IN ?", []string{userKey, adminKey}, []string{userKey, adminKey}).
+			Count(&count)
+		if res.Error != nil {
+			return "", res.Error
+		}
+		if count > 0 {
+			continue
+		}
+		v.Key, v.AdminKey = userKey, adminKey
+		if err := g.db.Create(v).Error; err != nil {
+			if isUniqueViolation(err) {
+				continue
+			}
+			return "", err
+		}
+		return userKey, nil
+	}
+	return "", fmt.Errorf("store: create vote: too many key collisions")
+}
+
+func (g *gormStore) GetVote(key string) (*database.Vote, error) {
+	var v database.Vote
+	res := g.db.Where("key = ?", key).Take(&v)
+	if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return &v, nil
+}
+
+func (g *gormStore) GetVoteAdmin(key string) (*database.Vote, error) {
+	var v database.Vote
+	res := g.db.Where("admin_key = ?", key).Take(&v)
+	if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return &v, nil
+}
+
+func (g *gormStore) UpdateVote(v *database.Vote) error {
+	res := g.db.Model(&database.Vote{}).
+		Where("key = ? AND generation = ?", v.Key, v.Generation).
+		Updates(map[string]any{
+			"title":         v.Title,
+			"description":   v.Description,
+			"email":         v.Email,
+			"hide_users":    v.HideUsers,
+			"single_choice": v.SingleChoice,
+			"free_text":     v.FreeText,
+			"closed":        v.Closed,
+			"choices":       v.Choices,
+			"expires":       v.Expires,
+			"answers":       v.Answers,
+			"generation":    gorm.Expr("generation + 1"),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrConflict
+	}
+	v.Generation++
+	return nil
+}
+
+func (g *gormStore) DeleteVote(key string) error {
+	return g.db.Where("key = ?", key).Delete(&database.Vote{}).Error
 }

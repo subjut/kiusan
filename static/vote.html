@@ -1,0 +1,45 @@
+<div class="container" data-tz="UTC">
+	<h2>{{.Title}}</h2>
+	<p class="meta"><span data-i18n="{{.ModeKey}}">{{.T .ModeKey}}</span> &middot; <span data-i18n="meet.endsLabel">{{.T "meet.endsLabel"}}</span> <span class="f-date" data-slot="{{.EndsKey}}" data-style="medium">{{.Ends}}</span>{{if .Email}} &middot; {{.Email}}{{end}}</p>
+
+	{{template "partials/links" .}}
+
+	{{if .Description}}
+	<p class="description">{{.Description}}</p>
+	{{end}}
+
+	{{if .Closed}}
+	<p class="closed"><span data-i18n="meet.closedPre">{{.T "meet.closedPre"}}</span><span data-i18n="meet.closedPost">{{.T "meet.closedPost"}}</span></p>
+	{{else if .Ended}}
+	<p class="ended"><span data-i18n="meet.endedPre">{{.T "meet.endedPre"}}</span><span class="f-date" data-slot="{{.EndsKey}}" data-style="long">{{.Ends}}</span><span data-i18n="meet.endedPost">{{.T "meet.endedPost"}}</span></p>
+	{{end}}
+
+	{{if .Choices}}
+	{{if .Closed}}
+	{{/* A closed vote keeps the answers table visible on both links, as a
+	     static matrix — no form row, no edit/delete icons (the partial
+	     renders them only while the vote is open). An ended vote keeps the
+	     old behavior: the notice only, no table. */}}
+	{{template "partials/vote-answers-table" .}}
+	{{else if not .Ended}}
+	<form method="POST" action="{{.FormAction}}" id="answer-form" data-single="{{if .Single}}true{{else}}false{{end}}" data-free="{{if .VoteFreeText}}true{{else}}false{{end}}">
+		{{if .AnswerCSRF}}<input type="hidden" name="csrftoken" value="{{.CSRFToken}}">{{end}}
+		{{if .FormRespondentID}}<input type="hidden" name="respondentid" value="{{.FormRespondentID}}">{{end}}
+		{{template "partials/vote-answers-table" .}}
+		{{if or $.FormNew $.FormID}}
+		<div class="form-actions">
+			<button type="submit" data-i18n="{{.SubmitAnswerKey}}">{{.SubmitAnswerLabel}}</button>
+			{{if $.FormID}}<a class="btn" href="{{$.SelfLink}}" data-i18n="meet.cancel">{{.T "meet.cancel"}}</a>{{end}}
+		</div>
+		{{end}}
+	</form>
+	<form method="POST" action="{{.DeleteAction}}" id="del-form">
+		{{if .DelCSRF}}<input type="hidden" name="csrftoken" value="{{.CSRFToken}}">{{end}}
+		<input type="hidden" name="respondentid" value="">
+	</form>
+	{{end}}
+	{{else}}
+	<p data-i18n="vote.noChoices">{{.T "vote.noChoices"}}</p>
+	{{end}}
+</div>
+<script src="/vote.js"></script>
