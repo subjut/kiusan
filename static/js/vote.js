@@ -3,15 +3,18 @@
 //
 // Mirror of poll.js for the choice table: the table holds a row per voter
 // and exactly one form row — the empty last row while the viewer has no
-// answer, or a row opened for editing via ?edit=. Mark-mode form cells
-// carry yes / maybe / no toggles (maybe only when the vote is not
-// single-choice): in a single-choice vote each cell offers only yes and
-// no, defaults to no, and a yes set on one option turns the previously
-// chosen one back to no — the user can switch the yes over by clicking
-// it, at any moment there is only one yes. Free-text form cells carry one
-// text input per option (single-choice: only one input may be filled).
-// The server re-checks every constraint on submit. Trash icons fill and
-// submit the page's hidden delete form.
+// answer, or a row opened for editing via ?edit=. The form cells follow
+// the vote's type (data-type on the form): yes cells carry one yes-toggle,
+// yes-no cells yes / no toggles, yes-maybe-no cells yes / maybe / no
+// toggles, free-text cells one text input per option. An untouched cell
+// stays neutral in every type. In a single-choice vote (data-single) a
+// yes set on one option clears the previously chosen one — at any moment
+// there is only one yes — and only one free-text input may be filled. In
+// a must-answer vote (data-must) the submit button stays disabled until
+// every option carries a selection. The server re-checks every constraint
+// on submit. Trash icons fill and submit the page's hidden delete form.
+// constraint on submit. Trash icons fill and submit the page's hidden
+// delete form.
 
 (function () {
 	"use strict";
@@ -64,25 +67,21 @@
 			var current = cell.getAttribute("data-status") || "";
 			var v;
 			if (btn.classList.contains("mark-g")) {
-				// Toggling yes off falls back to no in a single-choice
-				// vote (there is no neutral state), else to unmarked.
-				v = current === "y" ? (single ? "n" : "") : "y";
+				v = current === "y" ? "" : "y";
 				if (single && v === "y") {
 					// Switching the yes over: the previously chosen
-					// option goes back to no, so the click lands a new
-					// selection — exactly one yes stays set.
+					// option goes back to neutral, so the click lands a
+					// new selection — exactly one yes stays set.
 					cells.forEach(function (c) {
 						if (c !== cell && c.getAttribute("data-status") === "y") {
-							setStatus(c, "n");
+							setStatus(c, "");
 						}
 					});
 				}
 			} else if (btn.classList.contains("mark-y")) {
 				v = current === "m" ? "" : "m";
 			} else {
-				// In a single-choice vote no is sticky — unmarked never
-				// occurs, so there is nothing to toggle back to.
-				v = single ? "n" : (current === "n" ? "" : "n");
+				v = current === "n" ? "" : "n";
 			}
 			setStatus(cell, v);
 		});
@@ -119,11 +118,35 @@
 	var main = document.getElementById("answer-form");
 	if (main) {
 		var single = main.getAttribute("data-single") === "true";
-		var free = main.getAttribute("data-free") === "true";
-		if (free) {
+		var type = main.getAttribute("data-type") || "";
+		if (type === "freetext") {
 			wireFreeForm(main, single);
 		} else {
 			wireMarkForm(main, single);
+		}
+
+		// A must-answer vote keeps the submit button disabled until every
+		// option carries a selection.
+		if (main.getAttribute("data-must") === "true") {
+			var submitBtn = main.querySelector('button[type="submit"]');
+			var complete = function () {
+				if (type === "freetext") {
+					return Array.prototype.every.call(
+						main.querySelectorAll("td.form-cell input[type=text]"),
+						function (i) { return i.value.trim() !== ""; }
+					);
+				}
+				return Array.prototype.every.call(
+					main.querySelectorAll("td.form-cell"),
+					function (c) { return (c.getAttribute("data-status") || "") !== ""; }
+				);
+			};
+			var refreshSubmit = function () {
+				if (submitBtn) submitBtn.disabled = !complete();
+			};
+			main.addEventListener("click", refreshSubmit);
+			main.addEventListener("input", refreshSubmit);
+			refreshSubmit();
 		}
 	}
 

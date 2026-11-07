@@ -95,15 +95,34 @@ func removeVoteAnswer(list database.VoteAnswerList, id string) (database.VoteAns
 	return list, false
 }
 
+// validVoteMark reports whether val is a mark the vote's type accepts:
+// an unmarked (neutral) option in every type, "y" in every mark type,
+// "n" in yes-no and yes-maybe-no, "m" in yes-maybe-no only.
+func validVoteMark(vt, val string) bool {
+	switch val {
+	case "":
+		return true
+	case "y":
+		return true
+	case "n":
+		return vt == database.VoteTypeYesNo || vt == database.VoteTypeYesMaybeNo
+	case "m":
+		return vt == database.VoteTypeYesMaybeNo
+	}
+	return false
+}
+
 // collectVoteAnswers reads the per-choice answer fields of a submission:
-// mark mode reads a<choice ID> ("y", "m", "n", ""), free-text mode reads
-// n<choice ID> (plain text) — answers key off the option's stable ID, so
-// they stay with the option no matter how it is reordered. Single-choice
-// votes reject a second yes (mark mode) or a second filled note
-// (free-text mode) and normalize unmarked options to no — the
-// client-side disabling is UI, this is the tamper guard.
+// mark mode reads a<choice ID> (only the marks the vote's type accepts,
+// see validVoteMark), free-text mode reads n<choice ID> (plain text) —
+// answers key off the option's stable ID, so they stay with the option
+// no matter how it is reordered. A must-answer vote rejects a submission
+// with an unanswered option; a single-choice vote rejects a second yes
+// (mark mode) or a second filled note (free-text mode) — the
+// client-side gating is UI, this is the tamper guard. An unmarked
+// option stays neutral in every type.
 func collectVoteAnswers(c fiber.Ctx, v *database.Vote) (marks, notes map[string]string, msg string) {
-	if v.FreeText {
+	if v.VoteType == database.VoteTypeFreeText {
 		notes = make(map[string]string, len(v.Choices))
 		nonEmpty := 0
 		for i := range v.Choices {
@@ -120,6 +139,9 @@ func collectVoteAnswers(c fiber.Ctx, v *database.Vote) (marks, notes map[string]
 		if v.SingleChoice && nonEmpty > 1 {
 			return nil, nil, "This vote allows choosing only one option"
 		}
+		if v.MustAnswer && nonEmpty != len(v.Choices) {
+			return nil, nil, "Please answer every option"
+		}
 		return nil, notes, ""
 	}
 	marks = make(map[string]string, len(v.Choices))
@@ -127,18 +149,11 @@ func collectVoteAnswers(c fiber.Ctx, v *database.Vote) (marks, notes map[string]
 	for i := range v.Choices {
 		id := v.Choices[i].ID
 		val := c.FormValue("a" + id)
-		switch val {
-		case "", "y", "m", "n":
-		default:
+		if !validVoteMark(v.VoteType, val) {
 			return nil, nil, "Invalid answer option"
 		}
-		if v.SingleChoice {
-			if val == "m" {
-				return nil, nil, "Invalid answer option"
-			}
-			if val == "" {
-				val = "n"
-			}
+		if v.MustAnswer && val == "" {
+			return nil, nil, "Please answer every option"
 		}
 		if val == "y" {
 			yes++
@@ -235,8 +250,9 @@ func assignChoiceIDs(old database.ChoiceList, rows []choiceRow) (database.Choice
 
 // pruneVoteAnswers drops stored marks and notes for choices the vote no
 // longer offers — the keys that no longer match a choice ID — and the
-// whole map the vote's mode no longer uses (an edit that flips
-// free-text on/off), called when the vote is edited.
+// whole map the vote's type no longer uses (an edit that flips the type),
+// plus marks the new type doesn't offer ("n"/"m" of a vote that is now
+// yes, "m" of a vote that is now yes-no), called when the vote is edited.
 func pruneVoteAnswers(v *database.Vote) {
 	valid := make(map[string]struct{}, len(v.Choices))
 	for i := range v.Choices {
@@ -254,13 +270,25 @@ func pruneVoteAnswers(v *database.Vote) {
 			}
 		}
 	}
-	if v.FreeText {
+	if v.VoteType == database.VoteTypeFreeText {
 		for i := range v.Answers {
 			v.Answers[i].Marks = nil
 		}
 	} else {
 		for i := range v.Answers {
 			v.Answers[i].Notes = nil
+			for k, mk := range v.Answers[i].Marks {
+				switch v.VoteType {
+				case database.VoteTypeYes:
+					if mk == "n" || mk == "m" {
+						delete(v.Answers[i].Marks, k)
+					}
+				case database.VoteTypeYesNo:
+					if mk == "m" {
+						delete(v.Answers[i].Marks, k)
+					}
+				}
+			}
 		}
 	}
 }

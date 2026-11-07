@@ -25,8 +25,18 @@ Feature state (see `static/index.html`):
   expiry, the prefilled poll edit that keeps both links, and the
   admin-side poll lifecycle (close / re-open / delete, with a
   dedicated 404 page for deleted links).
-- "Vote on Something" — unimplemented (`static/choice-form.html` is a
-  static stub, not templated and not routed)
+- "Vote on Something" — implemented end to end: the create/edit form
+  (title, contact email, description, up to 20 options with stable
+  IDs, the four exclusive voting types — `yes/no` (the create
+  default), `yes`, `yes/maybe/no`, and "voters may write a note per
+  option" — the "pick only one option" and "must answer each option"
+  checkboxes that grey out the voting types they are invalid with, and
+  an end date), the two-link vote page (the form row + the
+  submitted-answers matrix with mark toggles or per-option note inputs,
+  the must-answer submit gate, answer edit/delete, admin answer
+  management, the prefilled poll edit that keeps both links, and the
+  admin lifecycle close / re-open / delete with the dedicated 404 page
+  for deleted links), the per-vote identity cookie with CSRF token.
 - "Find Date" — unimplemented (`static/date-form.html`, same)
 
 ## Commands
@@ -51,7 +61,17 @@ Feature state (see `static/index.html`):
   admin answer management, poll edit with stable links and mark pruning,
   expiry and prolongation, the admin poll lifecycle (close / re-open /
   delete, incl. the dedicated 404 page for deleted links), the
-  clickjacking headers, and the urlencoded-only POST gate). The suites
+  clickjacking headers, and the urlencoded-only POST gate;
+  `vote_test.go` covers the vote form (render, create, the vote-type
+  and field validation incl. the mode-checkbox combinations, the
+  pre-checked edit form), the vote page per voting type (render, the
+  single-choice rules, the neutral unmarked cells of a plain yes/no
+  vote), the answer round trips (incl. the type-specific rejections:
+  no `n` mark in `yes`, no `m` outside yes/maybe/no, max one yes / note
+  in single-choice, the must-answer completeness 400 in mark and
+  freetext modes), and the edit semantics (stable option IDs,
+  text-change / delete / reorder answer handling, the vote-type flip's
+  mark/note pruning). The suites
   run on GORM-sqlite; each test chdirs into `t.TempDir()` and opens a
   throwaway store, so the dev data files are never touched.
 
@@ -75,6 +95,20 @@ Feature state (see `static/index.html`):
   UTC instant, seconds stripped), the answer-list operations
   (find/upsert/remove/prune), and `saveMeeting` (fresh read, mutate,
   compare-and-set `Update`, retry on conflict).
+- `vote.go` — the vote plumbing, mirroring the poll's: the per-vote
+  identity cookie (`kiusan-<userKey>`, minted until the vote ends; a
+  closed vote mints none), `validVoteMark` (the marks a type accepts:
+  `y` everywhere, `n` in yes-no/yes-maybe-no, `m` in yes-maybe-no
+  only) and `collectVoteAnswers` (mark mode reads `a<ID>`; free-text
+  mode reads `n<ID>`; must-answer rejects an unanswered option;
+  single-choice allows at most one yes / one note), `assignChoiceIDs`
+  (the options' stable IDs: an option keeps its ID only while its
+  text is unchanged — a changed text is a new option whose answers are
+  pruned, a deleted row drops its ID, reordering carries them),
+  `pruneVoteAnswers` (drops marks/notes for removed options and the
+  map the vote's type no longer uses, plus the `m` marks of a yes/no
+  vote), and `saveVote` (fresh read, mutate, compare-and-set
+  `UpdateVote`, retry on conflict).
 - `i18n.go` — the interface-localization plumbing: the `translator`
   (`gofiber/contrib/v3/i18n` over `go-i18n/v2` with a YAML
   `EmbedLoader` on the `locales/` directory), the `langHandler` hook
@@ -91,28 +125,52 @@ Feature state (see `static/index.html`):
   `Generation`),
   `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
   a JSON document in a TEXT column) and `TimeSlice` (candidate slots,
-  same treatment). No handles or globals here.
+  same treatment). `database/vote.go` adds the vote types: `Vote`
+  `database/vote.go` adds the vote types: `Vote`
+  (incl. `VoteType` — `yes` / `yes-no` (the stored default) /
+  `yes-maybe-no` / `freetext`, `SingleChoice` (valid only with `yes`
+  and `freetext`), and `MustAnswer` (valid only with `yes-no`,
+  `yes-maybe-no`, and `freetext`; mutually exclusive with
+  `SingleChoice`)), `Choice`/`ChoiceList` (the options with their
+  stable IDs), and `VoteAnswer`/`VoteAnswerList` (answers whose `Marks`
+  and `Notes` maps are keyed by choice ID, exactly one of them
+  populated per vote type), same JSON-in-TEXT treatment. No handles
+  or globals here.
 - `store/` — the `MeetingStore` interface and its GORM-backed
   implementation `gorm.go` (sqlite — the default when `KIUSAN_STORE` is
   empty, DSN defaulting to `./meetings.db` — plus mysql/mariadb/postgres;
   schema auto-migrated at startup; the admin link is a `uniqueIndex`ed
   `admin_key` column). `Get`/`GetAdmin` resolve the two links;
+  `Get`/`GetAdmin` resolve the two links;
   `Update` is a compare-and-set on `Generation` (`ErrConflict` when stale)
   and honors a changed admin key; the user key never changes.
-  `Open(kind, dsn)` dispatches on `KIUSAN_STORE`; `RandomKey` in `key.go`
-  builds the URL-safe keys. A new backend = implement `MeetingStore` +
-  add a case in `Open`.
+  `VoteStore` (`vote.go`) carries the vote mirror —
+  `GetVote`/`GetVoteAdmin`, `CreateVote`, and `UpdateVote`, the same
+  compare-and-set. `Open(kind, dsn)` dispatches on `KIUSAN_STORE`;
+  `RandomKey` in `key.go` builds the URL-safe keys. A new backend =
+  implement `MeetingStore` + `VoteStore` + add a case in `Open`.
 - `static/` — HTML templates rendered by gofiber/template/html/v3
   (`static/index.html`, `static/1-1-form.html`, `static/meet.html`,
-  `static/meet-gone.html` — the 404 page for a deleted poll; layout:
+  `static/meet-gone.html` — the 404 page for a deleted poll,
+  `static/choice-form.html` — the vote create/edit form (incl. the
+  `Voting type:` radio group), `static/vote.html`; layout:
   `static/layouts/home.html`, partials in `static/partials/` — incl.
-  `answers-table.html`, the shared answers-table markup the live form
-  and the closed poll's read-only matrix both render),
+  `answers-table.html` (the poll's) and `vote-answers-table.html`, the
+  shared answers-table markup the live vote form and the closed
+  vote's read-only matrix both render),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
   widget (locale-aware labels via `locale.js`), `poll.js` — answer-table
   toggling, single-slot grey-out, answer-delete confirmations, the
   two-step delete-poll warning, copy-box
-  selection, `locale.js` — browser-locale date display: rewrites the
+  selection, `chooser.js` — the vote form's option rows (add/remove,
+  reindex) and the mode interlock (single-choice greys out yes/no +
+  yes/maybe/no and must-answer, must-answer greys out yes and
+  single-choice; a selection on a greyed radio moves to the mode's
+  default type), `vote.js` — the vote page's answers-table behavior
+  (the mark toggles per voting type, the single-choice yes-
+  exclusivity, the must-answer submit gate, the delete confirmations),
+  `locale.js` —
+  browser-locale date display: rewrites the
   server-rendered date labels (kept as the no-JS fallback) in the
   viewer's locale and owns the site-header Display dropdown
   (`partials/locale-select.html`); loaded from `partials/header.html`,
@@ -382,3 +440,22 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   `c.Render` only sets the body and content type, so the 404 status set
   on the ctx around it is the one that ships; POST answer/lifecycle
   endpoints keep the plain 404.
+- **Voting types & the mode checkboxes**: `Vote.VoteType` is `yes`
+  (a yes-toggle only — there is no no-button, unselected is neutral),
+  `yes-no` (the stored default), `yes-maybe-no`, or `freetext`. Two
+  checkboxes shape it, each valid only with specific types:
+  `SingleChoice` (max one yes / one note) with `yes` and `freetext` —
+  the form greys the other radios out and moves the selection to
+  `yes`; `MustAnswer` (every option needs a mark/note before submit)
+  with `yes-no`, `yes-maybe-no`, and `freetext` — it greys out `yes`
+  (which would force a yes on every option), and the vote page keeps
+  the submit button disabled until the answer is complete. The two
+  checkboxes disable each other (vice versa). `voteFormPostHandler`
+  and `collectVoteAnswers` re-check every combination (400), and
+  `validVoteMark` restricts the accepted marks per type (`n` not in
+  `yes`, `m` not outside `yes-maybe-no`). An unmarked option is
+  neutral in every type — there is no implicit no anywhere (the old
+  single-choice "rest become no" normalization is gone). A vote-type
+  edit re-shapes stored answers via `pruneVoteAnswers`: to `yes` drops
+  the `n`/`m` marks, to `yes-no` drops the `m` marks, to freetext
+  drops the marks, from freetext drops the notes.

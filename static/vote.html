@@ -22,11 +22,14 @@
 	     old behavior: the notice only, no table. */}}
 	{{template "partials/vote-answers-table" .}}
 	{{else if not .Ended}}
-	<form method="POST" action="{{.FormAction}}" id="answer-form" data-single="{{if .Single}}true{{else}}false{{end}}" data-free="{{if .VoteFreeText}}true{{else}}false{{end}}">
+	<form method="POST" action="{{.FormAction}}" id="answer-form" data-single="{{if .Single}}true{{else}}false{{end}}" data-must="{{if .MustAnswer}}true{{else}}false{{end}}" data-type="{{.VoteType}}">
 		{{if .AnswerCSRF}}<input type="hidden" name="csrftoken" value="{{.CSRFToken}}">{{end}}
 		{{if .FormRespondentID}}<input type="hidden" name="respondentid" value="{{.FormRespondentID}}">{{end}}
 		{{template "partials/vote-answers-table" .}}
 		{{if or $.FormNew $.FormID}}
+		{{if $.MustAnswer}}
+		<p class="form-note" data-i18n="vote.mustAnswerHint">{{.T "vote.mustAnswerHint"}}</p>
+		{{end}}
 		<div class="form-actions">
 			<button type="submit" data-i18n="{{.SubmitAnswerKey}}">{{.SubmitAnswerLabel}}</button>
 			{{if $.FormID}}<a class="btn" href="{{$.SelfLink}}" data-i18n="meet.cancel">{{.T "meet.cancel"}}</a>{{end}}

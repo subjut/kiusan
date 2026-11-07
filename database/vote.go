@@ -7,6 +7,16 @@ import (
 	"time"
 )
 
+// VoteType selects a vote's answer mode. It is stored as a plain string
+// (the column holds the literal), so the schema stays portable across
+// every backend.
+const (
+	VoteTypeYes        = "yes"
+	VoteTypeYesNo      = "yes-no"
+	VoteTypeYesMaybeNo = "yes-maybe-no"
+	VoteTypeFreeText   = "freetext"
+)
+
 // Choice is one option in a vote. ID is a stable identifier minted when
 // the option is created: answers are keyed by it, so reordering the
 // options never shifts a stored answer, and deleting one drops exactly
@@ -56,9 +66,9 @@ func (c *ChoiceList) Scan(value any) error {
 }
 
 // VoteAnswer is one respondent's answer to a vote. In mark mode, Marks
-// maps choice ID to "y", "m", or "n". In free-text mode, Notes maps
-// choice ID to the voter's text. Only one of the two maps is populated,
-// determined by Vote.FreeText.
+// maps choice ID to "y", "m", or "n" ("m" only in a yes-maybe-no vote).
+// In free-text mode, Notes maps choice ID to the voter's text. Only one
+// of the two maps is populated, determined by Vote.VoteType.
 type VoteAnswer struct {
 	ID        string
 	Name      string
@@ -122,11 +132,18 @@ type Vote struct {
 	Email       string `gorm:"not null"`
 	HideUsers   bool   `gorm:"not null;default:false"`
 	// SingleChoice limits a voter to one "y" mark (mark mode) or one
-	// non-empty note (free-text mode).
+	// non-empty note (free-text mode). It is only valid with the yes and
+	// freetext types — a voter who may pick only one option can neither
+	// mark no nor hedge with a maybe.
 	SingleChoice bool `gorm:"not null;default:false"`
-	// FreeText switches the answer mode: when true, voters write a text
-	// per choice instead of marking yes/maybe/no.
-	FreeText bool `gorm:"not null;default:false"`
+	// MustAnswer requires a non-neutral answer for every option before
+	// the voter can submit. It is invalid with SingleChoice (one pick
+	// cannot answer every option) and the yes type (the only mark is a
+	// yes, which must-answer would force on every option).
+	MustAnswer bool `gorm:"not null;default:false"`
+	// VoteType selects the answer mode: a yes-toggle, yes-no marks,
+	// yes-maybe-no marks, or a free-text note per choice.
+	VoteType string `gorm:"not null;default:'yes-no'"`
 	// Closed stops a vote from accepting answers before its end date.
 	Closed  bool           `gorm:"not null;default:false"`
 	Choices ChoiceList     `gorm:"not null"`

@@ -331,13 +331,13 @@ type pageData struct {
 	VoteKey      string
 	Choices      database.ChoiceList
 	SingleChoice bool
-	FreeText     bool
+	MustAnswer   bool
+	VoteType     string
 
 	// Vote page.
-	ModeKey      string
-	VoteFreeText bool
-	VoteCols     []voteCol
-	VoteFormCol  voteCol
+	ModeKey     string
+	VoteCols    []voteCol
+	VoteFormCol voteCol
 
 	// Meeting page.
 	Tz                string
@@ -635,9 +635,12 @@ func voteFormHandler(c fiber.Ctx) error {
 	now := time.Now()
 	return renderPage(c, "choice-form", "pagetitle.voteForm", "", &pageData{
 		FormTitleKey: "form.voteCreateTitle",
-		DefaultExp:   now.UTC().AddDate(0, 3, 0).Format("2006-01-02"),
-		MinExp:       now.UTC().Format("2006-01-02"),
-		SubmitLabel:  translator.MustLocalize(c, "form.submit"),
+		// A new vote defaults to the yes-no type; the template checks the
+		// radios off VoteType, so an empty type checks yes/no there.
+		VoteType:    database.VoteTypeYesNo,
+		DefaultExp:  now.UTC().AddDate(0, 3, 0).Format("2006-01-02"),
+		MinExp:      now.UTC().Format("2006-01-02"),
+		SubmitLabel: translator.MustLocalize(c, "form.submit"),
 	})
 }
 
@@ -657,7 +660,8 @@ func voteFormEditHandler(c fiber.Ctx) error {
 		Description:  v.Description,
 		HideUsers:    v.HideUsers,
 		SingleChoice: v.SingleChoice,
-		FreeText:     v.FreeText,
+		MustAnswer:   v.MustAnswer,
+		VoteType:     v.VoteType,
 		Choices:      v.Choices,
 		FormTitleKey: "form.voteEditTitle",
 		Expiry:       v.Expires.UTC().Format("2006-01-02"),
@@ -681,7 +685,29 @@ func voteFormPostHandler(c fiber.Ctx) error {
 
 	v.HideUsers = c.FormValue("hide-users") != ""
 	v.SingleChoice = c.FormValue("single-choice") != ""
-	v.FreeText = c.FormValue("free-text") != ""
+	v.MustAnswer = c.FormValue("must-answer") != ""
+	v.VoteType = strings.TrimSpace(c.FormValue("votetype"))
+	switch v.VoteType {
+	case database.VoteTypeYes, database.VoteTypeYesNo, database.VoteTypeYesMaybeNo, database.VoteTypeFreeText:
+	case "":
+		return sendErr(c, 400, "No vote type selected")
+	default:
+		return sendErr(c, 400, "Invalid vote type")
+	}
+	// The form greys out the disabled boxes/radios: single-choice only
+	// works with the yes and freetext types, must-answer only with
+	// yes-no, yes-maybe-no, and freetext, and the two checkboxes are
+	// mutually exclusive. These are the server-side guards against a
+	// hand-built submission.
+	if v.SingleChoice && v.MustAnswer {
+		return sendErr(c, 400, "Invalid answer mode")
+	}
+	if v.SingleChoice && v.VoteType != database.VoteTypeYes && v.VoteType != database.VoteTypeFreeText {
+		return sendErr(c, 400, "Invalid vote type")
+	}
+	if v.MustAnswer && v.VoteType == database.VoteTypeYes {
+		return sendErr(c, 400, "Invalid vote type")
+	}
 
 	// The option rows arrive as (choice0, choiceID0), (choice1,
 	// choiceID1), ... — on edit the ID is the one the form rendered, so a
@@ -732,7 +758,8 @@ func voteFormPostHandler(c fiber.Ctx) error {
 			vote.Email = v.Email
 			vote.HideUsers = v.HideUsers
 			vote.SingleChoice = v.SingleChoice
-			vote.FreeText = v.FreeText
+			vote.MustAnswer = v.MustAnswer
+			vote.VoteType = v.VoteType
 			vote.Choices = v.Choices
 			vote.Expires = v.Expires
 			pruneVoteAnswers(vote)
@@ -1440,14 +1467,10 @@ func voteHandler(c fiber.Ctx) error {
 	// votes normalize an unvoted option to no.
 	displayState := func(a database.VoteAnswer, j int) (string, string) {
 		k := v.Choices[j].ID
-		if v.FreeText {
+		if v.VoteType == database.VoteTypeFreeText {
 			return a.Notes[k], ""
 		}
-		mk := a.Marks[k]
-		if v.SingleChoice && mk == "" {
-			mk = "n"
-		}
-		return markGlyph(mk), markClass(mk)
+		return markGlyph(a.Marks[k]), markClass(a.Marks[k])
 	}
 
 	// The voters visible on this page.
@@ -1470,13 +1493,10 @@ func voteHandler(c fiber.Ctx) error {
 		pn := make([]string, n)
 		for j := 0; j < n; j++ {
 			k := v.Choices[j].ID
-			if v.FreeText {
+			if v.VoteType == database.VoteTypeFreeText {
 				notes[j] = shown[i].Notes[k]
 			} else {
 				mk := shown[i].Marks[k]
-				if v.SingleChoice && mk == "" {
-					mk = "n"
-				}
 				marks[j] = mk
 				if mk != "" {
 					fcls[j] = "st-" + markClass(mk)
@@ -1515,9 +1535,16 @@ func voteHandler(c fiber.Ctx) error {
 	if formID != "" {
 		submitKey = "meet.saveChanges"
 	}
-	modeKey := "vote.modeMarks"
-	if v.FreeText {
+	var modeKey string
+	switch v.VoteType {
+	case database.VoteTypeYes:
+		modeKey = "vote.modeYes"
+	case database.VoteTypeYesNo:
+		modeKey = "vote.modeYesNo"
+	case database.VoteTypeFreeText:
 		modeKey = "vote.modeFreeText"
+	default:
+		modeKey = "vote.modeYesMaybeNo"
 	}
 	ends := v.Expires.UTC().Format("2006-01-02")
 	endsKey := slotKey(v.Expires)
@@ -1540,9 +1567,10 @@ func voteHandler(c fiber.Ctx) error {
 		ReopenAction:     "/vote/" + v.AdminKey + "/reopen",
 		DeletePollAction: "/vote/" + v.AdminKey + "/delete",
 		Single:           v.SingleChoice,
+		MustAnswer:       v.MustAnswer,
 		Choices:          v.Choices,
 		ModeKey:          modeKey,
-		VoteFreeText:     v.FreeText,
+		VoteType:         v.VoteType,
 		VoteCols:         cols,
 		SelfLink:         "/vote/" + viewKey,
 		FormNew:          formNew,

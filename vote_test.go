@@ -43,7 +43,9 @@ func TestVoteFormRender(t *testing.T) {
 		`name="description"`,
 		`name="hide-users"`,
 		`name="single-choice"`,
-		`name="free-text"`,
+		`name="must-answer"`,
+		`name="votetype"`,
+		`value="yes-no" checked`,
 		`name="enddate"`,
 		`id="choice-rows"`,
 		`name="choice0"`,
@@ -68,6 +70,7 @@ func TestVoteFormCreate(t *testing.T) {
 		"choice0":     {"Pizza place"},
 		"choice1":     {"Sushi bar"},
 		"choice2":     {"Burger joint"},
+		"votetype":    {"yes-no"},
 		"enddate":     {"2026-12-31"},
 	}.Encode()
 
@@ -108,6 +111,34 @@ func TestVoteFormValidation(t *testing.T) {
 			"choice0": {"A"},
 			"enddate": {"2026-12-31"},
 		}.Encode()},
+		{"missing vote type", url.Values{
+			"title": {"T"}, "email": {"e@e.com"},
+			"choice0": {"A"}, "enddate": {"2026-12-31"},
+		}.Encode()},
+		{"invalid vote type", url.Values{
+			"title": {"T"}, "email": {"e@e.com"},
+			"choice0": {"A"}, "enddate": {"2026-12-31"}, "votetype": {"sometimes"},
+		}.Encode()},
+		{"single-choice with yes/maybe/no", url.Values{
+			"title": {"T"}, "email": {"e@e.com"},
+			"choice0": {"A"}, "enddate": {"2026-12-31"},
+			"votetype": {"yes-maybe-no"}, "single-choice": {"true"},
+		}.Encode()},
+		{"single-choice with yes/no", url.Values{
+			"title": {"T"}, "email": {"e@e.com"},
+			"choice0": {"A"}, "enddate": {"2026-12-31"},
+			"votetype": {"yes-no"}, "single-choice": {"true"},
+		}.Encode()},
+		{"must-answer with yes", url.Values{
+			"title": {"T"}, "email": {"e@e.com"},
+			"choice0": {"A"}, "enddate": {"2026-12-31"},
+			"votetype": {"yes"}, "must-answer": {"true"},
+		}.Encode()},
+		{"single-choice with must-answer", url.Values{
+			"title": {"T"}, "email": {"e@e.com"},
+			"choice0": {"A"}, "enddate": {"2026-12-31"},
+			"votetype": {"yes"}, "single-choice": {"true"}, "must-answer": {"true"},
+		}.Encode()},
 	}
 
 	for _, tc := range cases {
@@ -135,7 +166,7 @@ func TestVoteFormEdit(t *testing.T) {
 		"choice0":       {"Option A"},
 		"choice1":       {"Option B"},
 		"single-choice": {"true"},
-		"free-text":     {"true"},
+		"votetype":      {"freetext"},
 		"hide-users":    {"true"},
 		"enddate":       {"2026-12-31"},
 	}.Encode()
@@ -165,7 +196,8 @@ func TestVoteFormEdit(t *testing.T) {
 		`value="Option A"`,
 		`value="Option B"`,
 		`name="single-choice" value="true" checked`,
-		`name="free-text" value="true" checked`,
+		`value="freetext" checked`,
+		`name="must-answer" value="true" disabled`,
 		`name="hide-users" value="true" checked`,
 	} {
 		if !strings.Contains(body, want) {
@@ -191,11 +223,12 @@ func TestVoteFormEditNotFound(t *testing.T) {
 func createVote(t *testing.T, app *fiber.App, extra url.Values) (string, string) {
 	t.Helper()
 	form := url.Values{
-		"title":   {"V"},
-		"email":   {"v@e.com"},
-		"choice0": {"Option A"},
-		"choice1": {"Option B"},
-		"enddate": {"2026-12-31"},
+		"title":    {"V"},
+		"email":    {"v@e.com"},
+		"choice0":  {"Option A"},
+		"choice1":  {"Option B"},
+		"votetype": {"yes-no"},
+		"enddate":  {"2026-12-31"},
 	}
 	for k, v := range extra {
 		form[k] = v
@@ -274,10 +307,12 @@ func answerVote(t *testing.T, app *fiber.App, userKey, name string, answer map[s
 
 // editVote posts a vote edit (the form with the votekey hidden field set):
 // a minimal poll body and one choiceN row per entry, each entry optionally
-// carrying the choiceID the edit form rendered, and returns the saved vote.
-func editVote(t *testing.T, app *fiber.App, adminKey string, rows []choiceRow) *database.Vote {
+// carrying the choiceID the edit form rendered. extra carries form fields
+// that deviate from the stored vote (a type flip), and returns the saved
+// vote.
+func editVote(t *testing.T, app *fiber.App, adminKey string, rows []choiceRow, extra url.Values) *database.Vote {
 	t.Helper()
-	// The edit form pre-checks the mode boxes from the stored vote — the
+	// The edit form pre-checks the mode fields from the stored vote — the
 	// submission mirrors that.
 	old, err := db.GetVoteAdmin(adminKey)
 	if err != nil {
@@ -289,14 +324,18 @@ func editVote(t *testing.T, app *fiber.App, adminKey string, rows []choiceRow) *
 		"enddate": {"2026-12-31"},
 		"votekey": {adminKey},
 	}
-	if old.FreeText {
-		form.Set("free-text", "true")
-	}
+	form.Set("votetype", old.VoteType)
 	if old.SingleChoice {
 		form.Set("single-choice", "true")
 	}
+	if old.MustAnswer {
+		form.Set("must-answer", "true")
+	}
 	if old.HideUsers {
 		form.Set("hide-users", "true")
+	}
+	for k, v := range extra {
+		form[k] = v
 	}
 	for i, r := range rows {
 		form.Set("choice"+strconv.Itoa(i), r.text)
@@ -323,8 +362,8 @@ func TestVotePageRender(t *testing.T) {
 	app := newTestApp(t)
 	userKey, adminKey := createVote(t, app, nil)
 
-	// Admin view: links section, mode label, the choice header, the
-	// three-button mark stack, the legend.
+	// Admin view: links section, the yes/no mode label, the choice header,
+	// the two-button mark stack, the legend.
 	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+adminKey, nil))
 	if err != nil {
 		t.Fatalf("GET /vote/admin: %v", err)
@@ -337,7 +376,7 @@ func TestVotePageRender(t *testing.T) {
 	for _, want := range []string{
 		`class="th-choice">Option A`,
 		`class="th-choice">Option B`,
-		`vote.modeMarks`,
+		`vote.modeYesNo`,
 		`class="legend"`,
 		`class="links"`,
 		`class="copybox"`,
@@ -347,6 +386,9 @@ func TestVotePageRender(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET /vote/admin: missing %q", want)
 		}
+	}
+	if strings.Contains(body, `class="mark mark-y"`) {
+		t.Errorf("GET /vote/admin: a yes/no vote must not render the maybe button")
 	}
 	if got := strings.Count(body, `class="mark mark-g"`); got < 1 {
 		t.Errorf("GET /vote/admin: expected mark-g buttons in the form row")
@@ -457,7 +499,9 @@ func TestVoteAnswerRoundTrip(t *testing.T) {
 func TestVoteSingleChoice(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
-	userKey, _ := createVote(t, app, url.Values{"single-choice": {"true"}})
+	// A single-choice vote is a yes vote: one yes-toggle per option, at
+	// most one of them on.
+	userKey, _ := createVote(t, app, url.Values{"votetype": {"yes"}, "single-choice": {"true"}})
 	choices := voteChoices(t, userKey)
 
 	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
@@ -466,19 +510,20 @@ func TestVoteSingleChoice(t *testing.T) {
 	}
 	body, _ := io.ReadAll(r.Body)
 	s := string(body)
+	// Only yes-toggles render — no no-button, no maybe button.
+	if strings.Contains(s, `class="mark mark-r"`) {
+		t.Errorf("single-choice vote: the no button must not render")
+	}
 	if strings.Contains(s, `class="mark mark-y"`) {
 		t.Errorf("single-choice vote: the maybe button must not render")
 	}
-	// The legend offers no maybe in a single-choice vote.
-	if !strings.Contains(s, `vote.legendSingle`) {
-		t.Errorf("single-choice vote: missing the single-choice legend")
+	// The yes legend offers nothing but a yes.
+	if !strings.Contains(s, `vote.legendYes`) {
+		t.Errorf("single-choice vote: missing the yes legend")
 	}
-	if strings.Contains(s, "(\u2713) maybe") {
-		t.Errorf("single-choice vote: the legend must not offer maybe")
-	}
-	// Every form cell starts on no (red tint, pressed no button).
-	if !strings.Contains(s, `data-status="n"`) || !strings.Contains(s, `value="n"`) {
-		t.Errorf("single-choice vote: form cells must default to no")
+	// Every form cell starts neutral.
+	if !strings.Contains(s, `data-choice="`+choices[0].ID+`" data-status=""`) {
+		t.Errorf("single-choice vote: form cells must start neutral")
 	}
 
 	identity := identityFromCookies(t, r, userKey)
@@ -494,9 +539,9 @@ func TestVoteSingleChoice(t *testing.T) {
 		t.Fatalf("two yes: status %d, want 400", r2.StatusCode)
 	}
 
-	// One yes, one empty: the empty one is stored as no.
+	// One yes, one empty: the empty one stays neutral (no stored no).
 	formOne := url.Values{
-		"name": {"Ada"}, "a" + choices[0].ID: {"y"}, "a" + choices[1].ID: {""}, "csrftoken": {csrfToken(identity)},
+		"name": {"Ada"}, "a" + choices[0].ID: {"y"}, "csrftoken": {csrfToken(identity)},
 	}.Encode()
 	req = httptest.NewRequest(http.MethodPost, "/vote/"+userKey+"/answer", strings.NewReader(formOne))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -505,22 +550,29 @@ func TestVoteSingleChoice(t *testing.T) {
 		t.Fatalf("one yes: %v status %d", err, r2.StatusCode)
 	}
 	v, _ := db.GetVote(userKey)
-	if v.Answers[0].Marks[choices[1].ID] != "n" {
-		t.Errorf("unvoted option: %q, want n (normalized)", v.Answers[0].Marks[choices[1].ID])
+	if v.Answers[0].Marks[choices[0].ID] != "y" {
+		t.Errorf("yes mark: %v, want y", v.Answers[0].Marks)
+	}
+	if _, ok := v.Answers[0].Marks[choices[1].ID]; ok {
+		t.Errorf("unvoted option: mark present, want neutral: %v", v.Answers[0].Marks)
 	}
 
-	// The submitted row shows the red no glyph for the unvoted option.
+	// The submitted row shows the green yes and a neutral cell — no red no.
 	r3, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
 	b3, _ := io.ReadAll(r3.Body)
-	if !strings.Contains(string(b3), `st-r`) {
-		t.Errorf("single-choice row: missing the red no cell")
+	s3 := string(b3)
+	if !strings.Contains(s3, `st-g`) {
+		t.Errorf("single-choice row: missing the green yes cell")
+	}
+	if strings.Contains(s3, `st-r`) {
+		t.Errorf("single-choice row: the unvoted option must stay neutral, not red")
 	}
 }
 
 func TestVoteFreeText(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
-	userKey, _ := createVote(t, app, url.Values{"free-text": {"true"}})
+	userKey, _ := createVote(t, app, url.Values{"votetype": {"freetext"}})
 	choices := voteChoices(t, userKey)
 
 	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
@@ -582,7 +634,7 @@ func TestVoteFreeText(t *testing.T) {
 func TestVoteSingleChoiceFreeText(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
-	userKey, _ := createVote(t, app, url.Values{"free-text": {"true"}, "single-choice": {"true"}})
+	userKey, _ := createVote(t, app, url.Values{"votetype": {"freetext"}, "single-choice": {"true"}})
 	choices := voteChoices(t, userKey)
 
 	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
@@ -641,7 +693,7 @@ func TestVoteEditOptionTextChanged(t *testing.T) {
 	edited := editVote(t, app, adminKey, []choiceRow{
 		{text: "Option A2", oldID: choices[0].ID},
 		{text: "Option B", oldID: choices[1].ID},
-	})
+	}, nil)
 	if edited.Choices[0].ID == choices[0].ID {
 		t.Errorf("edited option kept its old ID")
 	}
@@ -666,7 +718,7 @@ func TestVoteEditOptionTextChanged(t *testing.T) {
 func TestVoteEditDeleteOptionKeepsAnswers(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
-	userKey, adminKey := createVote(t, app, nil)
+	userKey, adminKey := createVote(t, app, url.Values{"votetype": {"yes-maybe-no"}})
 	choices := voteChoices(t, userKey)
 
 	// Yes to the first option, maybe to the second.
@@ -679,7 +731,7 @@ func TestVoteEditDeleteOptionKeepsAnswers(t *testing.T) {
 	// shifted the remaining options' marks onto the deleted option's.
 	edited := editVote(t, app, adminKey, []choiceRow{
 		{text: "Option B", oldID: choices[1].ID},
-	})
+	}, nil)
 	if len(edited.Choices) != 1 || edited.Choices[0].ID != choices[1].ID {
 		t.Fatalf("choices after delete: %+v", edited.Choices)
 	}
@@ -698,7 +750,7 @@ func TestVoteEditDeleteOptionKeepsAnswers(t *testing.T) {
 func TestVoteEditReorderOptions(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
-	userKey, adminKey := createVote(t, app, nil)
+	userKey, adminKey := createVote(t, app, url.Values{"votetype": {"yes-maybe-no"}})
 	choices := voteChoices(t, userKey)
 
 	answerVote(t, app, userKey, "Ada", map[string]string{
@@ -710,7 +762,7 @@ func TestVoteEditReorderOptions(t *testing.T) {
 	edited := editVote(t, app, adminKey, []choiceRow{
 		{text: "Option B", oldID: choices[1].ID},
 		{text: "Option A", oldID: choices[0].ID},
-	})
+	}, nil)
 	if edited.Choices[0].ID != choices[1].ID || edited.Choices[1].ID != choices[0].ID {
 		t.Fatalf("reorder did not carry the IDs: %+v", edited.Choices)
 	}
@@ -726,7 +778,7 @@ func TestVoteEditReorderOptions(t *testing.T) {
 func TestVoteEditFreeTextOption(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
-	userKey, adminKey := createVote(t, app, url.Values{"free-text": {"true"}})
+	userKey, adminKey := createVote(t, app, url.Values{"votetype": {"freetext"}})
 	choices := voteChoices(t, userKey)
 
 	// Fill both notes.
@@ -739,7 +791,7 @@ func TestVoteEditFreeTextOption(t *testing.T) {
 	edited := editVote(t, app, adminKey, []choiceRow{
 		{text: "Option A2", oldID: choices[0].ID},
 		{text: "Option B", oldID: choices[1].ID},
-	})
+	}, nil)
 	if len(edited.Answers) != 1 {
 		t.Fatalf("answers after edit: %+v", edited.Answers)
 	}
@@ -752,5 +804,254 @@ func TestVoteEditFreeTextOption(t *testing.T) {
 	}
 	if len(notes) != 1 {
 		t.Errorf("unexpected notes after edit: %v", notes)
+	}
+}
+
+func TestVoteYesNoMulti(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	userKey, _ := createVote(t, app, url.Values{"votetype": {"yes-no"}, "choice2": {"Option C"}})
+	choices := voteChoices(t, userKey)
+
+	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
+	if err != nil {
+		t.Fatalf("GET /vote: %v", err)
+	}
+	body, _ := io.ReadAll(r.Body)
+	s := string(body)
+	if strings.Contains(s, `class="mark mark-y"`) {
+		t.Errorf("yes/no vote: the maybe button must not render")
+	}
+	if !strings.Contains(s, `vote.modeYesNo`) {
+		t.Errorf("yes/no vote: missing the mode label")
+	}
+	if !strings.Contains(s, `vote.legendYesNo`) {
+		t.Errorf("yes/no vote: missing the yes/no legend")
+	}
+	// A plain (multi-choice) yes/no vote leaves an untouched cell neutral
+	// — there is no stored no to default to.
+	if !strings.Contains(s, `data-choice="`+choices[0].ID+`" data-status=""`) {
+		t.Errorf("yes/no vote: form cells must start neutral")
+	}
+
+	identity := identityFromCookies(t, r, userKey)
+
+	// A maybe mark: rejected on a yes/no vote.
+	formM := url.Values{
+		"name": {"Ada"}, "a" + choices[0].ID: {"m"}, "csrftoken": {csrfToken(identity)},
+	}.Encode()
+	req := httptest.NewRequest(http.MethodPost, "/vote/"+userKey+"/answer", strings.NewReader(formM))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kiusan-"+userKey+"="+identity)
+	if r2, _ := app.Test(req); r2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("maybe mark: status %d, want 400", r2.StatusCode)
+	}
+
+	// One yes, one no, one untouched: the untouched option stores no mark.
+	form := url.Values{
+		"name": {"Ada"}, "a" + choices[0].ID: {"y"}, "a" + choices[1].ID: {"n"}, "csrftoken": {csrfToken(identity)},
+	}.Encode()
+	req = httptest.NewRequest(http.MethodPost, "/vote/"+userKey+"/answer", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kiusan-"+userKey+"="+identity)
+	if r2, err := app.Test(req); err != nil || r2.StatusCode != http.StatusSeeOther {
+		t.Fatalf("answer: %v status %d", err, r2.StatusCode)
+	}
+	v, _ := db.GetVote(userKey)
+	if v.Answers[0].Marks[choices[0].ID] != "y" {
+		t.Errorf("yes mark: %v", v.Answers[0].Marks)
+	}
+	if v.Answers[0].Marks[choices[1].ID] != "n" {
+		t.Errorf("no mark: %v", v.Answers[0].Marks)
+	}
+	if _, ok := v.Answers[0].Marks[choices[2].ID]; ok {
+		t.Errorf("untouched option: mark present, want neutral: %v", v.Answers[0].Marks)
+	}
+}
+
+func TestVoteYesMaybeNo(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	userKey, _ := createVote(t, app, url.Values{"votetype": {"yes-maybe-no"}})
+	choices := voteChoices(t, userKey)
+
+	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
+	if err != nil {
+		t.Fatalf("GET /vote: %v", err)
+	}
+	body, _ := io.ReadAll(r.Body)
+	s := string(body)
+	if !strings.Contains(s, `class="mark mark-y"`) {
+		t.Errorf("yes/maybe/no vote: the maybe button must render")
+	}
+	if !strings.Contains(s, `vote.modeYesMaybeNo`) {
+		t.Errorf("yes/maybe/no vote: missing the mode label")
+	}
+	if !strings.Contains(s, `vote.legendYesMaybeNo`) {
+		t.Errorf("yes/maybe/no vote: missing the legend")
+	}
+
+	// A maybe mark is accepted.
+	answerVote(t, app, userKey, "Ada", map[string]string{"a" + choices[0].ID: "m"})
+	v, _ := db.GetVote(userKey)
+	if v.Answers[0].Marks[choices[0].ID] != "m" {
+		t.Errorf("maybe mark: %v", v.Answers[0].Marks)
+	}
+}
+
+func TestVoteYesMulti(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	userKey, _ := createVote(t, app, url.Values{"votetype": {"yes"}})
+	choices := voteChoices(t, userKey)
+
+	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
+	if err != nil {
+		t.Fatalf("GET /vote: %v", err)
+	}
+	body, _ := io.ReadAll(r.Body)
+	s := string(body)
+	if !strings.Contains(s, `vote.modeYes`) {
+		t.Errorf("yes vote: missing the mode label")
+	}
+	if !strings.Contains(s, `vote.legendYes`) {
+		t.Errorf("yes vote: missing the legend")
+	}
+	if strings.Contains(s, `class="mark mark-r"`) {
+		t.Errorf("yes vote: the no button must not render")
+	}
+	if strings.Contains(s, `class="mark mark-y"`) {
+		t.Errorf("yes vote: the maybe button must not render")
+	}
+
+	identity := identityFromCookies(t, r, userKey)
+
+	// A no mark: rejected on a yes vote.
+	formN := url.Values{
+		"name": {"Ada"}, "a" + choices[0].ID: {"n"}, "csrftoken": {csrfToken(identity)},
+	}.Encode()
+	req := httptest.NewRequest(http.MethodPost, "/vote/"+userKey+"/answer", strings.NewReader(formN))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kiusan-"+userKey+"="+identity)
+	if r2, _ := app.Test(req); r2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("no mark: status %d, want 400", r2.StatusCode)
+	}
+
+	// A multi-choice yes vote allows several yes marks.
+	form := url.Values{
+		"name": {"Ada"}, "a" + choices[0].ID: {"y"}, "a" + choices[1].ID: {"y"}, "csrftoken": {csrfToken(identity)},
+	}.Encode()
+	req = httptest.NewRequest(http.MethodPost, "/vote/"+userKey+"/answer", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kiusan-"+userKey+"="+identity)
+	if r2, err := app.Test(req); err != nil || r2.StatusCode != http.StatusSeeOther {
+		t.Fatalf("two yes: %v status %d", err, r2.StatusCode)
+	}
+	v, _ := db.GetVote(userKey)
+	if v.Answers[0].Marks[choices[0].ID] != "y" || v.Answers[0].Marks[choices[1].ID] != "y" {
+		t.Errorf("yes marks: %v, want y on both", v.Answers[0].Marks)
+	}
+}
+
+func TestVoteMustAnswer(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+
+	// Mark mode: an incomplete answer is rejected, a complete one lands.
+	userKey, _ := createVote(t, app, url.Values{"votetype": {"yes-no"}, "must-answer": {"true"}})
+	choices := voteChoices(t, userKey)
+	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
+	if err != nil {
+		t.Fatalf("GET /vote: %v", err)
+	}
+	b, _ := io.ReadAll(r.Body)
+	if !strings.Contains(string(b), `data-must="true"`) {
+		t.Errorf("must-answer vote: the form must carry data-must")
+	}
+	if !strings.Contains(string(b), `vote.mustAnswerHint`) {
+		t.Errorf("must-answer vote: missing the completeness hint")
+	}
+	identity := identityFromCookies(t, r, userKey)
+
+	// One option left neutral: rejected.
+	formPart := url.Values{
+		"name": {"Ada"}, "a" + choices[0].ID: {"y"}, "csrftoken": {csrfToken(identity)},
+	}.Encode()
+	req := httptest.NewRequest(http.MethodPost, "/vote/"+userKey+"/answer", strings.NewReader(formPart))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kiusan-"+userKey+"="+identity)
+	if r2, _ := app.Test(req); r2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("incomplete answer: status %d, want 400", r2.StatusCode)
+	}
+
+	// Both options answered: accepted.
+	formFull := url.Values{
+		"name": {"Ada"}, "a" + choices[0].ID: {"y"}, "a" + choices[1].ID: {"n"}, "csrftoken": {csrfToken(identity)},
+	}.Encode()
+	req = httptest.NewRequest(http.MethodPost, "/vote/"+userKey+"/answer", strings.NewReader(formFull))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kiusan-"+userKey+"="+identity)
+	if r2, _ := app.Test(req); r2.StatusCode != http.StatusSeeOther {
+		t.Fatalf("complete answer: status %d, want 303", r2.StatusCode)
+	}
+
+	// Free-text mode: every option needs a note.
+	u2, _ := createVote(t, app, url.Values{"votetype": {"freetext"}, "must-answer": {"true"}})
+	c2 := voteChoices(t, u2)
+	r4, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+u2, nil))
+	if err != nil {
+		t.Fatalf("GET /vote: %v", err)
+	}
+	id2 := identityFromCookies(t, r4, u2)
+	formNotes := url.Values{
+		"name": {"Ada"}, "n" + c2[0].ID: {"yes"}, "csrftoken": {csrfToken(id2)},
+	}.Encode()
+	req = httptest.NewRequest(http.MethodPost, "/vote/"+u2+"/answer", strings.NewReader(formNotes))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Cookie", "kiusan-"+u2+"="+id2)
+	if r2, _ := app.Test(req); r2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("incomplete notes: status %d, want 400", r2.StatusCode)
+	}
+}
+
+func TestVoteEditVoteTypeFlip(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	userKey, adminKey := createVote(t, app, url.Values{"votetype": {"yes-maybe-no"}})
+	choices := voteChoices(t, userKey)
+	answerVote(t, app, userKey, "Ada", map[string]string{
+		"a" + choices[0].ID: "y",
+		"a" + choices[1].ID: "m",
+	})
+
+	rows := []choiceRow{
+		{text: "Option A", oldID: choices[0].ID},
+		{text: "Option B", oldID: choices[1].ID},
+	}
+
+	// yes/maybe/no → yes/no: the maybe mark is pruned (a yes/no vote has
+	// no maybe to show).
+	edited := editVote(t, app, adminKey, rows, url.Values{"votetype": {"yes-no"}})
+	if edited.VoteType != database.VoteTypeYesNo {
+		t.Fatalf("vote type after edit: %q", edited.VoteType)
+	}
+	if len(edited.Answers) != 1 {
+		t.Fatalf("answers after edit: %+v", edited.Answers)
+	}
+	marks := edited.Answers[0].Marks
+	if marks[choices[0].ID] != "y" {
+		t.Errorf("yes mark lost: %v", marks)
+	}
+	if _, ok := marks[choices[1].ID]; ok {
+		t.Errorf("maybe mark survived the flip to yes/no: %v", marks)
+	}
+
+	// yes/no → freetext: the marks drop wholesale (notes mode only).
+	edited = editVote(t, app, adminKey, rows, url.Values{"votetype": {"freetext"}})
+	if edited.VoteType != database.VoteTypeFreeText {
+		t.Fatalf("vote type after edit: %q", edited.VoteType)
+	}
+	if edited.Answers[0].Marks != nil {
+		t.Errorf("marks survived the flip to freetext: %v", edited.Answers[0].Marks)
 	}
 }

@@ -13,11 +13,31 @@
 			<span class="char-count" id="description-count"></span><br>
 		<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .HideUsers}} checked{{end}}>
 		<label for="hide-users" data-i18n="form.hideUsers">{{.T "form.hideUsers"}}</label><br>
-		<input type="checkbox" id="single-choice" name="single-choice" value="true"{{if .SingleChoice}} checked{{end}}>
+		<input type="checkbox" id="single-choice" name="single-choice" value="true"{{if .SingleChoice}} checked{{end}}{{if .MustAnswer}} disabled{{end}}>
 		<label for="single-choice" data-i18n="form.singleChoice">{{.T "form.singleChoice"}}</label><br>
 		<p class="form-note" id="single-choice-note" hidden data-i18n="form.singleChoiceNote">{{.T "form.singleChoiceNote"}}</p>
-		<input type="checkbox" id="free-text" name="free-text" value="true"{{if .FreeText}} checked{{end}}>
-		<label for="free-text" data-i18n="form.freeText">{{.T "form.freeText"}}</label><br>
+		<input type="checkbox" id="must-answer" name="must-answer" value="true"{{if .MustAnswer}} checked{{end}}{{if .SingleChoice}} disabled{{end}}>
+		<label for="must-answer" data-i18n="form.mustAnswer">{{.T "form.mustAnswer"}}</label><br>
+		<p class="form-note" id="must-answer-note" hidden data-i18n="form.mustAnswerNote">{{.T "form.mustAnswerNote"}}</p>
+		<fieldset class="vote-type-picker">
+			<legend data-i18n="form.voteType">{{.T "form.voteType"}}</legend>
+			<label class="vote-type-option" for="votetype-yes">
+				<input type="radio" id="votetype-yes" name="votetype" value="yes"{{if eq .VoteType "yes"}} checked{{end}}{{if .MustAnswer}} disabled{{end}}>
+				<span data-i18n="form.voteTypeYes">{{.T "form.voteTypeYes"}}</span>
+			</label>
+			<label class="vote-type-option" for="votetype-yes-no">
+				<input type="radio" id="votetype-yes-no" name="votetype" value="yes-no"{{if eq .VoteType "yes-no"}} checked{{end}}{{if .SingleChoice}} disabled{{end}}>
+				<span data-i18n="form.voteTypeYesNo">{{.T "form.voteTypeYesNo"}}</span>
+			</label>
+			<label class="vote-type-option" for="votetype-yes-maybe-no">
+				<input type="radio" id="votetype-yes-maybe-no" name="votetype" value="yes-maybe-no"{{if eq .VoteType "yes-maybe-no"}} checked{{end}}{{if .SingleChoice}} disabled{{end}}>
+				<span data-i18n="form.voteTypeYesMaybeNo">{{.T "form.voteTypeYesMaybeNo"}}</span>
+			</label>
+			<label class="vote-type-option" for="votetype-freetext">
+				<input type="radio" id="votetype-freetext" name="votetype" value="freetext"{{if eq .VoteType "freetext"}} checked{{end}}>
+				<span data-i18n="form.voteTypeFreeText">{{.T "form.voteTypeFreeText"}}</span>
+			</label>
+		</fieldset>
 		<label for="enddate" data-i18n="form.endDate">{{.T "form.endDate"}}</label>
 		<input type="date" id="enddate" name="enddate" min="{{.MinExp}}" value="{{if .Expiry}}{{.Expiry}}{{else}}{{.DefaultExp}}{{end}}"><br>
 		<br>

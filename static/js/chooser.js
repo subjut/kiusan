@@ -91,13 +91,49 @@
 		});
 	});
 
-	// The single-choice note is visible only while its checkbox is on.
+	// The mode checkboxes and the voting type disable each other:
+	//  - single-choice: yes/no and yes/maybe/no are invalid (a voter who
+	//    may pick only one option can neither mark no nor hedge with a
+	//    maybe), must-answer is invalid, and the default type is yes;
+	//  - must-answer: yes is invalid (it would force a yes on every
+	//    option), single-choice is invalid, and the default type is yes/no.
+	// A selection that lands on a greyed radio moves to the mode's
+	// default. The server re-checks every combination.
 	var sc = document.getElementById("single-choice");
 	var scNote = document.getElementById("single-choice-note");
-	if (sc && scNote) {
-		var syncNote = function () { scNote.hidden = !sc.checked; };
-		sc.addEventListener("change", syncNote);
-		syncNote();
+	var ma = document.getElementById("must-answer");
+	var maNote = document.getElementById("must-answer-note");
+	var ytYes = document.getElementById("votetype-yes");
+	var ytYesNo = document.getElementById("votetype-yes-no");
+	var ytYesMaybeNo = document.getElementById("votetype-yes-maybe-no");
+	var ytFreetext = document.getElementById("votetype-freetext");
+	if (sc && ma && ytYes && ytYesNo && ytYesMaybeNo) {
+		// Freetext is valid in every mode, so a freetext selection never
+		// falls out — counting it here keeps the fallback from clobbering
+		// it when a checkbox is toggled.
+		var selected = function () {
+			if (ytYes.checked) return ytYes;
+			if (ytYesNo.checked) return ytYesNo;
+			if (ytYesMaybeNo.checked) return ytYesMaybeNo;
+			if (ytFreetext && ytFreetext.checked) return ytFreetext;
+			return null;
+		};
+		var syncInterlock = function () {
+			if (scNote) scNote.hidden = !sc.checked;
+			if (maNote) maNote.hidden = !ma.checked;
+			ma.disabled = sc.checked;
+			sc.disabled = ma.checked;
+			ytYesNo.disabled = sc.checked;
+			ytYesMaybeNo.disabled = sc.checked;
+			ytYes.disabled = ma.checked;
+			var sel = selected();
+			if (!sel || sel.disabled) {
+				(sc.checked ? ytYes : ytYesNo).checked = true;
+			}
+		};
+		sc.addEventListener("change", syncInterlock);
+		ma.addEventListener("change", syncInterlock);
+		syncInterlock();
 	}
 
 	updateCount();

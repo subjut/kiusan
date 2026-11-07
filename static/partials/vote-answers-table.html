@@ -2,22 +2,24 @@
      row — always the table's last row, next to the save/cancel bar below
      the answers (the empty row while the viewer has no answer yet, or the
      row of the voter the page is editing via ?edit=<id>, moved down from
-     its position). Mark-mode cells carry yes / maybe / no toggles (maybe
-     only while the vote is not single-choice); a single-choice vote offers
-     only yes and no, defaults to no, and an unvoted option reads as no.
-     Free-text cells carry one text input per option (150 chars). The form
-     row renders only while the vote is open; on a closed vote the table
-     renders as a static matrix. */}}
-{{if not .VoteFreeText}}
-{{if .Single}}
-<p class="legend" data-i18n="vote.legendSingle">{{.T "vote.legendSingle"}}</p>
+     its position). The form cells follow the vote's type: yes cells carry
+     one yes-toggle (an untouched cell stays neutral), yes-no cells carry
+     yes / no toggles, yes-maybe-no cells yes / maybe / no toggles,
+     free-text cells one text input per option (150 chars). An untouched
+     cell is neutral in every type. The form row renders only while the
+     vote is open; on a closed vote the table renders as a static matrix. */}}
+{{if ne .VoteType "freetext"}}
+{{if eq .VoteType "yes"}}
+<p class="legend" data-i18n="vote.legendYes">{{.T "vote.legendYes"}}</p>
+{{else if eq .VoteType "yes-no"}}
+<p class="legend" data-i18n="vote.legendYesNo">{{.T "vote.legendYesNo"}}</p>
 {{else}}
-<p class="legend" data-i18n="vote.legend">{{.T "vote.legend"}}</p>
+<p class="legend" data-i18n="vote.legendYesMaybeNo">{{.T "vote.legendYesMaybeNo"}}</p>
 {{end}}
 {{end}}
 <div class="table-breakout">
 	<div class="table-scroll" tabindex="0" role="region" aria-label="{{.TableAria}}" data-i18n-aria="meet.tableAria">
-		<table class="answers-table vote-table{{if .VoteFreeText}} vote-freetext{{end}}">
+		<table class="answers-table vote-table{{if eq .VoteType "freetext"}} vote-freetext{{end}}">
 		<thead>
 		<tr>
 			<th scope="col" class="th-name" data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</th>
@@ -55,19 +57,30 @@
 			<td>
 				<input type="text" id="name" name="name" aria-label="{{.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" placeholder="{{.NamePh}}" data-i18n-ph="meet.namePh" required>
 			</td>
-			{{if $.VoteFreeText}}
+			{{if eq $.VoteType "freetext"}}
 			{{range $i, $c := $.Choices}}
 			<td class="cell form-cell">
 				<input type="text" name="n{{ $c.ID }}" maxlength="150">
 			</td>
 			{{end}}
-			{{else if $.Single}}
+			{{else if eq $.VoteType "yes"}}
+			{{/* a yes vote has no no-button: an untouched cell stays neutral,
+			     single-choice only limits the number of yes */}}
 			{{range $i, $c := $.Choices}}
-			<td class="cell form-cell st-r" data-choice="{{ $c.ID }}" data-status="n">
-				<input type="hidden" name="a{{ $c.ID }}" value="n">
+			<td class="cell form-cell" data-choice="{{ $c.ID }}" data-status="">
+				<input type="hidden" name="a{{ $c.ID }}" value="">
 				<div class="mark-stack">
 					<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
-					<button type="button" class="mark mark-r" aria-pressed="true">&#10007;</button>
+				</div>
+			</td>
+			{{end}}
+			{{else if eq $.VoteType "yes-no"}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell" data-choice="{{ $c.ID }}" data-status="">
+				<input type="hidden" name="a{{ $c.ID }}" value="">
+				<div class="mark-stack">
+					<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
+					<button type="button" class="mark mark-r" aria-pressed="false">&#10007;</button>
 				</div>
 			</td>
 			{{end}}
@@ -89,15 +102,24 @@
 			<td>
 				<input type="text" id="name" name="name" aria-label="{{$.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" value="{{$.FormName}}" required>
 			</td>
-			{{if $.VoteFreeText}}
+			{{if eq $.VoteType "freetext"}}
 			{{range $i, $c := $.Choices}}
 			<td class="cell form-cell">
 				<input type="text" name="n{{ $c.ID }}" maxlength="150" value="{{index $.VoteFormCol.Notes $i}}">
 			</td>
 			{{end}}
-			{{else if $.Single}}
+			{{else if eq $.VoteType "yes"}}
 			{{range $i, $c := $.Choices}}
-			<td class="cell form-cell {{index $.VoteFormCol.Fcls $i}}" data-choice="{{ $c.ID }}" data-status="{{index $.VoteFormCol.Marks $i}}">
+			<td class="cell form-cell{{if index $.VoteFormCol.Fcls $i}} {{index $.VoteFormCol.Fcls $i}}{{end}}" data-choice="{{ $c.ID }}" data-status="{{index $.VoteFormCol.Marks $i}}">
+				<input type="hidden" name="a{{ $c.ID }}" value="{{index $.VoteFormCol.Marks $i}}">
+				<div class="mark-stack">
+					<button type="button" class="mark mark-g" aria-pressed="{{index $.VoteFormCol.PressY $i}}">&#10003;</button>
+				</div>
+			</td>
+			{{end}}
+			{{else if eq $.VoteType "yes-no"}}
+			{{range $i, $c := $.Choices}}
+			<td class="cell form-cell{{if index $.VoteFormCol.Fcls $i}} {{index $.VoteFormCol.Fcls $i}}{{end}}" data-choice="{{ $c.ID }}" data-status="{{index $.VoteFormCol.Marks $i}}">
 				<input type="hidden" name="a{{ $c.ID }}" value="{{index $.VoteFormCol.Marks $i}}">
 				<div class="mark-stack">
 					<button type="button" class="mark mark-g" aria-pressed="{{index $.VoteFormCol.PressY $i}}">&#10003;</button>
