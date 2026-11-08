@@ -814,7 +814,7 @@ func endOf(d time.Time, loc *time.Location) time.Time {
 const (
 	maxCandidateSlots = 100
 	maxTitleLen       = 100
-	maxEmailLen       = 320
+	maxEmailLen       = 256
 	maxDescriptionLen = 5000
 	maxChoices        = 20
 	maxChoiceLen      = 100
@@ -827,7 +827,7 @@ func validateFieldLengths(m *database.Meeting) string {
 	case utf8.RuneCountInString(m.Title) > maxTitleLen:
 		return "Title is too long (max 100 characters)"
 	case utf8.RuneCountInString(m.Email) > maxEmailLen:
-		return "Email is too long (max 320 characters)"
+		return "Email is too long (max 256 characters)"
 	case utf8.RuneCountInString(m.Description) > maxDescriptionLen:
 		return "Description is too long (max 5000 characters)"
 	}
@@ -851,7 +851,7 @@ func validateVoteFieldLengths(v *database.Vote) string {
 	case utf8.RuneCountInString(v.Title) > maxTitleLen:
 		return "Title is too long (max 100 characters)"
 	case utf8.RuneCountInString(v.Email) > maxEmailLen:
-		return "Email is too long (max 320 characters)"
+		return "Email is too long (max 256 characters)"
 	case utf8.RuneCountInString(v.Description) > maxDescriptionLen:
 		return "Description is too long (max 5000 characters)"
 	}

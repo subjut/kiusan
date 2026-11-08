@@ -136,5 +136,23 @@
 		syncInterlock();
 	}
 
+	// ---- character counters ------------------------------------------------
+	// The same counters dater.js owns on the poll form (this page loads only
+	// this script): title/email/description have server-side caps (main.go);
+	// mirror them as maxlength and show a live "n / max" count. Count by code
+	// points ([...s]) to match the server's utf8.RuneCountInString, so one
+	// emoji reads as one character, not two.
+	var fieldCaps = { title: 100, email: 256, description: 5000 };
+	Object.keys(fieldCaps).forEach(function (id) {
+		var el = document.getElementById(id);
+		var label = document.getElementById(id + "-count");
+		if (!el || !label) return;
+		function update() {
+			label.textContent = [...el.value].length + " / " + fieldCaps[id];
+		}
+		el.addEventListener("input", update);
+		update(); // show the count for prefilled (edit-mode) values
+	});
+
 	updateCount();
 })();

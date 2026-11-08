@@ -2,23 +2,35 @@
 	<form id="form" method="POST" action="/choice-form">
 		{{if .VoteKey}}<input type="hidden" name="votekey" value="{{.VoteKey}}">{{end}}
 		<h2 data-i18n="{{.FormTitleKey}}">{{.T .FormTitleKey}}</h2>
-		<label for="title" data-i18n="form.title">{{.T "form.title"}}</label><br>
-		<input type="text" id="title" name="title" value="{{.Title}}" maxlength="100">
-			<span class="char-count" id="title-count"></span><br>
-		<label for="email" data-i18n="form.email">{{.T "form.email"}}</label><br>
-		<input type="text" id="email" name="email" value="{{.Email}}" maxlength="320">
-			<span class="char-count" id="email-count"></span><br>
-		<label for="description" data-i18n="form.description">{{.T "form.description"}}</label><br>
-		<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.Description}}</textarea>
-			<span class="char-count" id="description-count"></span><br>
-		<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .HideUsers}} checked{{end}}>
-		<label for="hide-users" data-i18n="form.hideUsers">{{.T "form.hideUsers"}}</label><br>
-		<input type="checkbox" id="single-choice" name="single-choice" value="true"{{if .SingleChoice}} checked{{end}}{{if .MustAnswer}} disabled{{end}}>
-		<label for="single-choice" data-i18n="form.singleChoice">{{.T "form.singleChoice"}}</label><br>
-		<p class="form-note" id="single-choice-note" hidden data-i18n="form.singleChoiceNote">{{.T "form.singleChoiceNote"}}</p>
-		<input type="checkbox" id="must-answer" name="must-answer" value="true"{{if .MustAnswer}} checked{{end}}{{if .SingleChoice}} disabled{{end}}>
-		<label for="must-answer" data-i18n="form.mustAnswer">{{.T "form.mustAnswer"}}</label><br>
-		<p class="form-note" id="must-answer-note" hidden data-i18n="form.mustAnswerNote">{{.T "form.mustAnswerNote"}}</p>
+		<div class="form-field">
+			<label for="title" data-i18n="form.title">{{.T "form.title"}}</label>
+			<input type="text" id="title" name="title" value="{{.Title}}" maxlength="100">
+			<span class="char-count" id="title-count"></span>
+		</div>
+		<div class="form-field">
+			<label for="email" data-i18n="form.email">{{.T "form.email"}}</label>
+			<input type="text" id="email" name="email" value="{{.Email}}" maxlength="256">
+			<span class="char-count" id="email-count"></span>
+		</div>
+		<div class="form-field">
+			<label for="description" data-i18n="form.description">{{.T "form.description"}}</label>
+			<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.Description}}</textarea>
+			<span class="char-count" id="description-count"></span>
+		</div>
+		<div class="form-field">
+			<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .HideUsers}} checked{{end}}>
+			<label for="hide-users" data-i18n="form.hideUsers">{{.T "form.hideUsers"}}</label>
+		</div>
+		<div class="form-field">
+			<input type="checkbox" id="single-choice" name="single-choice" value="true"{{if .SingleChoice}} checked{{end}}{{if .MustAnswer}} disabled{{end}}>
+			<label for="single-choice" data-i18n="form.singleChoice">{{.T "form.singleChoice"}}</label>
+			<p class="form-note" id="single-choice-note" hidden data-i18n="form.singleChoiceNote">{{.T "form.singleChoiceNote"}}</p>
+		</div>
+		<div class="form-field">
+			<input type="checkbox" id="must-answer" name="must-answer" value="true"{{if .MustAnswer}} checked{{end}}{{if .SingleChoice}} disabled{{end}}>
+			<label for="must-answer" data-i18n="form.mustAnswer">{{.T "form.mustAnswer"}}</label>
+			<p class="form-note" id="must-answer-note" hidden data-i18n="form.mustAnswerNote">{{.T "form.mustAnswerNote"}}</p>
+		</div>
 		<fieldset class="vote-type-picker">
 			<legend data-i18n="form.voteType">{{.T "form.voteType"}}</legend>
 			<label class="vote-type-option" for="votetype-yes">
@@ -38,9 +50,12 @@
 				<span data-i18n="form.voteTypeFreeText">{{.T "form.voteTypeFreeText"}}</span>
 			</label>
 		</fieldset>
-		<label for="enddate" data-i18n="form.endDate">{{.T "form.endDate"}}</label>
-		<input type="date" id="enddate" name="enddate" min="{{.MinExp}}" value="{{if .Expiry}}{{.Expiry}}{{else}}{{.DefaultExp}}{{end}}"><br>
-		<br>
+		<div class="form-rows">
+			<div class="form-field">
+				<label for="enddate" data-i18n="form.endDate">{{.T "form.endDate"}}</label>
+				<input type="date" id="enddate" name="enddate" min="{{.MinExp}}" value="{{if .Expiry}}{{.Expiry}}{{else}}{{.DefaultExp}}{{end}}">
+			</div>
+		</div>
 
 		<fieldset class="choices-picker">
 			<legend data-i18n="form.options">{{.T "form.options"}}</legend>

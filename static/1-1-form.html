@@ -5,28 +5,42 @@
 	<form id="form" method="POST" action="/1-1-form" data-slots="{{.SlotsAttr}}">
 		{{if .MeetingKey}}<input type="hidden" name="meetingkey" value="{{.MeetingKey}}">{{end}}
 		<h2 data-i18n="{{.FormTitleKey}}">{{.T .FormTitleKey}}</h2>
-		<label for="title" data-i18n="form.title">{{.T "form.title"}}</label><br>
-		<input type="text" id="title" name="title" value="{{.Title}}" maxlength="100">
-			<span class="char-count" id="title-count"></span><br>
-		<label for="email" data-i18n="form.email">{{.T "form.email"}}</label><br>
-		<input type="text" id="email" name="email" value="{{.Email}}" maxlength="320">
-			<span class="char-count" id="email-count"></span><br>
-		<label for="description" data-i18n="form.description">{{.T "form.description"}}</label><br>
-		<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.Description}}</textarea>
-			<span class="char-count" id="description-count"></span><br>
-		<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .HideUsers}} checked{{end}}>
-		<label for="hide-users" data-i18n="form.hideUsers">{{.T "form.hideUsers"}}</label><br>
-		<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .SingleSignup}} checked{{end}}>
-		<label for="single-signup" data-i18n="form.singleSignup">{{.T "form.singleSignup"}}</label><br>
-		<label for="enddate" data-i18n="form.endDate">{{.T "form.endDate"}}</label>
-		<input type="date" id="enddate" name="enddate" min="{{.MinExp}}" value="{{if .Expiry}}{{.Expiry}}{{else}}{{.DefaultExp}}{{end}}"><br>
-		<br>
-
-		<label for="timezone" data-i18n="form.timezone">{{.T "form.timezone"}}</label>
-		<select id="timezone" name="timezone">
+		<div class="form-field">
+			<label for="title" data-i18n="form.title">{{.T "form.title"}}</label>
+			<input type="text" id="title" name="title" value="{{.Title}}" maxlength="100">
+			<span class="char-count" id="title-count"></span>
+		</div>
+		<div class="form-field">
+			<label for="email" data-i18n="form.email">{{.T "form.email"}}</label>
+			<input type="text" id="email" name="email" value="{{.Email}}" maxlength="256">
+			<span class="char-count" id="email-count"></span>
+		</div>
+		<div class="form-field">
+			<label for="description" data-i18n="form.description">{{.T "form.description"}}</label>
+			<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.Description}}</textarea>
+			<span class="char-count" id="description-count"></span>
+		</div>
+		<div class="form-field">
+			<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .HideUsers}} checked{{end}}>
+			<label for="hide-users" data-i18n="form.hideUsers">{{.T "form.hideUsers"}}</label>
+		</div>
+		<div class="form-field">
+			<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .SingleSignup}} checked{{end}}>
+			<label for="single-signup" data-i18n="form.singleSignup">{{.T "form.singleSignup"}}</label>
+		</div>
+		<div class="form-rows">
+			<div class="form-field">
+				<label for="enddate" data-i18n="form.endDate">{{.T "form.endDate"}}</label>
+				<input type="date" id="enddate" name="enddate" min="{{.MinExp}}" value="{{if .Expiry}}{{.Expiry}}{{else}}{{.DefaultExp}}{{end}}">
+			</div>
+			<div class="form-field">
+				<label for="timezone" data-i18n="form.timezone">{{.T "form.timezone"}}</label>
+				<select id="timezone" name="timezone">
 {{range .Timezones}}<option value="{{.}}"{{if eq . $.Timezone}} selected{{end}}>{{zoneDisplay .}}</option>
 {{end}}{{if .ExtraTz}}<option value="{{.ExtraTz}}" selected>{{zoneDisplay .ExtraTz}}</option>
-{{end}}</select><br><br>
+{{end}}</select>
+			</div>
+		</div>
 
 		<fieldset class="dates-picker">
 			<legend data-i18n="form.selectDates">{{.T "form.selectDates"}}</legend>

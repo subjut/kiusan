@@ -366,12 +366,36 @@
 		}
 	} catch (err) { /* very old browsers: no prefill */ }
 
+	// ---- fit the timezone box to the selected zone ------------------------
+	// A <select> with width: auto takes the width of the *longest* option in
+	// the list, so the box is resized to the selected zone name: measured in
+	// a hidden span in the select's own font and expressed in em, so it
+	// adapts to zone length and zoom with no hard-coded pixels.
+	function fitTzBox() {
+		var opt = tzSel && tzSel.options[tzSel.selectedIndex];
+		if (!opt) return;
+		var probe = document.createElement("span");
+		probe.style.cssText =
+			"position:absolute;visibility:hidden;white-space:pre;font:inherit;";
+		probe.textContent = opt.textContent;
+		document.body.appendChild(probe);
+		var em = parseFloat(getComputedStyle(probe).fontSize) || 16;
+		// the zone name + the select padding (0.75rem per side) + the
+		// dropdown arrow
+		tzSel.style.width = (probe.offsetWidth / em + 3) + "em";
+		probe.remove();
+	}
+	try {
+		fitTzBox();
+		tzSel.addEventListener("change", fitTzBox);
+	} catch (err) { /* very old browsers: keep the auto width */ }
+
 	// ---- character counters ------------------------------------------------
 	// title/email/description have server-side caps (main.go); mirror them
 	// as maxlength and show a live "n / max" count. Count by code points
 	// ([...s]) to match the server's utf8.RuneCountInString, so one emoji
 	// reads as one character, not two.
-	var fieldCaps = { title: 100, email: 320, description: 5000 };
+	var fieldCaps = { title: 100, email: 256, description: 5000 };
 	Object.keys(fieldCaps).forEach(function (id) {
 		var el = document.getElementById(id);
 		var label = document.getElementById(id + "-count");

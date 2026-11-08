@@ -502,6 +502,45 @@
 		accent-color: var(--accent);
 	}
 
+	/* the stacked fields at the top of the create forms: one .form-field div
+	   per label/control group. The div margin is the only spacing between
+	   fields, so each label stays with its own box (margins on the inline
+	   inputs themselves would re-baseline their line and drift the labels
+	   away from them). The time inputs and the choice rows live in flex
+	   rows inside the fieldsets below, which own their spacing */
+	#form .form-field {
+		margin-top: 0.75rem;
+	}
+
+	/* the field labels (title / email / description / end date) sit on their
+	   own block line directly above their box, so a tall control (the
+	   textarea) cannot re-baseline the label. The checkbox rows' labels follow
+	   the checkbox and stay inline */
+	#form .form-field > label:first-child {
+		display: block;
+	}
+
+	/* the end-date / timezone rows share one label column (max-content = the
+	   widest label in the current language), so the boxes line up edge to edge;
+	   the labels stay in front of the boxes, centered against the 40px box
+	   height */
+	#form .form-rows {
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		column-gap: 0.5rem;
+		row-gap: 0.75rem;
+		margin-top: 0.75rem;
+	}
+
+	#form .form-rows .form-field {
+		display: contents;
+	}
+
+	#form .form-rows .form-field > label {
+		display: flex;
+		align-items: center;
+	}
+
 	/* ---- buttons ------------------------------------------------------- */
 	.btn,
 	button[type="submit"],
@@ -552,8 +591,23 @@
 	}
 
 	/* date + timezone: fit their content instead of stretching to 480px;
-	   #locale fits content via its own rule in the header section */
-	#enddate,
+	   #locale fits content via its own rule in the header section. A
+	   type=date value renders exactly 10 glyphs (dd.mm.yyyy, leading zeros
+	   in every locale), so the date box is 10ch plus the padding/border;
+	   the timezone select keeps width: auto (the widest zone option) until
+	   dater.js resizes it to the selected zone name */
+	#enddate {
+		width: calc(10ch + 2em);
+	}
+
+	/* Firefox draws a calendar-picker button inside the date input (the other
+	   engines do not), so it needs a wider box */
+	@supports (-moz-appearance: none) {
+		#enddate {
+			width: calc(10ch + 4.5em);
+		}
+	}
+
 	#timezone {
 		width: auto;
 	}
@@ -1070,6 +1124,12 @@
 	}
 
 	/* ---- vote form: voting type ---------------------------------------------- */
+	/* the box hugs the widest option label (whose length varies by language)
+	   instead of stretching to the full form width */
+	.vote-type-picker {
+		width: fit-content;
+	}
+
 	.vote-type-picker .vote-type-option {
 		display: flex;
 		align-items: center;
@@ -1084,6 +1144,16 @@
 		color: var(--text-2);
 		opacity: 0.4;
 		cursor: not-allowed;
+	}
+
+	/* the label of a mutually-exclusive checkbox that is disabled
+	   (single-choice while must-answer is on, and vice versa) reads as
+	   unselectable the same way the greyed voting-type rows do; the disabled
+	   checkbox box mutes on its own */
+	#form:has(#single-choice:disabled) label[for="single-choice"],
+	#form:has(#must-answer:disabled) label[for="must-answer"] {
+		color: var(--text-2);
+		opacity: 0.4;
 	}
 
 	/* ---- date/time/choices picker -------------------------------------------- */
