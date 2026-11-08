@@ -50,10 +50,10 @@ func newTestApp(t *testing.T) *fiber.App {
 	return newApp(staticDir)
 }
 
-// postForm submits a url-encoded body to /1-1-form, like a browser does.
+// postForm submits a url-encoded body to /meet-form, like a browser does.
 func postForm(t *testing.T, app *fiber.App, form string) (*http.Response, error) {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/1-1-form", strings.NewReader(form))
+	req := httptest.NewRequest(http.MethodPost, "/meet-form", strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return app.Test(req)
 }
@@ -97,18 +97,18 @@ func runSmokeSuite(t *testing.T) {
 	// structural — the options must be inside the <select>, not loose text.
 	// The header's locale <select> precedes the form's, so slice from the
 	// timezone select to its own </select>.
-	rf := get("/1-1-form")
+	rf := get("/meet-form")
 	if rf.StatusCode != http.StatusOK {
-		t.Fatalf("GET /1-1-form: status %d", rf.StatusCode)
+		t.Fatalf("GET /meet-form: status %d", rf.StatusCode)
 	}
 	fb := body(rf)
 	selStart := strings.Index(fb, `<select id="timezone" name="timezone">`)
 	if selStart < 0 {
-		t.Fatalf("GET /1-1-form: timezone <select> not found in body")
+		t.Fatalf("GET /meet-form: timezone <select> not found in body")
 	}
 	relEnd := strings.Index(fb[selStart:], "</select>")
 	if relEnd < 0 {
-		t.Fatalf("GET /1-1-form: timezone </select> not found in body")
+		t.Fatalf("GET /meet-form: timezone </select> not found in body")
 	}
 	selEnd := selStart + relEnd
 	sel := fb[selStart:selEnd]
@@ -118,7 +118,7 @@ func runSmokeSuite(t *testing.T) {
 		`<option value="UTC">UTC</option>`,
 	} {
 		if !strings.Contains(sel, want) {
-			t.Fatalf("GET /1-1-form: timezone select missing %s", want)
+			t.Fatalf("GET /meet-form: timezone select missing %s", want)
 		}
 	}
 	// The options render in alphabetical order.
@@ -127,11 +127,11 @@ func runSmokeSuite(t *testing.T) {
 		names = append(names, o[:strings.Index(o, `">`)])
 	}
 	if len(names) == 0 {
-		t.Fatalf("GET /1-1-form: no timezone options rendered")
+		t.Fatalf("GET /meet-form: no timezone options rendered")
 	}
 	for k := 1; k < len(names); k++ {
 		if names[k-1] > names[k] {
-			t.Fatalf("GET /1-1-form: timezone options not alphabetical: %q before %q", names[k-1], names[k])
+			t.Fatalf("GET /meet-form: timezone options not alphabetical: %q before %q", names[k-1], names[k])
 		}
 	}
 
@@ -160,14 +160,14 @@ func runSmokeSuite(t *testing.T) {
 	// Create a meeting via the form and read it back through the redirect.
 	r, err := postForm(t, app, "title=Smoke+Meeting&email=smoke%40example.com&description=upgrade+check&timezone=Europe/Berlin&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00&slot2=2026-11-02T10:00&slot3=2026-11-02T14:00")
 	if err != nil {
-		t.Fatalf("POST /1-1-form: %v", err)
+		t.Fatalf("POST /meet-form: %v", err)
 	}
 	if r.StatusCode != 303 {
-		t.Fatalf("POST /1-1-form: expected 303, got %d", r.StatusCode)
+		t.Fatalf("POST /meet-form: expected 303, got %d", r.StatusCode)
 	}
 	loc := r.Header.Get("Location")
 	if !strings.HasPrefix(loc, "/meet/") || len(loc) <= len("/meet/") {
-		t.Fatalf("POST /1-1-form: unexpected Location %q", loc)
+		t.Fatalf("POST /meet-form: unexpected Location %q", loc)
 	}
 
 	mr := get(loc)
@@ -225,7 +225,7 @@ func runFormPostSuite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r, err := postForm(t, app, tt.form)
 			if err != nil {
-				t.Fatalf("POST /1-1-form: %v", err)
+				t.Fatalf("POST /meet-form: %v", err)
 			}
 			if r.StatusCode != tt.wantStatus {
 				t.Fatalf("expected %d, got %d", tt.wantStatus, r.StatusCode)
@@ -249,10 +249,10 @@ func TestHeaderLabelConsistency(t *testing.T) {
 
 	r, err := postForm(t, app, "title=Mixed&email=m%40example.com&description=d&timezone=Europe/Berlin&slot0=2026-11-01T10:00&slot1=2026-11-02T10:00&slot2=2026-11-02T14:00")
 	if err != nil {
-		t.Fatalf("POST /1-1-form: %v", err)
+		t.Fatalf("POST /meet-form: %v", err)
 	}
 	if r.StatusCode != 303 {
-		t.Fatalf("POST /1-1-form: expected 303, got %d", r.StatusCode)
+		t.Fatalf("POST /meet-form: expected 303, got %d", r.StatusCode)
 	}
 	mr, err := app.Test(httptest.NewRequest(http.MethodGet, r.Header.Get("Location"), nil))
 	if err != nil {

@@ -31,18 +31,18 @@ func pollEnded(m *database.Meeting, now time.Time) bool {
 	return now.After(m.Expires)
 }
 
-// ensureIdentityCookie returns the poll's identity value for this
-// request: the one the browser sent, or a freshly minted one (set on the
-// response) when the browser has none yet and the poll is still running.
-// Returning the value — not just setting the cookie — lets the very first
-// page load already carry a CSRF token matching the cookie it mints. A
-// closed poll mints nothing, like an expired one.
-func ensureIdentityCookie(c fiber.Ctx, m *database.Meeting, now time.Time) string {
-	name := cookieName(m)
+// ensureIdentityCookie returns the identity value for this request:
+// the one the browser sent under the poll/vote's cookie name, or a freshly
+// minted one (set on the response) when the browser has none yet and the
+// poll or vote is still running. Returning the value — not just setting the
+// cookie — lets the very first page load already carry a CSRF token
+// matching the cookie it mints. A closed poll or vote mints nothing, like
+// an expired one.
+func ensureIdentityCookie(c fiber.Ctx, name string, expires time.Time, closed bool, now time.Time) string {
 	if id := c.Cookies(name); id != "" {
 		return id
 	}
-	if m.Closed || !m.Expires.After(now) {
+	if closed || !expires.After(now) {
 		return ""
 	}
 	token, err := store.RandomKey(32)
@@ -50,17 +50,17 @@ func ensureIdentityCookie(c fiber.Ctx, m *database.Meeting, now time.Time) strin
 		return ""
 	}
 	c.Cookie(&fiber.Cookie{
-		Name: name, Value: token, Expires: m.Expires,
+		Name: name, Value: token, Expires: expires,
 		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
 	})
 	return token
 }
 
-// dropIdentityCookie expires the poll's identity cookie, called when the
+// dropIdentityCookie expires the identity cookie, called when the
 // respondent deletes their answer.
-func dropIdentityCookie(c fiber.Ctx, m *database.Meeting) {
+func dropIdentityCookie(c fiber.Ctx, name string) {
 	c.Cookie(&fiber.Cookie{
-		Name: cookieName(m), Value: "", Expires: time.Unix(0, 0), MaxAge: 0,
+		Name: name, Value: "", Expires: time.Unix(0, 0), MaxAge: 0,
 		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
 	})
 }
@@ -207,8 +207,8 @@ func collectMarks(c fiber.Ctx, m *database.Meeting) (map[string]string, string) 
 // ---- meeting load/save with compare-and-set ----
 
 var (
-	// errNotFoundPoll: the link key resolves to no meeting.
-	errNotFoundPoll = errors.New("poll: link unknown")
+	// errNotFound: the link key resolves to no poll or vote.
+	errNotFound = errors.New("poll: link unknown")
 	// errConflict: all compare-and-set retries were exhausted.
 	errConflict = errors.New("poll: update conflict")
 )
@@ -221,29 +221,35 @@ func loadMeeting(key string, byAdmin bool) (*database.Meeting, error) {
 	return db.Get(key)
 }
 
-// saveMeeting re-reads the meeting, applies mutate to it, and writes it
+// saveEntity re-reads the entity, applies mutate to it, and writes it
 // back under the compare-and-set, retrying on conflict so two concurrent
-// writers both land. It returns the stored copy, or errNotFoundPoll /
+// writers both land. It returns the stored copy, or errNotFound /
 // errConflict / a storage error.
-func saveMeeting(key string, byAdmin bool, mutate func(m *database.Meeting)) (*database.Meeting, error) {
+func saveEntity[T any](load func(key string, byAdmin bool) (T, error), update func(T) error, key string, byAdmin bool, mutate func(T)) (T, error) {
+	var zero T
 	for attempt := 0; attempt < 3; attempt++ {
-		m, err := loadMeeting(key, byAdmin)
+		e, err := load(key, byAdmin)
 		if err != nil {
 			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFoundPoll
+				return zero, errNotFound
 			}
-			return nil, err
+			return zero, err
 		}
-		mutate(m)
-		if err := db.Update(m); err != nil {
+		mutate(e)
+		if err := update(e); err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				continue
 			}
-			return nil, err
+			return zero, err
 		}
-		return m, nil
+		return e, nil
 	}
-	return nil, errConflict
+	return zero, errConflict
+}
+
+// saveMeeting is the meeting's compare-and-set save.
+func saveMeeting(key string, byAdmin bool, mutate func(m *database.Meeting)) (*database.Meeting, error) {
+	return saveEntity(loadMeeting, db.Update, key, byAdmin, mutate)
 }
 
 // resolveMeeting finds the meeting behind a link key and reports which

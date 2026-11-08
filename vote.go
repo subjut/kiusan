@@ -26,38 +26,6 @@ func voteEnded(v *database.Vote, now time.Time) bool {
 	return now.After(v.Expires)
 }
 
-// ensureVoteIdentityCookie returns the vote's identity value for this
-// request: the one the browser sent, or a freshly minted one (set on the
-// response) when the browser has none yet and the vote is still running.
-// A closed vote mints nothing, like an expired one.
-func ensureVoteIdentityCookie(c fiber.Ctx, v *database.Vote, now time.Time) string {
-	name := voteCookieName(v)
-	if id := c.Cookies(name); id != "" {
-		return id
-	}
-	if v.Closed || !v.Expires.After(now) {
-		return ""
-	}
-	token, err := store.RandomKey(32)
-	if err != nil {
-		return ""
-	}
-	c.Cookie(&fiber.Cookie{
-		Name: name, Value: token, Expires: v.Expires,
-		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
-	})
-	return token
-}
-
-// dropVoteIdentityCookie expires the vote's identity cookie, called when
-// the voter deletes their answer.
-func dropVoteIdentityCookie(c fiber.Ctx, v *database.Vote) {
-	c.Cookie(&fiber.Cookie{
-		Name: voteCookieName(v), Value: "", Expires: time.Unix(0, 0), MaxAge: 0,
-		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
-	})
-}
-
 // ---- vote answer lists ----
 
 // findVoteAnswer returns the answer stored under the identity token, if any.
@@ -178,29 +146,9 @@ func loadVote(key string, byAdmin bool) (*database.Vote, error) {
 	return db.GetVote(key)
 }
 
-// saveVote re-reads the vote, applies mutate to it, and writes it back
-// under the compare-and-set, retrying on conflict so two concurrent
-// writers both land. It returns the stored copy, or errNotFoundPoll /
-// errConflict / a storage error.
+// saveVote is the vote's compare-and-set save.
 func saveVote(key string, byAdmin bool, mutate func(v *database.Vote)) (*database.Vote, error) {
-	for attempt := 0; attempt < 3; attempt++ {
-		v, err := loadVote(key, byAdmin)
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return nil, errNotFoundPoll
-			}
-			return nil, err
-		}
-		mutate(v)
-		if err := db.UpdateVote(v); err != nil {
-			if errors.Is(err, store.ErrConflict) {
-				continue
-			}
-			return nil, err
-		}
-		return v, nil
-	}
-	return nil, errConflict
+	return saveEntity(loadVote, db.UpdateVote, key, byAdmin, mutate)
 }
 
 // choiceRow is one option row of a vote form submission: the option's
@@ -291,17 +239,6 @@ func pruneVoteAnswers(v *database.Vote) {
 			}
 		}
 	}
-}
-
-// voteSaveError maps a store-level save error to an HTTP response.
-func voteSaveError(c fiber.Ctx, err error) error {
-	switch {
-	case errors.Is(err, errNotFoundPoll):
-		return notFoundHandler(c)
-	case errors.Is(err, errConflict):
-		return sendErr(c, 500, "Too many concurrent edits, try again")
-	}
-	return sendInternal(c, err)
 }
 
 // resolveVote finds the vote behind a link key and reports which view the

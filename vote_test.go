@@ -14,10 +14,10 @@ import (
 	"github.com/subjut/kiusan/database"
 )
 
-// postVoteForm submits a url-encoded body to /choice-form, like a browser does.
+// postVoteForm submits a url-encoded body to /vote-form, like a browser does.
 func postVoteForm(t *testing.T, app *fiber.App, form string) (*http.Response, error) {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/choice-form", strings.NewReader(form))
+	req := httptest.NewRequest(http.MethodPost, "/vote-form", strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return app.Test(req)
 }
@@ -26,12 +26,12 @@ func TestVoteFormRender(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
 
-	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/choice-form", nil))
+	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote-form", nil))
 	if err != nil {
-		t.Fatalf("GET /choice-form: %v", err)
+		t.Fatalf("GET /vote-form: %v", err)
 	}
 	if r.StatusCode != http.StatusOK {
-		t.Fatalf("GET /choice-form: status %d", r.StatusCode)
+		t.Fatalf("GET /vote-form: status %d", r.StatusCode)
 	}
 	b, _ := io.ReadAll(r.Body)
 	body := string(b)
@@ -54,7 +54,7 @@ func TestVoteFormRender(t *testing.T) {
 		`src="/chooser.js"`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("GET /choice-form: missing %q in body", want)
+			t.Errorf("GET /vote-form: missing %q in body", want)
 		}
 	}
 }
@@ -76,14 +76,14 @@ func TestVoteFormCreate(t *testing.T) {
 
 	r, err := postVoteForm(t, app, form)
 	if err != nil {
-		t.Fatalf("POST /choice-form: %v", err)
+		t.Fatalf("POST /vote-form: %v", err)
 	}
 	if r.StatusCode != http.StatusSeeOther && r.StatusCode != http.StatusFound {
-		t.Fatalf("POST /choice-form: status %d, want redirect", r.StatusCode)
+		t.Fatalf("POST /vote-form: status %d, want redirect", r.StatusCode)
 	}
 	loc := r.Header.Get("Location")
 	if !strings.HasPrefix(loc, "/vote/") {
-		t.Fatalf("POST /choice-form: redirect %q, want /vote/...", loc)
+		t.Fatalf("POST /vote-form: redirect %q, want /vote/...", loc)
 	}
 
 	// Follow the redirect to the admin page (the vote page doesn't exist
@@ -145,10 +145,10 @@ func TestVoteFormValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r, err := postVoteForm(t, app, tc.form)
 			if err != nil {
-				t.Fatalf("POST /choice-form: %v", err)
+				t.Fatalf("POST /vote-form: %v", err)
 			}
 			if r.StatusCode != http.StatusBadRequest {
-				t.Fatalf("POST /choice-form (%s): status %d, want 400", tc.name, r.StatusCode)
+				t.Fatalf("POST /vote-form (%s): status %d, want 400", tc.name, r.StatusCode)
 			}
 		})
 	}
@@ -173,18 +173,18 @@ func TestVoteFormEdit(t *testing.T) {
 
 	r, err := postVoteForm(t, app, form)
 	if err != nil {
-		t.Fatalf("POST /choice-form: %v", err)
+		t.Fatalf("POST /vote-form: %v", err)
 	}
 	loc := r.Header.Get("Location")
 	adminKey := strings.TrimPrefix(loc, "/vote/")
 
 	// Load the edit form.
-	r2, err := app.Test(httptest.NewRequest(http.MethodGet, "/choice-form/edit/"+adminKey, nil))
+	r2, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote-form/edit/"+adminKey, nil))
 	if err != nil {
-		t.Fatalf("GET /choice-form/edit/%s: %v", adminKey, err)
+		t.Fatalf("GET /vote-form/edit/%s: %v", adminKey, err)
 	}
 	if r2.StatusCode != http.StatusOK {
-		t.Fatalf("GET /choice-form/edit: status %d", r2.StatusCode)
+		t.Fatalf("GET /vote-form/edit: status %d", r2.StatusCode)
 	}
 	b, _ := io.ReadAll(r2.Body)
 	body := string(b)
@@ -201,7 +201,7 @@ func TestVoteFormEdit(t *testing.T) {
 		`name="hide-users" value="true" checked`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("GET /choice-form/edit: missing %q in body", want)
+			t.Errorf("GET /vote-form/edit: missing %q in body", want)
 		}
 	}
 }
@@ -210,12 +210,12 @@ func TestVoteFormEditNotFound(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)
 
-	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/choice-form/edit/nonexistentkey1234", nil))
+	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote-form/edit/nonexistentkey1234", nil))
 	if err != nil {
-		t.Fatalf("GET /choice-form/edit/unknown: %v", err)
+		t.Fatalf("GET /vote-form/edit/unknown: %v", err)
 	}
 	if r.StatusCode != http.StatusNotFound {
-		t.Fatalf("GET /choice-form/edit/unknown: status %d, want 404", r.StatusCode)
+		t.Fatalf("GET /vote-form/edit/unknown: status %d, want 404", r.StatusCode)
 	}
 }
 
@@ -235,10 +235,10 @@ func createVote(t *testing.T, app *fiber.App, extra url.Values) (string, string)
 	}
 	r, err := postVoteForm(t, app, form.Encode())
 	if err != nil {
-		t.Fatalf("POST /choice-form: %v", err)
+		t.Fatalf("POST /vote-form: %v", err)
 	}
 	if r.StatusCode != http.StatusSeeOther {
-		t.Fatalf("POST /choice-form: status %d", r.StatusCode)
+		t.Fatalf("POST /vote-form: status %d", r.StatusCode)
 	}
 	adminKey := strings.TrimPrefix(r.Header.Get("Location"), "/vote/")
 	v, err := db.GetVoteAdmin(adminKey)
@@ -345,10 +345,10 @@ func editVote(t *testing.T, app *fiber.App, adminKey string, rows []choiceRow, e
 	}
 	resp, err := postVoteForm(t, app, form.Encode())
 	if err != nil {
-		t.Fatalf("POST /choice-form (edit): %v", err)
+		t.Fatalf("POST /vote-form (edit): %v", err)
 	}
 	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("POST /choice-form (edit): status %d, want redirect", resp.StatusCode)
+		t.Fatalf("POST /vote-form (edit): status %d, want redirect", resp.StatusCode)
 	}
 	v, err := db.GetVoteAdmin(adminKey)
 	if err != nil {

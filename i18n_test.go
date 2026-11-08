@@ -101,7 +101,7 @@ func TestI18nResolution(t *testing.T) {
 			t.Fatalf("admin page (de) missing %q", want)
 		}
 	}
-	b = i18nBody(t, i18nGet(t, app, "/1-1-form/edit/"+adminKey, "kiusan-locale=de", ""))
+	b = i18nBody(t, i18nGet(t, app, "/meet-form/edit/"+adminKey, "kiusan-locale=de", ""))
 	for _, want := range []string{
 		`lang="de"`, "Abstimmung bearbeiten", `>Titel:<`,
 		`<title data-i18n-prefix="pagetitle.formEdit" data-suffix="I18n Poll">kiusan | Bearbeiten: I18n Poll</title>`,

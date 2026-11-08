@@ -1,6 +1,7 @@
-{{/* The 404 for a poll link that resolves to nothing — the poll was
-     deleted (or the key was never valid). Rendered with status 404 by
-     meetingGone; the plain-text 404 is kept for unknown paths. */}}
+{{/* The 404 for a poll or vote link that resolves to nothing — the
+     poll/vote was deleted (or the key was never valid). Rendered with
+     status 404 by linkGone; the plain-text 404 is kept for unknown
+     paths. */}}
 <div class="container">
 	<h2 data-i18n="meet.goneTitle">{{.T "meet.goneTitle"}}</h2>
 	<p class="meta" data-i18n="meet.goneText">{{.T "meet.goneText"}}</p>

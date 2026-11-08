@@ -1,40 +1,40 @@
-<div class="container" data-tz="{{.Tz}}">
-	<h2>{{.Title}}</h2>
-	<p class="meta"><span data-i18n="meet.timezone">{{.T "meet.timezone"}}</span>: <span class="tz-name" data-base="{{.TzName}}">{{.TzName}}</span> &middot; <span data-i18n="meet.endsLabel">{{.T "meet.endsLabel"}}</span> <span class="f-date" data-slot="{{.EndsKey}}" data-style="medium">{{.Ends}}</span>{{if .Email}} &middot; {{.Email}}{{end}}</p>
+<div class="container" data-tz="{{.Meet.Tz}}">
+	<h2>{{.Meet.Title}}</h2>
+	<p class="meta"><span data-i18n="meet.timezone">{{.T "meet.timezone"}}</span>: <span class="tz-name" data-base="{{.Meet.TzName}}">{{.Meet.TzName}}</span> &middot; <span data-i18n="meet.endsLabel">{{.T "meet.endsLabel"}}</span> <span class="f-date" data-slot="{{.Meet.EndsKey}}" data-style="medium">{{.Meet.Ends}}</span>{{if .Meet.Email}} &middot; {{.Meet.Email}}{{end}}</p>
 
-	{{template "partials/links" .}}
+	{{template "partials/links" .Meet}}
 
-	{{if .Description}}
-	<p class="description">{{.Description}}</p>
+	{{if .Meet.Description}}
+	<p class="description">{{.Meet.Description}}</p>
 	{{end}}
 
-	{{if .Closed}}
+	{{if .Meet.Closed}}
 	<p class="closed"><span data-i18n="meet.closedPre">{{.T "meet.closedPre"}}</span><span data-i18n="meet.closedPost">{{.T "meet.closedPost"}}</span></p>
-	{{else if .Ended}}
-	<p class="ended"><span data-i18n="meet.endedPre">{{.T "meet.endedPre"}}</span><span class="f-date" data-slot="{{.EndsKey}}" data-style="long">{{.Ends}}</span><span data-i18n="meet.endedPost">{{.T "meet.endedPost"}}</span></p>
+	{{else if .Meet.Ended}}
+	<p class="ended"><span data-i18n="meet.endedPre">{{.T "meet.endedPre"}}</span><span class="f-date" data-slot="{{.Meet.EndsKey}}" data-style="long">{{.Meet.Ends}}</span><span data-i18n="meet.endedPost">{{.T "meet.endedPost"}}</span></p>
 	{{end}}
 
-	{{if .Slots}}
-	{{if .Closed}}
+	{{if .Meet.Slots}}
+	{{if .Meet.Closed}}
 	{{/* A closed poll keeps the answers table visible on both links, as a
-	     static matrix — no form row, no edit/delete icons (the partial
-	     renders them only while the poll is open). An ended poll keeps
-	     the old behavior: the notice only, no table. */}}
-	{{template "partials/answers-table" .}}
-	{{else if not .Ended}}
-	<form method="POST" action="{{.FormAction}}" id="answer-form" data-single="{{if .Single}}true{{else}}false{{end}}">
-		{{if .AnswerCSRF}}<input type="hidden" name="csrftoken" value="{{.CSRFToken}}">{{end}}
-		{{if .FormRespondentID}}<input type="hidden" name="respondentid" value="{{.FormRespondentID}}">{{end}}
-		{{template "partials/answers-table" .}}
-		{{if or $.FormNew $.FormID}}
+	    static matrix — no form row, no edit/delete icons (the partial
+	    renders them only while the poll is open). An ended poll keeps
+	    the old behavior: the notice only, no table. */}}
+	{{template "partials/answers-table" .Meet}}
+	{{else if not .Meet.Ended}}
+	<form method="POST" action="{{.Meet.FormAction}}" id="answer-form" data-single="{{if .Meet.Single}}true{{else}}false{{end}}">
+		{{if .Meet.AnswerCSRF}}<input type="hidden" name="csrftoken" value="{{.Meet.CSRFToken}}">{{end}}
+		{{if .Meet.FormRespondentID}}<input type="hidden" name="respondentid" value="{{.Meet.FormRespondentID}}">{{end}}
+		{{template "partials/answers-table" .Meet}}
+		{{if or $.Meet.FormNew $.Meet.FormID}}
 		<div class="form-actions">
-			<button type="submit" data-i18n="{{.SubmitAnswerKey}}">{{.SubmitAnswerLabel}}</button>
-			{{if $.FormID}}<a class="btn" href="{{$.SelfLink}}" data-i18n="meet.cancel">{{.T "meet.cancel"}}</a>{{end}}
+			<button type="submit" data-i18n="{{.Meet.SubmitAnswerKey}}">{{.Meet.SubmitAnswerLabel}}</button>
+			{{if $.Meet.FormID}}<a class="btn" href="{{$.Meet.SelfLink}}" data-i18n="meet.cancel">{{.T "meet.cancel"}}</a>{{end}}
 		</div>
 		{{end}}
 	</form>
-	<form method="POST" action="{{.DeleteAction}}" id="del-form">
-		{{if .DelCSRF}}<input type="hidden" name="csrftoken" value="{{.CSRFToken}}">{{end}}
+	<form method="POST" action="{{.Meet.DeleteAction}}" id="del-form">
+		{{if .Meet.DelCSRF}}<input type="hidden" name="csrftoken" value="{{.Meet.CSRFToken}}">{{end}}
 		<input type="hidden" name="respondentid" value="">
 	</form>
 	{{end}}
@@ -42,4 +42,5 @@
 	<p data-i18n="meet.noSlots">{{.T "meet.noSlots"}}</p>
 	{{end}}
 </div>
+<script src="/page.js"></script>
 <script src="/poll.js"></script>

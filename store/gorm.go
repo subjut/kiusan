@@ -71,8 +71,12 @@ func openGorm(engine, dsn string) (Store, error) {
 	return &gormStore{db: db}, nil
 }
 
-func (g *gormStore) Create(m *database.Meeting) (string, error) {
-	// Cap the collision retries so a misclassified error can't loop forever.
+// createEntity inserts m, minting its two link keys first: both the user
+// and the admin key must be free in both key columns, so a key must never
+// collide with any other entity's user or admin key. A collision —
+// extremely unlikely — loops until both are unique, capped so a
+// misclassified error can't loop forever.
+func createEntity(db *gorm.DB, what string, m any, assign func(userKey, adminKey string)) (string, error) {
 	const maxAttempts = 10
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		userKey, err := RandomKey(16)
@@ -83,21 +87,18 @@ func (g *gormStore) Create(m *database.Meeting) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		// Both keys must be free in both key columns: a key must never
-		// collide with any other meeting's user or admin key.
 		var count int64
-		res := g.db.Model(&database.Meeting{}).
+		res := db.Model(m).
 			Where("key IN ? OR admin_key IN ?", []string{userKey, adminKey}, []string{userKey, adminKey}).
 			Count(&count)
 		if res.Error != nil {
 			return "", res.Error
 		}
 		if count > 0 {
-			// Collision: extremely unlikely, but loop until both are unique.
 			continue
 		}
-		m.Key, m.AdminKey = userKey, adminKey
-		if err := g.db.Create(m).Error; err != nil {
+		assign(userKey, adminKey)
+		if err := db.Create(m).Error; err != nil {
 			if isUniqueViolation(err) {
 				// Lost a race against a concurrent create; try new keys.
 				continue
@@ -106,7 +107,13 @@ func (g *gormStore) Create(m *database.Meeting) (string, error) {
 		}
 		return userKey, nil
 	}
-	return "", fmt.Errorf("store: create: too many key collisions")
+	return "", fmt.Errorf("store: %s: too many key collisions", what)
+}
+
+func (g *gormStore) Create(m *database.Meeting) (string, error) {
+	return createEntity(g.db, "create", m, func(userKey, adminKey string) {
+		m.Key, m.AdminKey = userKey, adminKey
+	})
 }
 
 // isUniqueViolation recognizes duplicate-key/unique errors from the
@@ -188,36 +195,9 @@ func (g *gormStore) Close() error {
 // ---- VoteStore ----
 
 func (g *gormStore) CreateVote(v *database.Vote) (string, error) {
-	const maxAttempts = 10
-	for attempt := 0; attempt < maxAttempts; attempt++ {
-		userKey, err := RandomKey(16)
-		if err != nil {
-			return "", err
-		}
-		adminKey, err := RandomKey(16)
-		if err != nil {
-			return "", err
-		}
-		var count int64
-		res := g.db.Model(&database.Vote{}).
-			Where("key IN ? OR admin_key IN ?", []string{userKey, adminKey}, []string{userKey, adminKey}).
-			Count(&count)
-		if res.Error != nil {
-			return "", res.Error
-		}
-		if count > 0 {
-			continue
-		}
+	return createEntity(g.db, "create vote", v, func(userKey, adminKey string) {
 		v.Key, v.AdminKey = userKey, adminKey
-		if err := g.db.Create(v).Error; err != nil {
-			if isUniqueViolation(err) {
-				continue
-			}
-			return "", err
-		}
-		return userKey, nil
-	}
-	return "", fmt.Errorf("store: create vote: too many key collisions")
+	})
 }
 
 func (g *gormStore) GetVote(key string) (*database.Vote, error) {

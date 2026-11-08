@@ -11,33 +11,33 @@ organizer answers through it too). Respondents are identified by a
 per-poll browser cookie — there are no user accounts.
 
 Written in Go with the Fiber v3 web framework (v3.6.1). Storage is pluggable
-behind `store.MeetingStore` (`store/`), backed by GORM on the relational
-engines (sqlite — the default — plus mysql, mariadb, postgres), selected
-via `KIUSAN_STORE` + `KIUSAN_DSN`. GORM schemas are auto-migrated at
-startup (additive-only).
+behind `store.Store` (`store/`, embedding `MeetingStore` + `VoteStore`),
+backed by GORM on the relational engines (sqlite — the default — plus
+mysql, mariadb, postgres), selected via `KIUSAN_STORE` + `KIUSAN_DSN`.
+GORM schemas are auto-migrated at startup (additive-only).
 
 Feature state (see `static/index.html`):
-- "Schedule Meetings" — implemented end to end: the 1-1 form, the
-  two-link meeting page (respondent answer form with green/yellow
-  marks — no "no" button; unmarked slots render red in the matrix —,
-  submitted-answers matrix, admin link boxes, poll edit, answer
-  management), the per-poll identity cookie with CSRF token, poll
-  expiry, the prefilled poll edit that keeps both links, and the
-  admin-side poll lifecycle (close / re-open / delete, with a
+- "Schedule Meetings" — implemented end to end: the create/edit form
+  (`/meet-form`), the two-link meeting page (respondent answer form
+  with green/yellow marks — no "no" button; unmarked slots render red
+  in the matrix —, submitted-answers matrix, admin link boxes, poll
+  edit, answer management), the per-poll identity cookie with CSRF
+  token, poll expiry, the prefilled poll edit that keeps both links,
+  and the admin-side poll lifecycle (close / re-open / delete, with a
   dedicated 404 page for deleted links).
 - "Vote on Something" — implemented end to end: the create/edit form
-  (title, contact email, description, up to 20 options with stable
-  IDs, the four exclusive voting types — `yes/no` (the create
-  default), `yes`, `yes/maybe/no`, and "voters may write a note per
-  option" — the "pick only one option" and "must answer each option"
-  checkboxes that grey out the voting types they are invalid with, and
-  an end date), the two-link vote page (the form row + the
-  submitted-answers matrix with mark toggles or per-option note inputs,
-  the must-answer submit gate, answer edit/delete, admin answer
-  management, the prefilled poll edit that keeps both links, and the
-  admin lifecycle close / re-open / delete with the dedicated 404 page
-  for deleted links), the per-vote identity cookie with CSRF token.
-- "Find Date" — unimplemented (`static/date-form.html`, same)
+  (`/vote-form`; title, contact email, description, up to 20 options
+  with stable IDs, the four exclusive voting types — `yes/no` (the
+  create default), `yes`, `yes/maybe/no`, and "voters may write a note
+  per option" — the "pick only one option" and "must answer each
+  option" checkboxes that grey out the voting types they are invalid
+  with, and an end date), the two-link vote page (the form row + the
+  submitted-answers matrix with mark toggles or per-option note
+  inputs, the must-answer submit gate, answer edit/delete, admin
+  answer management, the prefilled poll edit that keeps both links,
+  and the admin lifecycle close / re-open / delete with the dedicated
+  404 page for deleted links), the per-vote identity cookie with CSRF
+token.
 
 ## Commands
 
@@ -50,6 +50,10 @@ Feature state (see `static/index.html`):
   - `KIUSAN_STORE=mysql KIUSAN_DSN="user:pass@tcp(localhost:3306)/kiusan" go run .`
     (mariadb: same DSN with `KIUSAN_STORE=mariadb`)
   - `KIUSAN_STORE=postgres KIUSAN_DSN="postgres://user:pass@localhost:5432/kiusan?sslmode=disable" go run .`
+- Environment: `KIUSAN_SECRET` (the CSRF secret — set it so tokens
+  survive restarts), `KIUSAN_BASE_URL` (the public origin for the
+  copyable link boxes; `https://` enables Secure cookies),
+  `KIUSAN_DEV` (`1` enables template reload + parse logging).
 - Tests: `go test ./...` (add `-race` in CI) — `smoke_test.go` runs the app
   in-process (no server, no network) and covers page rendering,
   favicon/static serving, the 404 fallthrough, a full meeting
@@ -71,33 +75,102 @@ Feature state (see `static/index.html`):
   in single-choice, the must-answer completeness 400 in mark and
   freetext modes), and the edit semantics (stable option IDs,
   text-change / delete / reorder answer handling, the vote-type flip's
-  mark/note pruning). The suites
-  run on GORM-sqlite; each test chdirs into `t.TempDir()` and opens a
+  mark/note pruning); `i18n_test.go` covers the locale resolution
+  order (cookie → `Accept-Language` → English) and base-tag matching,
+  the `/i18n/boot` + `/i18n/:lang` contract (merged dicts, the English
+  fallback for unshipped tags, 404 for malformed tags), key parity
+  between catalogs, and that every `data-i18n*` marker in the
+  templates names a key the English catalog defines. The suites run on
+  GORM-sqlite; each test chdirs into `t.TempDir()` and opens a
   throwaway store, so the dev data files are never touched.
 
 ## Layout
 
-- `main.go` — server setup, app wiring (`newApp`), routes (`initRoutes`,
-  incl. the clickjacking-header middleware and the poll routes: `GET
-  /1-1-form/edit/+` (admin key only), `POST /meet/+/answer`,
-  `POST /meet/+/answer/edit`, `POST /meet/+/answer/delete`, and the
-  admin lifecycle `POST /meet/+/close|reopen|delete`), and the
-  thin handlers — incl. `meetingGone`, the 404 page for a deleted poll
-  (`static/meet-gone.html` rendered with a 404 status). The store is
-  opened in `main` via `store.Open` (env-selected); handlers reach it
-  through the package-level `db` global.
-- `poll.go` — the poll plumbing shared by the handlers: the per-poll
-  identity cookie (`kiusan-<userKey>`, HttpOnly + SameSite=Lax, valid
-  until the poll ends; a closed poll mints none, like an expired one),
-  the
+- `main.go` — server setup only: the package-level `db` global
+  (`store.Store`, opened in `main` via `store.Open`, env-selected),
+  `loadConfig` (`KIUSAN_BASE_URL` / `KIUSAN_DEV` / secure-cookies),
+  the per-client rate-limit consts, the embedded `data/timezones.txt`
+  (sorted + loadable-filtered into `timezoneList` at process start),
+  `initRoutes` (the security-header middleware, the i18n endpoints, the
+  four static-dir middlewares, the per-route rate limiters, and all
+  page/form routes: `GET/POST /meet-form`, `GET /meet-form/edit/+`
+  (admin key only), `GET/POST /vote-form`, `GET /vote-form/edit/+`,
+  `GET /meet/+` + `POST /meet/+/answer|answer/edit|answer/delete` +
+  the admin lifecycle `POST /meet/+/close|reopen|delete` (the
+  answer/lifecycle routes register the shared `pollOps` builders —
+  `meetOps.postAnswer()`, `voteOps.postAnswer()`, …), the same triple
+  for `/vote/+`, and the 404 fallthrough), and `newApp`
+  (template engine, the `zoneDisplay` func, the request logger whose
+  `Skip` covers every capability URL so link keys never reach the log).
+- `render.go` — the page-rendering plumbing: the `pageData` struct
+  (the i18n base + `ThemeClass`, filled by `renderPage`, plus exactly
+  one of four page pointers per render — `Meet` / `Vote` / `MeetForm` /
+  `VoteForm` — the templates reach a page's data through it, e.g.
+  `{{.Meet.Tz}}`, `{{.VoteForm.Choices}}`; both it and `answerPage`
+  carry the `T` method) and `renderPage` (fills the i18n base, the
+  theme class, and renders through `layouts/home`), `formBase` (the
+  shared upper section of both create/edit forms — title, contact,
+  description, hide-users, end date — embedded by `meetingForm` and
+  `voteForm`), `answerPage` (the data shared by the meeting and vote
+  pages — header meta, the admin links section, the answer form row,
+  the table's aria strings — embedded by `meetingPage` and `votePage`
+  and received by the shared partials, which call its `T` method as
+  `{{.T "key"}}`), `themeClass`, `localeChosen`, `absURL` (the public
+  origin for the copyable link boxes), `pressAttr`, `homeHandler`, the
+  small response helpers (`notFoundHandler`, `linkGone` — the 404 page
+  for a deleted poll or vote link, `static/meet-gone.html` rendered
+  with a 404 status —, `sendErr`, `sendInternal`, `saveError`), the
+  shared form size consts and `validateTextFields`, and
+  `parseEndDate`/`endOf`.
+- `answers.go` — the shared answer & lifecycle handlers for both link
+  shapes: `answerData` (the type-erased submitted payload — per-slot /
+  per-choice marks + the free-text notes), `pollOps[T]` (the
+  type-specific surface of one answers table — `resolve` (user key
+  first, then admin key), `exists`, `keyOf`, `cookie`, `ended` /
+  `closed` / `setClosed`, `hasAns`, `collect`, `upsert` / `remove`,
+  `save`, `purge`), the six generic handlers (`answerPost`,
+  `answerEditPost`, `answerDeletePost`, `closePollPost`,
+  `reopenPollPost`, `deletePollPost`) and the builder methods on
+  `*pollOps[T]` (`postAnswer()` etc., each returning a `fiber.Handler`
+  so the routes read `meetOps.postAnswer()`), and the package vars
+  `meetOps` / `voteOps`.
+- `meet-form.go` — the meeting form: the `meetingForm` page struct
+  (embeds `formBase`; the timezone list, the prefill fields, the
+  calendar labels), `meetFormHandler` (create), `meetFormEditHandler`
+  (admin link only, prefilled, keeps both links), `extraTimezone`, and
+  `meetFormPostHandler` (create or update-in-place on a `meetingkey`).
+- `meet-page.go` — the meeting page: the table cell types
+  (`formSlot`, `timeCell`, `headerYear`, `headerDate`, `respCol`), the
+  `meetingPage` struct (embeds `answerPage`; the poll's zone, the slot
+  grid, the respondent columns, the edit `FormCol`), and
+  `meetingHandler` (user key → respondent view, admin key → admin
+  view). The answer & lifecycle endpoints are the shared generics in
+  `answers.go`.
+- `vote-form.go` — the vote form: the `voteForm` page struct (embeds
+  `formBase`; the choices, the two mode checkboxes, the vote type),
+  `voteFormHandler` (create), `voteFormEditHandler` (admin link only,
+  prefilled), `voteFormPostHandler` (create or update-in-place on a
+  `votekey`).
+- `vote-page.go` — the vote page: the `voteCol` cell type, the
+  `votePage` struct (embeds `answerPage`; the mode, the choices, the
+  vote columns, the edit `VoteFormCol`), and `voteHandler`. The answer
+  & lifecycle endpoints are the shared generics in `answers.go`.
+- `poll.go` — the poll plumbing shared by the handlers: the
+  per-identity cookie pair shared with the vote's (name-based
+  `ensureIdentityCookie` / `dropIdentityCookie` — `kiusan-<userKey>`
+  (see `cookieName`/`voteCookieName`), HttpOnly + SameSite=Lax, valid
+  until the poll or vote ends; a closed one mints none, like an
+  expired one), `isFormPost` (the urlencoded-only POST gate), the
   stateless CSRF token (HMAC-SHA256 over the cookie value, secret from
   `KIUSAN_SECRET` or random per start), `slotKey` (the slot's absolute
-  UTC instant, seconds stripped), the answer-list operations
-  (find/upsert/remove/prune), and `saveMeeting` (fresh read, mutate,
-  compare-and-set `Update`, retry on conflict).
-- `vote.go` — the vote plumbing, mirroring the poll's: the per-vote
-  identity cookie (`kiusan-<userKey>`, minted until the vote ends; a
-  closed vote mints none), `validVoteMark` (the marks a type accepts:
+  UTC instant, seconds stripped), `resolveMeeting` (user key first,
+  then admin key — the `pollOps` adapter's resolver), the
+  answer-list operations (find/upsert/remove/prune), the generic
+  `saveEntity` CAS round trip (fresh read, mutate, compare-and-set
+  `Update`, retry on conflict), `loadMeeting`, the thin
+  `saveMeeting` wrapper around it, and `collectMarks`.
+- `vote.go` — the vote plumbing, mirroring the poll's: `voteCookieName`
+  and `voteEnded`, `validVoteMark` (the marks a type accepts:
   `y` everywhere, `n` in yes-no/yes-maybe-no, `m` in yes-maybe-no
   only) and `collectVoteAnswers` (mark mode reads `a<ID>`; free-text
   mode reads `n<ID>`; must-answer rejects an unanswered option;
@@ -107,8 +180,9 @@ Feature state (see `static/index.html`):
   pruned, a deleted row drops its ID, reordering carries them),
   `pruneVoteAnswers` (drops marks/notes for removed options and the
   map the vote's type no longer uses, plus the `m` marks of a yes/no
-  vote), and `saveVote` (fresh read, mutate, compare-and-set
-  `UpdateVote`, retry on conflict).
+  vote), `resolveVote` (the vote's `pollOps` resolver), `loadVote`, and
+  the thin `saveVote` wrapper around `poll.go`'s generic `saveEntity`
+  (compare-and-set `UpdateVote`, retry on conflict).
 - `i18n.go` — the interface-localization plumbing: the `translator`
   (`gofiber/contrib/v3/i18n` over `go-i18n/v2` with a YAML
   `EmbedLoader` on the `locales/` directory), the `langHandler` hook
@@ -116,17 +190,17 @@ Feature state (see `static/index.html`):
   English), `matchLang` (base-tag matching so `de-CH` → `de`), the
   `/i18n/boot` handler (serves `window.I18N = {…}` as same-origin JS),
   and the `/i18n/:lang` handler (serves the JSON dict built live from
-  the in-memory bundle with English fallback). The `pageData` struct
-  and its `T` method live in `main.go`.
+  the in-memory bundle with English fallback). The `pageData`,
+  `formBase`, and `answerPage` structs (and their `T` methods) live in
+  `render.go`.
 - `database/database.go` — model types only: `Meeting` (incl. the IANA
   `TimeZone` (empty renders as UTC), the `uniqueIndex`ed `AdminKey`, the
   always-set `Expires`, `Closed` (a closed poll stops accepting
-  answers, independent of `Expires`), `Answers`, and the CAS stamp
-  `Generation`),
+  answers, independent of `Expires`), `SingleSignup` (at most one slot
+  per answer), `Answers`, and the CAS stamp `Generation`),
   `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
   a JSON document in a TEXT column) and `TimeSlice` (candidate slots,
   same treatment). `database/vote.go` adds the vote types: `Vote`
-  `database/vote.go` adds the vote types: `Vote`
   (incl. `VoteType` — `yes` / `yes-no` (the stored default) /
   `yes-maybe-no` / `freetext`, `SingleChoice` (valid only with `yes`
   and `freetext`), and `MustAnswer` (valid only with `yes-no`,
@@ -136,50 +210,55 @@ Feature state (see `static/index.html`):
   and `Notes` maps are keyed by choice ID, exactly one of them
   populated per vote type), same JSON-in-TEXT treatment. No handles
   or globals here.
-- `store/` — the `MeetingStore` interface and its GORM-backed
-  implementation `gorm.go` (sqlite — the default when `KIUSAN_STORE` is
-  empty, DSN defaulting to `./meetings.db` — plus mysql/mariadb/postgres;
-  schema auto-migrated at startup; the admin link is a `uniqueIndex`ed
-  `admin_key` column). `Get`/`GetAdmin` resolve the two links;
-  `Get`/`GetAdmin` resolve the two links;
-  `Update` is a compare-and-set on `Generation` (`ErrConflict` when stale)
-  and honors a changed admin key; the user key never changes.
-  `VoteStore` (`vote.go`) carries the vote mirror —
-  `GetVote`/`GetVoteAdmin`, `CreateVote`, and `UpdateVote`, the same
-  compare-and-set. `Open(kind, dsn)` dispatches on `KIUSAN_STORE`;
-  `RandomKey` in `key.go` builds the URL-safe keys. A new backend =
-  implement `MeetingStore` + `VoteStore` + add a case in `Open`.
+- `store/` — `store.Store` (`store.go`, embedding `MeetingStore` +
+  `VoteStore`) and its GORM-backed implementation `gorm.go` (sqlite —
+  the default when `KIUSAN_STORE` is empty, DSN defaulting to
+  `./meetings.db` — plus mysql/mariadb/postgres; schema auto-migrated at
+  startup; the admin link is a `uniqueIndex`ed `admin_key` column).
+  `Create` mints two unique link keys via the shared `createEntity`
+  (collision-checked against both key columns, retry-capped);
+  `Get`/`GetAdmin` resolve the two links; `Update` is a compare-and-set
+  on `Generation` (`ErrConflict` when stale) and honors a changed admin
+  key; the user key never changes. `VoteStore` (`vote.go`) carries the
+  vote mirror — `CreateVote`, `GetVote`/`GetVoteAdmin`, and
+  `UpdateVote`, the same compare-and-set. `Open(kind, dsn)` dispatches
+  on `KIUSAN_STORE`; `RandomKey` in `key.go` builds the URL-safe keys.
+  A new backend = implement `Store` + add a case in `Open`.
 - `static/` — HTML templates rendered by gofiber/template/html/v3
-  (`static/index.html`, `static/1-1-form.html`, `static/meet.html`,
-  `static/meet-gone.html` — the 404 page for a deleted poll,
-  `static/choice-form.html` — the vote create/edit form (incl. the
+  (`static/index.html`, `static/meet-form.html`, `static/meet.html`,
+  `static/meet-gone.html` — the 404 page for a deleted poll or vote,
+  `static/vote-form.html` — the vote create/edit form (incl. the
   `Voting type:` radio group), `static/vote.html`; layout:
   `static/layouts/home.html`, partials in `static/partials/` — incl.
-  `answers-table.html` (the poll's) and `vote-answers-table.html`, the
+  `answers-table.html` (the poll's), `vote-answers-table.html` (the
   shared answers-table markup the live vote form and the closed
-  vote's read-only matrix both render),
+  vote's read-only matrix both render), and `links.html` — the admin
+  links section (copyable link boxes + copy buttons, the edit link,
+  the close/re-open/delete actions with the inline two-step warning),
+  rendered only in the admin view),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
-  widget (locale-aware labels via `locale.js`), `poll.js` — answer-table
-  toggling, single-slot grey-out, answer-delete confirmations, the
-  two-step delete-poll warning, copy-box
-  selection, `chooser.js` — the vote form's option rows (add/remove,
-  reindex) and the mode interlock (single-choice greys out yes/no +
-  yes/maybe/no and must-answer, must-answer greys out yes and
-  single-choice; a selection on a greyed radio moves to the mode's
-  default type), `vote.js` — the vote page's answers-table behavior
-  (the mark toggles per voting type, the single-choice yes-
-  exclusivity, the must-answer submit gate, the delete confirmations),
-  `locale.js` —
-  browser-locale date display: rewrites the
+  widget (locale-aware labels via `locale.js`), `poll.js` — the poll
+  page's answer-table toggling + single-slot grey-out, `page.js` — the
+  shared page behaviour both page types have in common (the
+  answers-table width measurement, the answer-delete confirmations,
+  the two-step delete-poll/vote warning, the copy-box selection + copy
+  buttons + link-box sizing; loaded ahead of `poll.js`/`vote.js` and
+  providing their `t()`/`fill()` globals), `chooser.js` — the vote
+  form's option rows (add/remove, reindex) and the mode interlock
+  (single-choice greys out yes/no + yes/maybe/no and must-answer,
+  must-answer greys out yes and single-choice; a selection on a greyed
+  radio moves to the mode's default type), `vote.js` — the vote
+  page's answers-table behavior (the mark toggles per voting type, the
+  single-choice yes-exclusivity, the must-answer submit gate),
+  `locale.js` — browser-locale date display: rewrites the
   server-rendered date labels (kept as the no-JS fallback) in the
   viewer's locale and owns the site-header Display dropdown
   (`partials/locale-select.html`); loaded from `partials/header.html`,
   so it runs on every page, and `theme.js` — the light/dark toggle
   (`partials/theme-toggle.html`, a ghost button with a fixed
   sun–slash–moon icon beside the locale select; see Gotchas → Theme) —
-  loaded from
-  `partials/head.html`, ahead of `style.css` and ahead of `locale.js`; all
-  vanilla, no deps),
+  loaded from `partials/head.html`, ahead of `style.css` and ahead of
+  `locale.js`; all vanilla, no deps),
   `static/fonts/` (the self-hosted Inter variable font
   `InterVariable.woff2` + its OFL `LICENSE.txt`, served as
   `/InterVariable.woff2`) and `static/favicon/`, all served from the
@@ -225,7 +304,7 @@ Feature state (see `static/index.html`):
 - Go 1.26+ toolchain (go.mod declares `go 1.26.0`, required by the Fiber v3
   and template dependencies). Don't use stdlib or dependency features newer
   than that without bumping go.mod.
-- All storage goes through the `db` global (`store.MeetingStore`); handlers
+- All storage goes through the `db` global (`store.Store`); handlers
   never touch GORM directly, and GORM is imported only inside `store/`.
 - Handlers stay thin. In Fiber v3 a handler is `func(c fiber.Ctx) error`
   (`Ctx` is an interface — no `*`). Form fields are bound into
@@ -328,7 +407,7 @@ Feature state (see `static/index.html`):
   `data-i18n-prefix` (title prefix, keeps `data-suffix` = user's poll
   title) markers. The client swapper (`locale.js` `applyDict`) uses
   only `textContent`/`setAttribute` — no innerHTML — and re-renders
-  the `dater.js`/`poll.js` widget strings. Language switch: the
+  the `dater.js`/`poll.js`/`vote.js` widget strings. Language switch: the
   dropdown `change` handler fetches `GET /i18n/<tag>` (JSON dict
   built live from the in-memory bundle, English fallback for missing
   keys) and calls `applyDict` — no page reload. The initial dict is
@@ -341,7 +420,7 @@ Feature state (see `static/index.html`):
   go-i18n template-action parse failures.
 - **Theme (light/dark)**: no flash on load, and the toggle needs no
   reload. The `kiusan-theme` cookie (`dark`/`light`, 1-year, `Lax`,
-  JS-only) is the viewer's explicit choice; `main.go`'s `themeClass`
+  JS-only) is the viewer's explicit choice; `render.go`'s `themeClass`
   reads it in `renderPage` and `static/layouts/home.html` renders it as
   a class on `<html>` (`theme-dark`/`theme-light`, no class when the
   cookie is absent). The CSS dark theme is the same `:root` tokens
@@ -364,8 +443,9 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
 - **AutoMigrate is additive-only**: it creates tables and adds columns at
   startup but does not drop or modify anything; destructive schema changes
   need explicit SQL migrations (none exist yet).
-- **Template engine** runs with `Reload(true)` and `Debug(true)` for
-  development — template edits do not require a restart.
+- **Template engine** `Reload`/`Debug` are gated on `KIUSAN_DEV` —
+  while set, template edits do not require a restart; without it the
+  templates render as parsed at startup.
 - **Slices before indexing**: `meeting.Dates` must be checked for empty
   before indexing (handlers must not panic on malformed stored data).
 - **Template action quotes & range root**: never put quoted string
@@ -398,7 +478,7 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
 - **The edit form row is the table's last row**: when editing an answer
   (`?edit=<id>`), the respondent's row is *not* rendered in place — it is
   skipped in the `{{range .Cols}}` loop and rendered as the table's last
-  row (prefilled from `pageData.FormCol`, the matching `respCol`),
+  row (prefilled from `meetingPage.FormCol`, the matching `respCol`),
   directly above the save/cancel bar, so long tables need no scrolling.
   Saving/canceling navigates to the plain page, where the row renders in
   its normal list position again; the move is a render-only choice,
@@ -412,6 +492,12 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
 - **CSRF secret**: set `KIUSAN_SECRET` so tokens survive server restarts
   (still-open pages keep working); without it the secret is random per
   start and open pages must be reloaded after a restart.
+- **Rate limiting & link keys in the log**: the unauthenticated write
+  routes carry per-client limits (20 creates / 30 answers per minute,
+  consts in `main.go`) on top of the per-poll size caps; the request
+  logger's `Skip` covers every capability URL (`/meet/`, `/vote/`,
+  `/meet-form/edit/`, `/vote-form/edit/`) so link keys never reach the
+  log.
 - **Expiry**: `Expires` is end-of-day (23:59:59) in the meeting's
   timezone; the form's `enddate` is optional and defaults to three
   months, so every poll has one. An ended poll answers with 410, mints
@@ -433,13 +519,14 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   endpoints. Delete purges the row — with every answer and its stored
   identity — and expires the requesting browser's identity cookie in
   the redirect to `/`.
-- **Deleted-poll 404**: a link key that resolves to no poll renders
-  `static/meet-gone.html` with status 404 (`meetingGone`), for `GET
-  /meet/+` and `GET /1-1-form/edit/+` — a full page, deliberately
-  different from the plain-text 404 of an unknown path. Fiber v3's
-  `c.Render` only sets the body and content type, so the 404 status set
-  on the ctx around it is the one that ships; POST answer/lifecycle
-  endpoints keep the plain 404.
+- **Deleted-poll 404**: a link key that resolves to no poll or vote
+  renders `static/meet-gone.html` with status 404 (`linkGone`), for
+  `GET /meet/+`, `GET /vote/+`, and the two form edit routes (`GET
+  /meet-form/edit/+`, `GET /vote-form/edit/+`) — a full page,
+  deliberately different from the plain-text 404 of an unknown path.
+  Fiber v3's `c.Render` only sets the body and content type, so the
+  404 status set on the ctx around it is the one that ships; POST
+  answer/lifecycle endpoints keep the plain 404.
 - **Voting types & the mode checkboxes**: `Vote.VoteType` is `yes`
   (a yes-toggle only — there is no no-button, unselected is neutral),
   `yes-no` (the stored default), `yes-maybe-no`, or `freetext`. Two

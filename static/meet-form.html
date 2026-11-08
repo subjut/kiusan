@@ -1,43 +1,43 @@
 <div class="container">
-	<!-- action: the edit page lives on /1-1-form/edit/<key> (GET-only), so
+	<!-- action: the edit page lives on /meet-form/edit/<key> (GET-only), so
 	     without an explicit action the browser would POST the edit there
 	     and fall through to 404 -->
-	<form id="form" method="POST" action="/1-1-form" data-slots="{{.SlotsAttr}}">
-		{{if .MeetingKey}}<input type="hidden" name="meetingkey" value="{{.MeetingKey}}">{{end}}
-		<h2 data-i18n="{{.FormTitleKey}}">{{.T .FormTitleKey}}</h2>
+	<form id="form" method="POST" action="/meet-form" data-slots="{{.MeetForm.SlotsAttr}}">
+		{{if .MeetForm.MeetingKey}}<input type="hidden" name="meetingkey" value="{{.MeetForm.MeetingKey}}">{{end}}
+		<h2 data-i18n="{{.MeetForm.FormTitleKey}}">{{.T .MeetForm.FormTitleKey}}</h2>
 		<div class="form-field">
 			<label for="title" data-i18n="form.title">{{.T "form.title"}}</label>
-			<input type="text" id="title" name="title" value="{{.Title}}" maxlength="100">
+			<input type="text" id="title" name="title" value="{{.MeetForm.Title}}" maxlength="100">
 			<span class="char-count" id="title-count"></span>
 		</div>
 		<div class="form-field">
 			<label for="email" data-i18n="form.email">{{.T "form.email"}}</label>
-			<input type="text" id="email" name="email" value="{{.Email}}" maxlength="256">
+			<input type="text" id="email" name="email" value="{{.MeetForm.Email}}" maxlength="256">
 			<span class="char-count" id="email-count"></span>
 		</div>
 		<div class="form-field">
 			<label for="description" data-i18n="form.description">{{.T "form.description"}}</label>
-			<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.Description}}</textarea>
+			<textarea id="description" name="description" rows="5" cols="40" maxlength="5000">{{.MeetForm.Description}}</textarea>
 			<span class="char-count" id="description-count"></span>
 		</div>
 		<div class="form-field">
-			<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .HideUsers}} checked{{end}}>
+			<input type="checkbox" id="hide-users" name="hide-users" value="true"{{if .MeetForm.HideUsers}} checked{{end}}>
 			<label for="hide-users" data-i18n="form.hideUsers">{{.T "form.hideUsers"}}</label>
 		</div>
 		<div class="form-field">
-			<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .SingleSignup}} checked{{end}}>
+			<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .MeetForm.SingleSignup}} checked{{end}}>
 			<label for="single-signup" data-i18n="form.singleSignup">{{.T "form.singleSignup"}}</label>
 		</div>
 		<div class="form-rows">
 			<div class="form-field">
 				<label for="enddate" data-i18n="form.endDate">{{.T "form.endDate"}}</label>
-				<input type="date" id="enddate" name="enddate" min="{{.MinExp}}" value="{{if .Expiry}}{{.Expiry}}{{else}}{{.DefaultExp}}{{end}}">
+				<input type="date" id="enddate" name="enddate" min="{{.MeetForm.MinExp}}" value="{{if .MeetForm.Expiry}}{{.MeetForm.Expiry}}{{else}}{{.MeetForm.DefaultExp}}{{end}}">
 			</div>
 			<div class="form-field">
 				<label for="timezone" data-i18n="form.timezone">{{.T "form.timezone"}}</label>
 				<select id="timezone" name="timezone">
-{{range .Timezones}}<option value="{{.}}"{{if eq . $.Timezone}} selected{{end}}>{{zoneDisplay .}}</option>
-{{end}}{{if .ExtraTz}}<option value="{{.ExtraTz}}" selected>{{zoneDisplay .ExtraTz}}</option>
+{{range .MeetForm.Timezones}}<option value="{{.}}"{{if eq . $.MeetForm.Timezone}} selected{{end}}>{{zoneDisplay .}}</option>
+{{end}}{{if .MeetForm.ExtraTz}}<option value="{{.MeetForm.ExtraTz}}" selected>{{zoneDisplay .MeetForm.ExtraTz}}</option>
 {{end}}</select>
 			</div>
 		</div>
@@ -45,9 +45,9 @@
 		<fieldset class="dates-picker">
 			<legend data-i18n="form.selectDates">{{.T "form.selectDates"}}</legend>
 			<div class="cal-nav">
-				<button type="button" id="cal-prev" aria-label="{{.CalPrev}}">‹</button>
+				<button type="button" id="cal-prev" aria-label="{{.MeetForm.CalPrev}}">‹</button>
 				<span class="cal-title" id="cal-title"></span>
-				<button type="button" id="cal-next" aria-label="{{.CalNext}}">›</button>
+				<button type="button" id="cal-next" aria-label="{{.MeetForm.CalNext}}">›</button>
 			</div>
 			<table class="cal-grid" id="cal-grid"></table>
 			<div class="chips" id="date-chips"></div>
@@ -66,7 +66,7 @@
 
 		<div id="slot-preview"></div>
 
-		<input type="submit" value="{{.SubmitLabel}}">
+		<input type="submit" value="{{.MeetForm.SubmitLabel}}">
 	</form>
 	<script src="/dater.js"></script>
 </div>

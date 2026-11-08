@@ -107,14 +107,14 @@ func (p *pollClient) hasCookie(r *http.Response, name string) bool {
 // view, where both links live).
 func (p *pollClient) createPoll(form string) (*database.Meeting, string) {
 	p.t.Helper()
-	r := p.post("/1-1-form", form, "")
+	r := p.post("/meet-form", form, "")
 	if r.StatusCode != http.StatusSeeOther {
-		p.t.Fatalf("POST /1-1-form: expected 303, got %d", r.StatusCode)
+		p.t.Fatalf("POST /meet-form: expected 303, got %d", r.StatusCode)
 	}
 	loc := r.Header.Get("Location")
 	adminKey := strings.TrimPrefix(loc, "/meet/")
 	if adminKey == "" || adminKey == loc {
-		p.t.Fatalf("POST /1-1-form: unexpected Location %q", loc)
+		p.t.Fatalf("POST /meet-form: unexpected Location %q", loc)
 	}
 	m, err := db.GetAdmin(adminKey)
 	if err != nil {
@@ -219,7 +219,7 @@ func runPollSuite(t *testing.T) {
 	bAdm := p.body(rAdm)
 	for _, want := range []string{
 		"Edit poll", "Respondent link", "Admin link",
-		`href="/1-1-form/edit/` + adminA + `"`,
+		`href="/meet-form/edit/` + adminA + `"`,
 		"/meet/" + mA.Key, "/meet/" + adminA,
 	} {
 		if !strings.Contains(bAdm, want) {
@@ -447,25 +447,25 @@ func runPollSuite(t *testing.T) {
 	contains(bGhost, "Submit answer")
 
 	// ---- editing the poll itself ----
-	rEd := p.get("/1-1-form/edit/"+adminA, "")
+	rEd := p.get("/meet-form/edit/"+adminA, "")
 	status(rEd, http.StatusOK)
 	bEdForm := p.body(rEd)
 	for _, want := range []string{
 		`value="Poll A"`, `value="` + adminA + `"`, `value="2026-12-31"`,
 		`<option value="Europe/Berlin" selected>`, "Pick a time",
-		// the edit page is GET-only; the form must POST to /1-1-form
+		// the edit page is GET-only; the form must POST to /meet-form
 		// (without the action, a browser edit lands on 404)
-		`action="/1-1-form"`,
+		`action="/meet-form"`,
 	} {
 		if !strings.Contains(bEdForm, want) {
 			t.Fatalf("edit form missing %q", want)
 		}
 	}
-	status(p.get("/1-1-form/edit/"+mA.Key, ""), http.StatusNotFound)
+	status(p.get("/meet-form/edit/"+mA.Key, ""), http.StatusNotFound)
 
 	// A new slot set, a new title, a new end date — and both links must
 	// survive, with marks for removed slots pruned from the answers.
-	rPe := p.post("/1-1-form", "meetingkey="+adminA+
+	rPe := p.post("/meet-form", "meetingkey="+adminA+
 		"&title=Poll+A+v2&email=poll%40example.com&description=Updated&timezone=Europe/Berlin&enddate=2027-01-31&slot0=2026-11-01T12:00", "")
 	status(rPe, http.StatusSeeOther)
 	if loc := rPe.Header.Get("Location"); loc != "/meet/"+adminA {
@@ -515,7 +515,7 @@ func runPollSuite(t *testing.T) {
 	contains(bAdmEnd, "Edit poll")
 
 	// The organizer can prolong an ended poll, reopening answering.
-	rDp := p.post("/1-1-form", "meetingkey="+adminD+
+	rDp := p.post("/meet-form", "meetingkey="+adminD+
 		"&title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2027-03-01&slot0=2026-11-01T10:00", "")
 	status(rDp, http.StatusSeeOther)
 	if loc := rDp.Header.Get("Location"); loc != "/meet/"+adminD {
@@ -618,7 +618,7 @@ func runPollSuite(t *testing.T) {
 	}
 	// Both links and the edit form now render the gone page — a 404 with
 	// its own message, which the plain 404 of an unknown path lacks.
-	for _, path := range []string{"/meet/" + mA.Key, "/meet/" + adminA, "/1-1-form/edit/" + adminA} {
+	for _, path := range []string{"/meet/" + mA.Key, "/meet/" + adminA, "/meet-form/edit/" + adminA} {
 		rGone := p.get(path, "")
 		status(rGone, http.StatusNotFound)
 		bGone := p.body(rGone)
@@ -630,7 +630,7 @@ func runPollSuite(t *testing.T) {
 	absent(p.body(rPlain), `meet.goneTitle`)
 
 	// The create route enforces the same content-type gate.
-	if r := p.do(http.MethodPost, "/1-1-form", `{"title":"X"}`, "", "application/json"); r.StatusCode != http.StatusUnsupportedMediaType {
+	if r := p.do(http.MethodPost, "/meet-form", `{"title":"X"}`, "", "application/json"); r.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("json create: expected 415, got %d", r.StatusCode)
 	}
 }
