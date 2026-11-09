@@ -650,3 +650,72 @@ func TestPollSqlite(t *testing.T) {
 	withStore(t, store.BackendSQLite, "meetings.db")
 	runPollSuite(t)
 }
+
+// Enabling single-signup on a poll that already collects answers
+// invalidates every multi-slot answer: the edit wipes all respondents
+// (answers and their stored identities) so everyone starts from a fresh
+// poll, and re-saving with the option already on keeps the new answers.
+func TestMeetEditSingleSignupWipesAnswers(t *testing.T) {
+	withStore(t, store.BackendSQLite, "meetings.db")
+	app := newTestApp(t)
+	p := newPollClient(t, app)
+	berlin := mustZone(t, "Europe/Berlin")
+	s1 := slotKey(time.Date(2026, 11, 1, 10, 0, 0, 0, berlin))
+	s2 := slotKey(time.Date(2026, 11, 1, 14, 0, 0, 0, berlin))
+
+	m, admin := p.createPoll("title=Poll+S&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2026-12-31&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
+	cookie := cookieName(m)
+	alice := p.cookie(p.get("/meet/"+m.Key, ""), cookie)
+	if r := p.post("/meet/"+m.Key+"/answer",
+		"name=Alice&csrftoken="+csrfToken(alice)+"&a"+s1+"=g&a"+s2+"=g", cookie+"="+alice); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("answer: expected 303, got %d", r.StatusCode)
+	}
+	before, err := db.Get(m.Key)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	if len(before.Answers) != 1 || len(before.Answers[0].Marks) != 2 {
+		t.Fatalf("answers before edit: %+v", before.Answers)
+	}
+
+	// Edit: enable single-signup, slots and the rest unchanged.
+	rEd := p.post("/meet-form", "meetingkey="+admin+
+		"&title=Poll+S&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2026-12-31&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00", "")
+	if rEd.StatusCode != http.StatusSeeOther {
+		t.Fatalf("edit: expected 303, got %d", rEd.StatusCode)
+	}
+	got, err := db.Get(m.Key)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	if !got.SingleSignup {
+		t.Fatalf("single-signup not stored")
+	}
+	if len(got.Answers) != 0 {
+		t.Fatalf("wiping answers must remove every respondent (incl. stored identities): %+v", got.Answers)
+	}
+	if got.Key != m.Key || got.AdminKey != admin {
+		t.Fatalf("wiping answers must keep both links: %q / %q", got.Key, got.AdminKey)
+	}
+
+	// Answering a wiped poll starts fresh: one single-slot answer.
+	bob := p.cookie(p.get("/meet/"+m.Key, ""), cookie)
+	if r := p.post("/meet/"+m.Key+"/answer",
+		"name=Bob&csrftoken="+csrfToken(bob)+"&a"+s1+"=g", cookie+"="+bob); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("fresh answer: expected 303, got %d", r.StatusCode)
+	}
+	fresh, _ := db.Get(m.Key)
+	if len(fresh.Answers) != 1 {
+		t.Fatalf("fresh answer not stored: %+v", fresh.Answers)
+	}
+
+	// Re-saving with single-signup already on keeps the single answers.
+	if r := p.post("/meet-form", "meetingkey="+admin+
+		"&title=Poll+S v2&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2027-01-31&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00", ""); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("re-save: expected 303, got %d", r.StatusCode)
+	}
+	kept, _ := db.Get(m.Key)
+	if len(kept.Answers) != 1 {
+		t.Fatalf("re-save with single-signup already on must keep answers: %+v", kept.Answers)
+	}
+}

@@ -166,6 +166,14 @@ func voteFormPostHandler(c fiber.Ctx) error {
 			vote.VoteType = v.VoteType
 			vote.Choices = v.Choices
 			vote.Expires = v.Expires
+			// Enabling single-choice on a vote that already collects
+			// answers invalidates every multi-yes answer: wipe all
+			// respondents (their stored identities along) so everyone starts
+			// from a fresh vote. (A no-op while the vote is already
+			// single-choice: single answers stay valid there.)
+			if v.SingleChoice && !old.SingleChoice {
+				vote.Answers = nil
+			}
 			pruneVoteAnswers(vote)
 		})
 		if err != nil {

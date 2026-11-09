@@ -27,6 +27,9 @@
 		<div class="form-field">
 			<input type="checkbox" id="single-signup" name="single-signup" value="true"{{if .MeetForm.SingleSignup}} checked{{end}}>
 			<label for="single-signup" data-i18n="form.singleSignup">{{.T "form.singleSignup"}}</label>
+			{{if .MeetForm.MeetingKey}}
+			<p class="form-note wipe-warn" id="single-signup-warn" hidden data-i18n="form.singleSignupWipes">{{.T "form.singleSignupWipes"}}</p>
+			{{end}}
 		</div>
 		<div class="form-rows">
 			<div class="form-field">

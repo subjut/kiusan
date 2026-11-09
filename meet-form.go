@@ -201,6 +201,15 @@ func meetFormPostHandler(c fiber.Ctx) error {
 		// Admin link only: the user link is public and must not unlock
 		// poll editing.
 		saved, err := saveMeeting(editKey, true, func(m *database.Meeting) {
+			// Enabling single-signup on a poll that already collects answers
+			// invalidates every multi-slot answer: wipe all respondents
+			// (their stored identities along) so everyone starts from a
+			// fresh poll. (A no-op while the poll is already single-signup:
+			// single-slot answers stay valid there.) m carries the stored
+			// poll — its old mode — while form the submission.
+			if form.SingleSignup && !m.SingleSignup {
+				m.Answers = nil
+			}
 			m.Title = form.Title
 			m.Description = form.Description
 			m.Email = form.Email

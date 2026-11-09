@@ -101,6 +101,7 @@
 	// default. The server re-checks every combination.
 	var sc = document.getElementById("single-choice");
 	var scNote = document.getElementById("single-choice-note");
+	var scWarn = document.getElementById("single-choice-warn"); // edit form only
 	var ma = document.getElementById("must-answer");
 	var maNote = document.getElementById("must-answer-note");
 	var ytYes = document.getElementById("votetype-yes");
@@ -120,6 +121,7 @@
 		};
 		var syncInterlock = function () {
 			if (scNote) scNote.hidden = !sc.checked;
+			if (scWarn) scWarn.hidden = !sc.checked; // wipe-warning while on
 			if (maNote) maNote.hidden = !ma.checked;
 			ma.disabled = sc.checked;
 			sc.disabled = ma.checked;

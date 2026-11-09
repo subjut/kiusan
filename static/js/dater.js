@@ -407,7 +407,21 @@
 		update(); // show the count for prefilled (edit-mode) values
 	});
 
-	// ---- submit ----------------------------------------------------------------
+// ---- single-signup wipe warning (edit form only) ---------------------------
+// Enabling single-signup on a poll that already collects answers wipes
+// every stored answer on save (the server enforces it); the warning below
+// the checkbox is visible while the box is checked, prefilled state
+// included.
+var ss = document.getElementById("single-signup");
+var ssWarn = document.getElementById("single-signup-warn");
+if (ss && ssWarn) {
+	ssWarn.hidden = !ss.checked;
+	ss.addEventListener("change", function () {
+		ssWarn.hidden = !ss.checked;
+	});
+}
+
+// ---- submit ----------------------------------------------------------------
 	// The picker state serializes into slot0..n hidden fields, one per
 	// candidate slot: "YYYY-MM-DD" (midnight) or "YYYY-MM-DDTHH:MM",
 	// dates and times ascending.

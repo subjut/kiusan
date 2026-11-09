@@ -1362,6 +1362,17 @@
 		max-width: 42rem;
 	}
 
+	/* the "this wipes existing answers" warning (poll/vote edit form): an
+	   amber call-out below the poll's single-answer option, visible while the
+	   box is checked */
+	.form-note.wipe-warn {
+		padding: 0.5rem 0.75rem;
+		background: var(--mark-amber-bg);
+		border-radius: var(--radius-input);
+		color: var(--mark-amber-text);
+		font-weight: 500;
+	}
+
 	/* the "answer every option" instruction (vote page): an amber nudge, a
 	   touch larger than the quiet form notes; .ok turns it green while the
 	   answer is complete, .err turns it red and shakes it when the greyed

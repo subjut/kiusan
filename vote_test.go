@@ -715,6 +715,65 @@ func TestVoteEditOptionTextChanged(t *testing.T) {
 	}
 }
 
+// Enabling single-choice on a vote that already collects answers
+// invalidates every multi-yes answer: the edit wipes all respondents
+// (answers and their stored identities) so everyone starts from a fresh
+// vote, and re-saving with the option already on keeps the new answers.
+func TestVoteEditSingleChoiceWipesAnswers(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	userKey, adminKey := createVote(t, app, nil)
+	choices := voteChoices(t, userKey)
+
+	// Two voters, each yes to several options — valid in a plain yes/no vote.
+	answerVote(t, app, userKey, "Ada", map[string]string{
+		"a" + choices[0].ID: "y",
+		"a" + choices[1].ID: "y",
+	})
+	answerVote(t, app, userKey, "Bob", map[string]string{
+		"a" + choices[0].ID: "y",
+	})
+	before, err := db.GetVote(userKey)
+	if err != nil {
+		t.Fatalf("loading vote: %v", err)
+	}
+	if len(before.Answers) != 2 {
+		t.Fatalf("answers before edit: %+v", before.Answers)
+	}
+
+	// Edit: enable single-choice (the form moves the type to yes along with it).
+	edited := editVote(t, app, adminKey, []choiceRow{
+		{text: "Option A", oldID: choices[0].ID},
+		{text: "Option B", oldID: choices[1].ID},
+	}, url.Values{
+		"single-choice": {"true"},
+		"votetype":      {"yes"},
+	})
+	if !edited.SingleChoice {
+		t.Fatalf("single-choice not stored")
+	}
+	if len(edited.Answers) != 0 {
+		t.Fatalf("wiping answers must remove every respondent (incl. stored identities): %+v", edited.Answers)
+	}
+	if edited.Key != userKey || edited.AdminKey != adminKey {
+		t.Fatalf("wiping answers must keep both links: %q / %q", edited.Key, edited.AdminKey)
+	}
+
+	// Answering a wiped vote starts fresh: one single yes.
+	answerVote(t, app, userKey, "Ada", map[string]string{
+		"a" + choices[0].ID: "y",
+	})
+
+	// Re-saving with single-choice already on keeps the single answer.
+	kept := editVote(t, app, adminKey, []choiceRow{
+		{text: "Option A", oldID: choices[0].ID},
+		{text: "Option B", oldID: choices[1].ID},
+	}, nil)
+	if len(kept.Answers) != 1 {
+		t.Fatalf("re-save with single-choice already on must keep answers: %+v", kept.Answers)
+	}
+}
+
 func TestVoteEditDeleteOptionKeepsAnswers(t *testing.T) {
 	withStore(t, "sqlite", ":memory:")
 	app := newTestApp(t)

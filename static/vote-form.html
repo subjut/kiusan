@@ -25,6 +25,9 @@
 			<input type="checkbox" id="single-choice" name="single-choice" value="true"{{if .VoteForm.SingleChoice}} checked{{end}}{{if .VoteForm.MustAnswer}} disabled{{end}}>
 			<label for="single-choice" data-i18n="form.singleChoice">{{.T "form.singleChoice"}}</label>
 			<p class="form-note" id="single-choice-note" hidden data-i18n="form.singleChoiceNote">{{.T "form.singleChoiceNote"}}</p>
+			{{if .VoteForm.VoteKey}}
+			<p class="form-note wipe-warn" id="single-choice-warn" hidden data-i18n="form.singleChoiceWipes">{{.T "form.singleChoiceWipes"}}</p>
+			{{end}}
 		</div>
 		<div class="form-field">
 			<input type="checkbox" id="must-answer" name="must-answer" value="true"{{if .VoteForm.MustAnswer}} checked{{end}}{{if .VoteForm.SingleChoice}} disabled{{end}}>
