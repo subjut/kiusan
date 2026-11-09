@@ -11,8 +11,11 @@
 // yes set on one option clears the previously chosen one — at any moment
 // there is only one yes — and only one free-text input may be filled. In
 // a must-answer vote (data-must) the submit button stays disabled until
-// every option carries a selection. The server re-checks every constraint
-// on submit. Trash icons fill and submit the page's hidden delete form.
+// every option carries a selection, and the instruction below the form
+// reads amber, green once the answer is complete (amber again when an
+// option is deselected), and red with a short shake after a click on the
+// greyed button (scrolled into view first). The server re-checks every
+// constraint on submit. Trash icons fill and submit the page's hidden delete form.
 
 (function () {
 	"use strict";
@@ -113,6 +116,7 @@
 		// option carries a selection.
 		if (main.getAttribute("data-must") === "true") {
 			var submitBtn = main.querySelector('button[type="submit"]');
+			var note = main.querySelector("p.must-hint");
 			var complete = function () {
 				if (type === "freetext") {
 					return Array.prototype.every.call(
@@ -127,8 +131,65 @@
 			};
 			var refreshSubmit = function () {
 				if (submitBtn) submitBtn.disabled = !complete();
+				if (note) {
+					// Green while the answer is complete, amber again as soon
+					// as an option is deselected; the click flash (.err) is
+					// dropped once the answer is complete.
+					if (complete()) {
+						note.classList.remove("err");
+						note.classList.add("ok");
+					} else {
+						note.classList.remove("ok");
+					}
+				}
 			};
-			main.addEventListener("click", refreshSubmit);
+
+			// A disabled button swallows its own click events, so a click on
+			// it lands on an ancestor — hit-test the coordinates against the
+			// button's rect to catch it.
+			var flashTimer = null;
+			var flashNote = function () {
+				if (!note) return;
+				if (flashTimer) {
+					window.clearTimeout(flashTimer);
+					flashTimer = null;
+				}
+				var shake = function () {
+					// Remove before re-adding (reflow between) so the shake
+					// restarts on a repeated click.
+					note.classList.remove("err");
+					void note.offsetWidth;
+					note.classList.add("err");
+				};
+				var r = note.getBoundingClientRect();
+				if (r.top >= 0 && r.bottom <= window.innerHeight) {
+					shake();
+				} else {
+					note.scrollIntoView({ block: "center", behavior: "smooth" });
+					flashTimer = window.setTimeout(function () {
+						flashTimer = null;
+						shake();
+					}, 250);
+				}
+			};
+			if (note) {
+				note.addEventListener("animationend", function () {
+					note.classList.remove("err");
+				});
+			}
+			main.addEventListener("click", function (e) {
+				refreshSubmit();
+				if (!submitBtn || !note || !submitBtn.disabled) return;
+				var b = submitBtn.getBoundingClientRect();
+				if (
+					e.clientX >= b.left &&
+					e.clientX <= b.right &&
+					e.clientY >= b.top &&
+					e.clientY <= b.bottom
+				) {
+					flashNote();
+				}
+			});
 			main.addEventListener("input", refreshSubmit);
 			refreshSubmit();
 		}

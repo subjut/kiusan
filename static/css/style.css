@@ -559,11 +559,22 @@
 	}
 
 	.btn:hover,
-	button[type="submit"]:hover,
-	input[type="submit"]:hover {
+	button[type="submit"]:hover:not(:disabled),
+	input[type="submit"]:hover:not(:disabled) {
 		background: var(--accent-hover);
 		border-color: var(--accent-hover);
 		color: var(--on-accent);
+	}
+
+	button[type="submit"]:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+		/* out of hit testing: browsers fire no click events for disabled
+		   controls at all — neither on them nor passed through to ancestors.
+		   With pointer-events off, a click in the button's area targets the
+		   container behind it, and the form's click handler hit-tests the
+		   coordinates and flashes the instruction. */
+		pointer-events: none;
 	}
 
 	.btn-secondary {
@@ -1349,6 +1360,43 @@
 		color: var(--text-2);
 		margin: 0.25rem 0 0.5rem;
 		max-width: 42rem;
+	}
+
+	/* the "answer every option" instruction (vote page): an amber nudge, a
+	   touch larger than the quiet form notes; .ok turns it green while the
+	   answer is complete, .err turns it red and shakes it when the greyed
+	   submit button is clicked */
+	.must-hint {
+		font-size: 0.9375rem;
+		color: var(--mark-amber-text);
+	}
+
+	.must-hint.ok {
+		color: var(--mark-green-text);
+	}
+
+	.must-hint.err {
+		color: var(--mark-red-text);
+		animation: note-shake 0.4s ease-in-out;
+	}
+
+	@keyframes note-shake {
+		0%,
+		100% {
+			transform: translateX(0);
+		}
+		20% {
+			transform: translateX(-6px);
+		}
+		40% {
+			transform: translateX(5px);
+		}
+		60% {
+			transform: translateX(-4px);
+		}
+		80% {
+			transform: translateX(3px);
+		}
 	}
 
 	/* choice rows (vote form) */

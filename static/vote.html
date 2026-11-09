@@ -28,7 +28,7 @@
 		{{template "partials/vote-answers-table" .Vote}}
 		{{if or $.Vote.FormNew $.Vote.FormID}}
 		{{if $.Vote.MustAnswer}}
-		<p class="form-note" data-i18n="vote.mustAnswerHint">{{.T "vote.mustAnswerHint"}}</p>
+		<p class="form-note must-hint" data-i18n="vote.mustAnswerHint">{{.T "vote.mustAnswerHint"}}</p>
 		{{end}}
 		<div class="form-actions">
 			<button type="submit" data-i18n="{{.Vote.SubmitAnswerKey}}">{{.Vote.SubmitAnswerLabel}}</button>
