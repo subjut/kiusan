@@ -234,6 +234,7 @@ func (g *gormStore) UpdateVote(v *database.Vote) error {
 			"hide_users":    v.HideUsers,
 			"single_choice": v.SingleChoice,
 			"must_answer":   v.MustAnswer,
+			"hide_totals":   v.HideTotals,
 			"vote_type":     v.VoteType,
 			"closed":        v.Closed,
 			"choices":       v.Choices,

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -56,6 +57,24 @@ func postForm(t *testing.T, app *fiber.App, form string) (*http.Response, error)
 	req := httptest.NewRequest(http.MethodPost, "/meet-form", strings.NewReader(form))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	return app.Test(req)
+}
+
+// futureEnd returns a safely-future end date (now + 60 days) in the form
+// the forms' enddate field takes. It re-derives on every call, so the
+// suite never rots into the past (parseEndDate rejects past end dates),
+// while the candidate slots stay fixed calendar dates — a slot may be in
+// the past, an end date may not.
+func futureEnd() string {
+	return time.Now().AddDate(0, 0, 60).Format("2006-01-02")
+}
+
+// testEndDate is futureEnd plus the instant that end date maps to when
+// stored — the end of the day in the poll's zone (see endOf) — so tests
+// can assert the stored expiry without hardcoding a calendar date.
+func testEndDate(loc *time.Location) (string, time.Time) {
+	s := futureEnd()
+	parsed, _ := time.Parse("2006-01-02", s)
+	return s, endOf(parsed, loc)
 }
 
 // runSmokeSuite walks the request lifecycle in-process (no network): page
@@ -195,6 +214,9 @@ func runSmokeSuite(t *testing.T) {
 	if regexp.MustCompile(`</tr>\s*<th class="th-time"`).MatchString(mb) {
 		t.Fatalf("GET %s: time header cells orphaned from their <tr>", loc)
 	}
+	// The answers table is rectangular: every row spans the same number
+	// of columns.
+	tableShape(t, parsePage(t, mb))
 }
 
 // runFormPostSuite pins the form contract: which submissions create a

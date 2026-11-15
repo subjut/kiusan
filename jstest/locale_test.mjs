@@ -1,0 +1,187 @@
+// locale.js — locale resolution (cookie → browser language), the rewrite
+// of server-rendered date values, the UTC-offset annotation, and the
+// dropdown's dictionary swap.
+import test from "node:test";
+import assert from "node:assert/strict";
+import { boot, settled, tick } from "./harness.mjs";
+
+// A slice of the meeting page: the container carrying the poll's zone
+// (data-tz), the timezone line, the expiry date, and the year / date /
+// time header cells (all November 2026 Saturdays, 11:00 Europe/Berlin).
+function pageFixture(tz = "Europe/Berlin") {
+	return `<div class="container" data-tz="${tz}">
+	<p class="meta"><span class="tz-name" data-base="${tz}">${tz}</span>
+	  <span class="f-date" data-slot="2026-11-07T10:00Z" data-style="medium">Nov 7, 2026</span></p>
+	<table class="answers-table"><thead>
+	  <tr><th class="th-year" data-slot="2026-11-07T10:00Z" colspan="3">2026</th></tr>
+	  <tr>
+	    <th class="th-date" data-slot="2026-11-07T10:00Z" data-lines="1" title="x">7 Nov Sat</th>
+	    <th class="th-date" data-slot="2026-11-14T10:00Z" data-lines="2" title="x">14 Nov Sat</th>
+	    <th class="th-date" data-slot="2026-11-21T10:00Z" data-lines="3" title="x">21 Nov Sat</th>
+	  </tr>
+	  <tr>
+	    <th class="th-time" data-slot="2026-11-07T10:00Z">12:00</th>
+	    <th class="th-time" data-slot="2026-11-14T10:00Z">12:00</th>
+	    <th class="th-time">—</th>
+	  </tr>
+	</thead></table>
+  </div>`;
+}
+
+async function page(opts) {
+	const w = boot(pageFixture(opts.tz),
+		{ lang: opts.lang, cookies: opts.cookies, headerScripts: ["locale.js"] });
+	await settled(w);
+	return w;
+}
+
+const q = (w, sel) => w.document.querySelector(sel);
+
+// The widget appends the poll's long offset (en-US longOffset) to the zone
+// name; the exact string is ICU-version dependent ("GMT+1" in older ICU,
+// "GMT+01:00" in newer), so compute the expectation the same way.
+const longOffset = (tz) => new Intl.DateTimeFormat("en-US",
+	{ timeZoneName: "longOffset", timeZone: tz })
+	.formatToParts(new Date()).find((p) => p.type === "timeZoneName").value;
+
+test("date values render in the browser locale (en-US)", async (t) => {
+	const w = await page({ lang: "en-US" });
+	assert.equal(w.Locale.get(), "en-US");
+	assert.equal(q(w, ".th-year").textContent, "2026");
+	assert.equal(q(w, '.th-date[data-lines="1"]').textContent, "7 Nov Sat");
+	assert.equal(q(w, '.th-date[data-lines="2"]').textContent, "14 Nov\nSat");
+	assert.equal(q(w, '.th-date[data-lines="3"]').textContent, "21\nNov\nSat");
+	assert.equal(q(w, '.th-date[data-lines="1"]').title, "Saturday, November 7, 2026");
+	assert.equal(q(w, ".th-time").textContent, "11:00 AM");
+	assert.equal(q(w, ".f-date").textContent, "Nov 7, 2026");
+	assert.equal(q(w, ".tz-name").textContent, `Europe/Berlin (${longOffset("Europe/Berlin")})`);
+});
+
+test("the kiusan-locale cookie beats the browser language", async (t) => {
+	const w = await page({ lang: "fr-FR", cookies: { "kiusan-locale": "de" } });
+	assert.equal(w.Locale.get(), "de");
+	assert.equal(q(w, '.th-date[data-lines="1"]').textContent, "7 Nov Sa");
+	assert.equal(q(w, '.th-date[data-lines="2"]').textContent, "14 Nov\nSa");
+	assert.equal(q(w, '.th-date[data-lines="1"]').title, "Samstag, 7. November 2026");
+	assert.equal(q(w, ".th-time").textContent, "11:00");
+	assert.equal(q(w, ".f-date").textContent, "7. Nov. 2026");
+	assert.equal(q(w, ".tz-name").textContent, `Europe/Berlin (${longOffset("Europe/Berlin")})`);
+});
+
+test("an invalid cookie falls back to the browser language", async (t) => {
+	const w = await page({ lang: "en-US", cookies: { "kiusan-locale": "not a locale" } });
+	assert.equal(w.Locale.get(), "en-US");
+	assert.equal(q(w, '.th-date[data-lines="1"]').textContent, "7 Nov Sat");
+});
+
+test("a poll without a zone renders in UTC", async (t) => {
+	const w = await page({ tz: "UTC", lang: "en-US" });
+	assert.equal(q(w, ".tz-name").textContent, `UTC (${longOffset("UTC")})`);
+});
+
+test("a page without a poll zone is left alone", async (t) => {
+	// The form page has no [data-tz] container: the server-rendered
+	// labels stay as the no-JS fallback.
+	const body = pageFixture("UTC").replace(
+		`<div class="container" data-tz="UTC">`, "<div>");
+	const w = boot(body, { lang: "de", headerScripts: ["locale.js"] });
+	await settled(w);
+	assert.equal(q(w, ".th-date[data-lines='1']").textContent, "7 Nov Sat");
+	assert.equal(q(w, ".f-date").textContent, "Nov 7, 2026");
+	assert.equal(q(w, ".tz-name").textContent, "UTC");
+});
+
+function dictFixture() {
+	return pageFixture("UTC") + `
+	<p data-i18n="k1">Create</p>
+	<p data-i18n="k2">Untouched</p>
+	<input data-i18n-ph="ph1" placeholder="Your name">
+	<button data-i18n-title="t1" title="Copy">C</button>
+	<a data-i18n-aria="a1" aria-label="Copy">C</a>
+	<meta data-i18n-meta="m1" content="A meeting poll">
+	<h1 data-i18n-prefix="p1" data-suffix=" Dinner">Create: Dinner</h1>`;
+}
+
+// The locale <select> lives in the site header — ahead of locale.js, so
+// the script finds it while it runs at parse time.
+const LOCALE_SELECT =
+	'<select id="locale"><option value="" selected>Browser default</option><option value="de">Deutsch</option></select>';
+
+const deDict = {
+	lang: "de",
+	t: {
+		k1: "Erstellen",
+		ph1: "Dein Name",
+		t1: "Kopieren",
+		a1: "Kopieren",
+		m1: "Eine Abstimmung",
+		p1: "Erstellen:",
+	},
+};
+
+test("the dropdown fetches the dictionary and swaps the marked nodes", async (t) => {
+	const urls = [];
+	const w = boot(dictFixture(), {
+		lang: "en-US",
+		fetch: (u) => {
+			urls.push(u);
+			return Promise.resolve({ ok: true, json: () => Promise.resolve(deDict) });
+		},
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	let changes = 0;
+	w.Locale.onChange(() => changes++);
+	w.document.getElementById("locale").value = "de";
+	w.document.getElementById("locale").dispatchEvent(new w.Event("change"));
+	await tick();
+
+	assert.deepEqual(urls, ["/i18n/de"]);
+	assert.ok(w.document.cookie.includes("kiusan-locale=de"));
+	assert.equal(w.I18N, deDict);
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Erstellen");
+	assert.equal(q(w, "[data-i18n=k2]").textContent, "Untouched"); // missing key stays
+	assert.equal(q(w, "[data-i18n-ph=ph1]").placeholder, "Dein Name");
+	assert.equal(q(w, "[data-i18n-title=t1]").getAttribute("title"), "Kopieren");
+	assert.equal(q(w, "[data-i18n-aria=a1]").getAttribute("aria-label"), "Kopieren");
+	assert.equal(q(w, "[data-i18n-meta=m1]").getAttribute("content"), "Eine Abstimmung");
+	assert.equal(q(w, "[data-i18n-prefix=p1]").textContent, "Erstellen: Dinner"); // keeps data-suffix
+	assert.equal(w.document.documentElement.lang, "de");
+	// the date values followed the switch
+	assert.equal(q(w, '.th-date[data-lines="1"]').textContent, "7 Nov Sa");
+	assert.equal(changes, 1);
+});
+
+test("switching to the browser default fetches the browser language", async (t) => {
+	const urls = [];
+	const w = boot(dictFixture(), {
+		lang: "fr-FR",
+		fetch: (u) => {
+			urls.push(u);
+			return Promise.resolve({ ok: true, json: () => Promise.resolve(deDict) });
+		},
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	w.document.getElementById("locale").value = "";
+	w.document.getElementById("locale").dispatchEvent(new w.Event("change"));
+	await tick();
+	assert.deepEqual(urls, ["/i18n/fr-FR"]);
+});
+
+test("a failed dictionary fetch leaves the page as-is", async (t) => {
+	const w = boot(dictFixture(), {
+		lang: "en-US",
+		fetch: () => Promise.resolve({ ok: false, status: 404 }),
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	w.document.getElementById("locale").value = "de";
+	w.document.getElementById("locale").dispatchEvent(new w.Event("change"));
+	await tick();
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Create");
+	assert.equal(w.document.documentElement.lang, "en");
+});

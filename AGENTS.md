@@ -101,9 +101,62 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   the `/i18n/boot` + `/i18n/:lang` contract (merged dicts, the English
   fallback for unshipped tags, 404 for malformed tags), key parity
   between catalogs, and that every `data-i18n*` marker in the
-  templates names a key the English catalog defines. The suites run on
-  GORM-sqlite; each test chdirs into `t.TempDir()` and opens a
-  throwaway store, so the dev data files are never touched.
+  templates names a key the English catalog defines. The end dates the
+  suites submit are derived from now (`futureEnd()` / `testEndDate()`
+  in `smoke_test.go`) — a fixed calendar date would rot the suite, since
+  `parseEndDate` rejects past end dates; the candidate slots stay fixed
+  (a slot may be in the past, an end date may not), and the poll-D
+  forced expiry is a derived past date the same way. `htmltest_test.go`
+  holds the parser-based page assertions shared by the suites:
+  `parsePage` (`golang.org/x/net/html`), `hasClass` / `elemsByClass`,
+  `answersTable` + `tbodyRows` + `rowTds` + `nodeText`, `totalsRows`,
+  `hotCells`, and `tableShape` (the answers table must stay rectangular
+  — every row the same column span — the guard against stray injected
+  closing tags); the totals-row assertions in `poll_test.go` and
+  `vote_test.go` are structural on that tree, and `tableShape` runs on
+  the smoke, poll, and vote page reads. `store/store_test.go` covers
+  the GORM backend on an in-memory sqlite (the `Open` dispatch: empty
+  kind → sqlite + the default data file, missing DSN, unknown kind;
+  `Create`'s key minting, the two-link resolution, the field round
+  trip, `Delete`; the CAS `Update` / `UpdateVote` — success bumps
+  `Generation`, a stale stamp returns `store.ErrConflict`; plus
+  AutoMigrate's idempotency on re-open), `database/database_test.go`
+  the JSON-in-TEXT codec contract of the four list types (`TimeSlice`,
+  `AnswerList`, `ChoiceList`, `VoteAnswerList`: round trips, nil →
+  `[]`, malformed / mistyped `Scan` → error), and `helpers_test.go`
+  table-driven unit tests for the pure helpers (`rowMax`, `slotKey`,
+  `parseEndDate` / `endOf`, `matchLang`, `csrfToken`, `absURL`,
+  `isFormPost`, `validVoteMark`, `assignChoiceIDs`, `pruneVoteAnswers`,
+  `collectMarks` / `collectVoteAnswers` through a live form ctx via
+  `probeForm`). The suites run on GORM-sqlite; each test chdirs into
+  `t.TempDir()` and opens a throwaway store, so the dev data files are
+  never touched. Coverage: main ~85%, store ~76%, database ~75%.
+- CI: `.github/workflows/ci.yml` (push to main + PRs): `go build
+  ./...`, `go vet ./...`, `go test -race` with an 80% total-coverage
+  floor (currently ~84%), `node --check` on every `static/js/*.js`,
+  and the jstest npm suite — sqlite-only, no external services.
+- JS tests: `npm --prefix jstest install && npm --prefix jstest test`
+  (a standalone `node --test` package in `jstest/`) — the real
+  `static/js/*` scripts are injected inline into jsdom in the browser's
+  load order (locale.js from the header, page.js ahead of poll.js /
+  vote.js, dater.js on the form page) against DOM fixtures mirroring the
+  template markup, and cover: the dater picker (calendar rendering,
+  select/deselect, past-day disabling, add-time-to-all, per-date times
+  incl. Enter, chip removal, the clear buttons, the submit slot
+  serialization, the seeded edit-mode prefill, the timezone prefill /
+  edit-mode keep, the character counters, the single-signup wipe
+  warning, the locale-switch re-render), the poll answers-table
+  behaviour (the mark toggles, mark switching, the neutral unmarked
+  state, the submitted-rows-untouched invariant, the single-slot
+  grey-out incl. the disabled-button guard, the edit-row prefill), the
+  vote answers-table behaviour (the per-type toggles, the yes vote's
+  missing no-button, single-choice yes-exclusivity, the free-text
+  note gate, the must-answer submit gate incl. the disabled-submit
+  hint flash), and the locale display + dictionary swap (the
+  cookie → browser resolution, the date-value contract per `data-*` key
+  in the poll's zone, the UTC-offset annotation, the marker swaps,
+  the `data-i18n-prefix` suffix keep, the dropdown fetch, the
+  browser-default fetch, the failed-fetch no-op).
 
 ## Layout
 
@@ -239,7 +292,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   stable IDs), and `VoteAnswer`/`VoteAnswerList` (answers whose `Marks`
   and `Notes` maps are keyed by choice ID, exactly one of them
   populated per vote type), same JSON-in-TEXT treatment. No handles
-  or globals here.
+  or globals here. `database_test.go` pins the codec contract of the
+  four list types (see Commands → Tests).
 - `store/` — `store.Store` (`store.go`, embedding `MeetingStore` +
   `VoteStore`) and its GORM-backed implementation `gorm.go` (sqlite —
   the default when `KIUSAN_STORE` is empty, DSN defaulting to
@@ -253,7 +307,9 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   vote mirror — `CreateVote`, `GetVote`/`GetVoteAdmin`, and
   `UpdateVote`, the same compare-and-set. `Open(kind, dsn)` dispatches
   on `KIUSAN_STORE`; `RandomKey` in `key.go` builds the URL-safe keys.
-  A new backend = implement `Store` + add a case in `Open`.
+  `store_test.go` pins the backend contract on an in-memory sqlite
+  (see Commands → Tests). A new backend = implement `Store` + add a
+  case in `Open`.
 - `static/` — HTML templates rendered by gofiber/template/html/v3
   (`static/index.html`, `static/meet-form.html`, `static/meet.html`,
   `static/meet-gone.html` — the 404 page for a deleted poll or vote,
@@ -326,6 +382,20 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   comments). Rendered alphabetically in the form (sorted in `main.go`),
   independent of the file order; embedded via `go:embed` and validated at
   process start. Hand-edit when the list should change.
+- `jstest/` — the standalone npm package for the JS unit tests (see
+  Commands → JS tests): `package.json` (the single dev dependency is
+  jsdom), `harness.mjs` (the jsdom boot + load order: cookie / navigator
+  / I18N seeds as head scripts ahead of the page scripts, the `settled`
+  / `tick` / `click` helpers), and the four `*_test.mjs` suites
+  (`locale_test.mjs`, `dater_test.mjs`, `poll_test.mjs`,
+  `vote_test.mjs`), whose fixtures mirror the `static/` template
+  markup. `node_modules/` is gitignored.
+- Root test files: `smoke_test.go` (the shared `withStore` /
+  `newTestApp` / `postForm` helpers + `futureEnd` / `testEndDate`),
+  `htmltest_test.go` (the parser-based page assertions, see Commands →
+  Tests), `helpers_test.go` (the pure-helper unit tests) and the other
+  suites live in the root package; `.github/workflows/ci.yml` is the CI
+  definition (see Commands → CI).
 - `docs/prompts/` — verbatim log of user prompts, one file per date
   (the project's steering history across agent sessions); entries are
   appended automatically per prompt (see Conventions).

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      # SQLite-only for now: the in-process suites run on GORM-sqlite
+      # (throwaway :memory: and temp-dir files), no external services.
+      - name: Test (race + coverage)
+        run: |
+          go test -race -coverprofile=coverage.out ./...
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')
+          echo "total coverage: ${total}"
+          # Fail if the overall coverage falls below the floor
+          # (83.8% at the time the workflow landed; bump when tests improve).
+          awk -v c="${total}" 'BEGIN { exit (c+0 < 80.0) }'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage.out
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax-check the page scripts
+        run: |
+          for f in static/js/*.js; do node --check "$f"; done
+      - name: Run the JS test suite
+        run: npm --prefix jstest install && npm --prefix jstest test

@@ -3,3 +3,6 @@ kiusan
 
 # databases
 meetings.db
+
+# js test deps
+jstest/node_modules

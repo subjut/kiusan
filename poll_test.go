@@ -137,6 +137,15 @@ func runPollSuite(t *testing.T) {
 	s1 := slotKey(time.Date(2026, 11, 1, 10, 0, 0, 0, berlin))
 	s2 := slotKey(time.Date(2026, 11, 1, 14, 0, 0, 0, berlin))
 
+	// End dates are derived from now: parseEndDate rejects a past end date,
+	// so a fixed calendar date would rot the suite once it has passed. The
+	// candidate slots stay fixed — a slot may be in the past, an end date
+	// may not.
+	endA, expA := testEndDate(berlin)
+	endAEd, expAEd := testEndDate(berlin)
+	endD, _ := testEndDate(berlin)
+	endDP, expDP := testEndDate(berlin)
+
 	contains := func(b, want string) {
 		p.t.Helper()
 		if !strings.Contains(b, want) {
@@ -157,7 +166,7 @@ func runPollSuite(t *testing.T) {
 	}
 
 	// ---- poll A: the full answer lifecycle ----
-	mA, adminA := p.createPoll("title=Poll+A&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2026-12-31&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
+	mA, adminA := p.createPoll("title=Poll+A&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=" + endA + "&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
 	if mA.Key == "" || mA.AdminKey != adminA {
 		t.Fatalf("poll A keys: user %q, admin %q (Location %q)", mA.Key, mA.AdminKey, adminA)
 	}
@@ -166,8 +175,8 @@ func runPollSuite(t *testing.T) {
 	} else if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("admin key lookup: %v", err)
 	}
-	if wantEnd := time.Date(2026, 12, 31, 23, 59, 59, 0, berlin); !mA.Expires.Equal(wantEnd) {
-		t.Fatalf("poll A expiry: got %v, want %v", mA.Expires, wantEnd)
+	if !mA.Expires.Equal(expA) {
+		t.Fatalf("poll A expiry: got %v, want %v", mA.Expires, expA)
 	}
 	cookie := cookieName(mA)
 
@@ -284,7 +293,17 @@ func runPollSuite(t *testing.T) {
 	// The totals rows sit below every answer row — always the table's
 	// last rows. Per slot: slot 1 has two yes (Alice + Bob), slot 2 one
 	// yes + one maybe — the yes row highlights only slot 1, the yes +
-	// maybe row (2, 2) both.
+	// maybe row (2, 2) both. Structural assertions on the parsed table.
+	pMut := parsePage(t, bMut)
+	tableShape(t, pMut)
+	mrows := tbodyRows(answersTable(t, pMut))
+	if len(mrows) < 2 {
+		t.Fatalf("answers table: not enough rows for the totals block")
+	}
+	mtrYes, mtrYM := mrows[len(mrows)-2], mrows[len(mrows)-1]
+	if !hasClass(mtrYes, "totals-row") || !hasClass(mtrYM, "totals-row") {
+		t.Fatalf("the totals rows must be the table's last rows")
+	}
 	// The label cell: a localized "Total" prefix + the mark's symbol in
 	// its mark color, a title tooltip naming the mark (incl. the
 	// combined row's two glyphs).
@@ -296,15 +315,25 @@ func runPollSuite(t *testing.T) {
 	contains(bMut, `title="Yes &#43; Maybe"`)
 	contains(bMut, `data-i18n-title="totals.yes_maybe"`)
 	contains(bMut, `class="totals-sym2"`)
-	if got := strings.Count(bMut, "totals-hot"); got != 3 {
+	// Yes: 2 then 1, only the max cell highlighted; yes + maybe: 2 then
+	// 2, both cells at the max, both highlighted.
+	cYes, cYM := rowTds(mtrYes), rowTds(mtrYM)
+	if got := nodeText(cYes[1]) + " " + nodeText(cYes[2]); got != "2 1" {
+		t.Fatalf("yes totals row: %q, want [2 1]", got)
+	}
+	if got := nodeText(cYM[1]) + " " + nodeText(cYM[2]); got != "2 2" {
+		t.Fatalf("yes + maybe totals row: %q, want [2 2]", got)
+	}
+	if got := hotCells(mtrYes) + hotCells(mtrYM); got != 3 {
 		t.Fatalf("totals: %d highlighted cells, want 3", got)
 	}
-	if i := strings.LastIndex(bMut, "<tr"); i < 0 || !strings.Contains(bMut[i:], `class="totals-row`) {
-		t.Fatalf("the totals rows must be the table's last rows")
+	if !hasClass(cYes[1], "totals-hot") || hasClass(cYes[2], "totals-hot") ||
+		!hasClass(cYM[1], "totals-hot") || !hasClass(cYM[2], "totals-hot") {
+		t.Fatalf("totals highlight wrong: yes must light only slot 1, combined must light both")
 	}
 
 	// ---- poll B: hidden respondents ----
-	mB, _ := p.createPoll("title=Poll+B&email=poll%40example.com&description=B+description&timezone=Europe/Berlin&enddate=2026-12-31&hide-users=true&slot0=2026-11-01T10:00")
+	mB, _ := p.createPoll("title=Poll+B&email=poll%40example.com&description=B+description&timezone=Europe/Berlin&enddate=" + endA + "&hide-users=true&slot0=2026-11-01T10:00")
 	cb := cookieName(mB)
 	carol := p.cookie(p.get("/meet/"+mB.Key, ""), cb)
 	status(p.post("/meet/"+mB.Key+"/answer", "name=Carol&csrftoken="+csrfToken(carol)+"&a"+s1+"=g", cb+"="+carol), http.StatusSeeOther)
@@ -319,7 +348,7 @@ func runPollSuite(t *testing.T) {
 	contains(p.body(p.get("/meet/"+mB.AdminKey, cb+"="+adminB)), "totals-row")
 
 	// ---- poll C: single-slot signups ----
-	mC, _ := p.createPoll("title=Poll+C&email=poll%40example.com&description=C+description&timezone=Europe/Berlin&enddate=2026-12-31&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
+	mC, _ := p.createPoll("title=Poll+C&email=poll%40example.com&description=C+description&timezone=Europe/Berlin&enddate=" + endA + "&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
 	cc := cookieName(mC)
 	cy := p.cookie(p.get("/meet/"+mC.Key, ""), cc)
 	bC := p.body(p.get("/meet/"+mC.Key, cc+"="+cy))
@@ -460,13 +489,20 @@ func runPollSuite(t *testing.T) {
 	contains(bEdRow, `value="Bobby"`)
 	contains(bEdRow, "Save changes")
 	absent(bEdRow, `?edit=`+bob)
-	if iLast := strings.LastIndex(bEdRow, "<tr"); iLast < 0 ||
-		!strings.Contains(bEdRow[iLast:], `class="totals-row`) {
+	pEdRow := parsePage(t, bEdRow)
+	tableShape(t, pEdRow)
+	edRows := tbodyRows(answersTable(t, pEdRow))
+	if len(edRows) < 3 || !hasClass(edRows[len(edRows)-2], "totals-row") || !hasClass(edRows[len(edRows)-1], "totals-row") {
 		t.Fatalf("edit view: the totals rows must be the table's last rows")
 	}
-	if iForm := strings.Index(bEdRow, `class="form-row"`); iForm < 0 ||
-		iForm > strings.Index(bEdRow, `class="totals-row`) {
-		t.Fatalf("edit view: the form row must sit directly above the totals rows")
+	// The row directly above the totals block (one borderless gap row
+	// separates it from the form) is the prefilled edit row.
+	iForm := len(edRows) - 3
+	if hasClass(edRows[iForm], "totals-gap") {
+		iForm--
+	}
+	if iForm < 0 || !hasClass(edRows[iForm], "form-row") {
+		t.Fatalf("edit view: the form row must sit directly above the table's totals block")
 	}
 	// A user link may never open someone else's row, and an unknown
 	// ?edit target just renders the plain page.
@@ -483,7 +519,7 @@ func runPollSuite(t *testing.T) {
 	status(rEd, http.StatusOK)
 	bEdForm := p.body(rEd)
 	for _, want := range []string{
-		`value="Poll A"`, `value="` + adminA + `"`, `value="2026-12-31"`,
+		`value="Poll A"`, `value="` + adminA + `"`, `value="` + endA + `"`,
 		`<option value="Europe/Berlin" selected>`, "Pick a time",
 		// the edit page is GET-only; the form must POST to /meet-form
 		// (without the action, a browser edit lands on 404)
@@ -498,7 +534,7 @@ func runPollSuite(t *testing.T) {
 	// A new slot set, a new title, a new end date — and both links must
 	// survive, with marks for removed slots pruned from the answers.
 	rPe := p.post("/meet-form", "meetingkey="+adminA+
-		"&title=Poll+A+v2&email=poll%40example.com&description=Updated&timezone=Europe/Berlin&enddate=2027-01-31&slot0=2026-11-01T12:00", "")
+		"&title=Poll+A+v2&email=poll%40example.com&description=Updated&timezone=Europe/Berlin&enddate="+endAEd+"&slot0=2026-11-01T12:00", "")
 	status(rPe, http.StatusSeeOther)
 	if loc := rPe.Header.Get("Location"); loc != "/meet/"+adminA {
 		t.Fatalf("poll edit redirect: %q", loc)
@@ -510,7 +546,7 @@ func runPollSuite(t *testing.T) {
 	if gotA.Title != "Poll A v2" {
 		t.Fatalf("title not updated: %q", gotA.Title)
 	}
-	if wantEnd := time.Date(2027, 1, 31, 23, 59, 59, 0, berlin); !gotA.Expires.Equal(wantEnd) {
+	if !gotA.Expires.Equal(expAEd) {
 		t.Fatalf("expiry not updated: %v", gotA.Expires)
 	}
 	if len(gotA.Dates) != 1 || !gotA.Dates[0].Equal(time.Date(2026, 11, 1, 12, 0, 0, 0, berlin)) {
@@ -523,8 +559,10 @@ func runPollSuite(t *testing.T) {
 	}
 
 	// ---- poll D: expiry and prolongation ----
-	mD, adminD := p.createPoll("title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2026-12-31&slot0=2026-11-01T10:00")
-	mD.Expires = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	mD, adminD := p.createPoll("title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=" + endD + "&slot0=2026-11-01T10:00")
+	// Force the poll into the past, derived from now so it stays past.
+	past := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -30)
+	mD.Expires = past
 	if err := db.Update(mD); err != nil {
 		t.Fatalf("forcing expiry: %v", err)
 	}
@@ -535,7 +573,7 @@ func runPollSuite(t *testing.T) {
 	contains(bEnd, "This poll has ended")
 	// the expiry date renders as a data-slot f-date span; the "on " prefix
 	// lives inside the i18n meet.endedPre span, so we assert the span alone.
-	contains(bEnd, `<span class="f-date" data-slot="2026-10-01T00:00Z" data-style="long">2026-10-01</span>`)
+	contains(bEnd, `<span class="f-date" data-slot="`+slotKey(past)+`" data-style="long">`+past.In(berlin).Format("2006-01-02")+`</span>`)
 	absent(bEnd, `id="answer-form"`)
 	if p.hasCookie(rEnd, cd) {
 		t.Fatalf("no identity cookie may be minted for an ended poll")
@@ -548,7 +586,7 @@ func runPollSuite(t *testing.T) {
 
 	// The organizer can prolong an ended poll, reopening answering.
 	rDp := p.post("/meet-form", "meetingkey="+adminD+
-		"&title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate=2027-03-01&slot0=2026-11-01T10:00", "")
+		"&title=Poll+D&email=poll%40example.com&description=D+description&timezone=Europe/Berlin&enddate="+endDP+"&slot0=2026-11-01T10:00", "")
 	status(rDp, http.StatusSeeOther)
 	if loc := rDp.Header.Get("Location"); loc != "/meet/"+adminD {
 		t.Fatalf("prolongation redirect: %q", loc)
@@ -557,7 +595,7 @@ func runPollSuite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store: %v", err)
 	}
-	if wantEnd := time.Date(2027, 3, 1, 23, 59, 59, 0, berlin); !gotD.Expires.Equal(wantEnd) {
+	if !gotD.Expires.Equal(expDP) {
 		t.Fatalf("prolongation not stored: %v", gotD.Expires)
 	}
 	rReopen := p.get("/meet/"+mD.Key, "")
@@ -694,8 +732,9 @@ func TestMeetEditSingleSignupWipesAnswers(t *testing.T) {
 	berlin := mustZone(t, "Europe/Berlin")
 	s1 := slotKey(time.Date(2026, 11, 1, 10, 0, 0, 0, berlin))
 	s2 := slotKey(time.Date(2026, 11, 1, 14, 0, 0, 0, berlin))
+	endS, _ := testEndDate(berlin)
 
-	m, admin := p.createPoll("title=Poll+S&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2026-12-31&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
+	m, admin := p.createPoll("title=Poll+S&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=" + endS + "&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
 	cookie := cookieName(m)
 	alice := p.cookie(p.get("/meet/"+m.Key, ""), cookie)
 	if r := p.post("/meet/"+m.Key+"/answer",
@@ -712,7 +751,7 @@ func TestMeetEditSingleSignupWipesAnswers(t *testing.T) {
 
 	// Edit: enable single-signup, slots and the rest unchanged.
 	rEd := p.post("/meet-form", "meetingkey="+admin+
-		"&title=Poll+S&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2026-12-31&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00", "")
+		"&title=Poll+S&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate="+endS+"&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00", "")
 	if rEd.StatusCode != http.StatusSeeOther {
 		t.Fatalf("edit: expected 303, got %d", rEd.StatusCode)
 	}
@@ -743,7 +782,7 @@ func TestMeetEditSingleSignupWipesAnswers(t *testing.T) {
 
 	// Re-saving with single-signup already on keeps the single answers.
 	if r := p.post("/meet-form", "meetingkey="+admin+
-		"&title=Poll+S v2&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=2027-01-31&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00", ""); r.StatusCode != http.StatusSeeOther {
+		"&title=Poll+S v2&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate="+endS+"&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00", ""); r.StatusCode != http.StatusSeeOther {
 		t.Fatalf("re-save: expected 303, got %d", r.StatusCode)
 	}
 	kept, _ := db.Get(m.Key)
