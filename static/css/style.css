@@ -886,7 +886,8 @@
 		font-weight: 600;
 	}
 
-	/* row hover — tinted mark cells keep their semantic color */
+	/* row hover — tinted mark cells (and the totals' max cells, styled
+	   the same) keep their semantic color */
 	.answers-table tr:not(.own):not(.form-row):hover td:not(.st-g):not(.st-y):not(.st-r) {
 		background-color: var(--bg);
 	}
@@ -921,6 +922,71 @@
 
 	td.st-r {
 		background-color: var(--mark-red-bg);
+	}
+
+	/* the totals block: one summary row per counted mark, always the
+	   table's last row(s) — below the form row. It reads as a quiet
+	   table footer: a borderless 10px gap row sets it off from the
+	   answer rows (border-collapsed tables can't take row margins),
+	   the label cell is a muted "Total" prefix + the row's mark symbol
+	   in its mark color (a title tooltip names the mark, incl. the
+	   combined row's two glyphs), and plain cells stay dim (secondary
+	   text) so the row's highest cells — styled exactly like the answer
+	   cells (st-g / st-y / st-r tint + mark color) — are what the eye
+	   lands on (no highlight while every count is zero). */
+	.answers-table tr.totals-gap td {
+		height: 10px;
+		padding: 0;
+		border: none;
+	}
+
+	.answers-table tr.totals-row td {
+		border-top: 1px solid var(--border);
+		font-weight: 600;
+	}
+
+	.answers-table tr.totals-row td:first-child {
+		color: var(--text-2);
+		letter-spacing: 0.02em;
+	}
+
+	/* dim the non-highlighted cells to the secondary text */
+	.answers-table tr.totals-row td.totals-cell:not(.totals-hot) {
+		color: var(--text-2);
+	}
+
+	.answers-table tr.totals-row td.totals-cell {
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* the max cells carry the answer cells' st-* styling (tint
+	   background + mark text color) and stand out bold on top */
+	.answers-table tr.totals-row td.totals-hot {
+		font-weight: 700;
+	}
+
+	/* the row's mark symbol in the label cell: colored by the row's
+	   mark (tot-g / tot-y / tot-r); the combined row's second glyph is
+	   always the maybe color */
+	.answers-table .totals-sym {
+		font-size: 1.125rem;
+		font-weight: 700;
+	}
+
+	.answers-table tr.tot-g .totals-sym {
+		color: var(--mark-green-text);
+	}
+
+	.answers-table tr.tot-y .totals-sym {
+		color: var(--mark-amber-text);
+	}
+
+	.answers-table tr.tot-r .totals-sym {
+		color: var(--mark-red-text);
+	}
+
+	.answers-table .totals-sym2 {
+		color: var(--mark-amber-text);
 	}
 
 	/* single-slot grey-out */

@@ -38,6 +38,15 @@ type votePage struct {
 	VoteType    string
 	VoteCols    []voteCol
 	VoteFormCol voteCol
+	// Totals: the per-type summary rows (per-choice yes counts, plus
+	// maybe / no rows where the type has those marks), rendered as the
+	// table's last rows — nil when the totals are hidden for this view
+	// (a free-text vote, the hide-totals option, or the user page of a
+	// vote with hidden respondents).
+	Totals []totalsRow
+	// TotalsColspan spans the gap row above the totals block (name
+	// column + one cell per choice).
+	TotalsColspan int
 }
 
 // voteHandler renders the vote page for a user or admin link: the same
@@ -183,6 +192,43 @@ func voteHandler(c fiber.Ctx) error {
 		}
 	}
 
+	// The totals rows: per-choice mark counts, in the type's order (yes
+	// first, then maybe / no where the type has those marks), each cell
+	// counting the voters who marked that choice (over the stored
+	// answers — the form row's in-flight state is not part of it). Hidden
+	// on a free-text vote — there are no marks to count — and by the
+	// vote's hide-totals option; with hidden respondents the user page
+	// loses them, the admin page keeps them.
+	var totals []totalsRow
+	if v.VoteType != database.VoteTypeFreeText &&
+		(isAdmin || (!v.HideUsers && !v.HideTotals)) {
+		y, mb, no := make([]int, len(v.Choices)), make([]int, len(v.Choices)), make([]int, len(v.Choices))
+		for _, a := range v.Answers {
+			for j, c := range v.Choices {
+				switch a.Marks[c.ID] {
+				case "y":
+					y[j]++
+				case "m":
+					mb[j]++
+				case "n":
+					no[j]++
+				}
+			}
+		}
+		// Each row's max cells take its mark's answer-cell styling
+		// (green / amber / red), so the table reads in one language.
+		totals = []totalsRow{{NameKey: "totals.yes", Name: translator.MustLocalize(c, "totals.yes"),
+			Cls: "tot-g", Mark: "g", Sym: "✓", Values: y, Max: rowMax(y)}}
+		if v.VoteType == database.VoteTypeYesMaybeNo {
+			totals = append(totals, totalsRow{NameKey: "totals.maybe", Name: translator.MustLocalize(c, "totals.maybe"),
+				Cls: "tot-y", Mark: "y", Sym: "(✓)", Values: mb, Max: rowMax(mb)})
+		}
+		if v.VoteType == database.VoteTypeYesNo || v.VoteType == database.VoteTypeYesMaybeNo {
+			totals = append(totals, totalsRow{NameKey: "totals.no", Name: translator.MustLocalize(c, "totals.no"),
+				Cls: "tot-r", Mark: "r", Sym: "✗", Values: no, Max: rowMax(no)})
+		}
+	}
+
 	csrf := ""
 	if identity != "" && !ended && !closed {
 		csrf = csrfToken(identity)
@@ -249,13 +295,15 @@ func voteHandler(c fiber.Ctx) error {
 				SubmitAnswerKey:   submitKey,
 				SubmitAnswerLabel: translator.MustLocalize(c, submitKey),
 			},
-			Single:      v.SingleChoice,
-			MustAnswer:  v.MustAnswer,
-			Choices:     v.Choices,
-			ModeKey:     modeKey,
-			VoteType:    v.VoteType,
-			VoteCols:    cols,
-			VoteFormCol: formCol,
+			Single:        v.SingleChoice,
+			MustAnswer:    v.MustAnswer,
+			Choices:       v.Choices,
+			ModeKey:       modeKey,
+			VoteType:      v.VoteType,
+			VoteCols:      cols,
+			VoteFormCol:   formCol,
+			Totals:        totals,
+			TotalsColspan: 1 + len(v.Choices),
 		},
 	})
 }

@@ -104,6 +104,38 @@ func (p *answerPage) T(id string) string {
 	return translator.MustLocalize(p.c, id)
 }
 
+// totalsRow is one summary row of an answers table: one value per table
+// column (a slot on a poll, a choice on a vote), with Max marking the
+// row's highest cell(s) — a zero max (no answers at all) highlights
+// nothing. NameKey/Name carry the mark's word (the label symbol's
+// title tooltip), Cls the row's color class, Mark the answer-cell
+// class of the highlighted cells, and Sym/Sym2 the row's mark glyph(s)
+// (Sym2, the second glyph, is set on the meeting's combined row only).
+// All precomputed — attribute-value template actions may not carry
+// quoted literals.
+type totalsRow struct {
+	NameKey string
+	Name    string
+	Cls     string
+	Mark    string
+	Sym     string
+	Sym2    string
+	Values  []int
+	Max     int
+}
+
+// rowMax is the row's largest value (zero when every value is zero, so
+// an all-zero row carries no highlight).
+func rowMax(values []int) int {
+	max := 0
+	for _, v := range values {
+		if v > max {
+			max = v
+		}
+	}
+	return max
+}
+
 // T translates one catalog key in the viewer's language for this
 // request; the templates call it as {{.T "key"}}.
 func (p *pageData) T(id string) string {

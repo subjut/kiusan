@@ -24,6 +24,7 @@ type voteForm struct {
 	Choices      database.ChoiceList
 	SingleChoice bool
 	MustAnswer   bool
+	HideTotals   bool
 	VoteType     string
 }
 
@@ -69,6 +70,7 @@ func voteFormEditHandler(c fiber.Ctx) error {
 			Choices:      v.Choices,
 			SingleChoice: v.SingleChoice,
 			MustAnswer:   v.MustAnswer,
+			HideTotals:   v.HideTotals,
 			VoteType:     v.VoteType,
 		},
 	})
@@ -90,6 +92,7 @@ func voteFormPostHandler(c fiber.Ctx) error {
 	v.HideUsers = c.FormValue("hide-users") != ""
 	v.SingleChoice = c.FormValue("single-choice") != ""
 	v.MustAnswer = c.FormValue("must-answer") != ""
+	v.HideTotals = c.FormValue("hide-totals") != ""
 	v.VoteType = strings.TrimSpace(c.FormValue("votetype"))
 	switch v.VoteType {
 	case database.VoteTypeYes, database.VoteTypeYesNo, database.VoteTypeYesMaybeNo, database.VoteTypeFreeText:
@@ -163,6 +166,7 @@ func voteFormPostHandler(c fiber.Ctx) error {
 			vote.HideUsers = v.HideUsers
 			vote.SingleChoice = v.SingleChoice
 			vote.MustAnswer = v.MustAnswer
+			vote.HideTotals = v.HideTotals
 			vote.VoteType = v.VoteType
 			vote.Choices = v.Choices
 			vote.Expires = v.Expires

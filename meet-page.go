@@ -75,6 +75,14 @@ type meetingPage struct {
 	HasTime     bool
 	Cols        []respCol
 	FormCol     respCol
+	// Totals: the summary rows (per-slot yes counts, and yes + maybe
+	// counts), rendered as the table's last rows — nil when the totals
+	// are hidden for this view (a single-signup poll, or the user page of
+	// a poll with hidden respondents).
+	Totals []totalsRow
+	// TotalsColspan spans the gap row above the totals block (name
+	// column + one cell per slot).
+	TotalsColspan int
 }
 
 // meetingHandler renders the poll page for a user or admin link: the same
@@ -277,6 +285,37 @@ func meetingHandler(c fiber.Ctx) error {
 		}
 	}
 
+	// The totals rows: per-slot yes counts and yes + maybe counts, each
+	// cell counting the respondents who marked that slot (over the stored
+	// answers — the form row's in-flight state is not part of it). Hidden
+	// on a single-signup poll — one slot per answer makes the counts
+	// meaningless — and, with hidden respondents, on the user page; the
+	// admin page keeps them.
+	var totals []totalsRow
+	if !m.SingleSignup && (isAdmin || !m.HideUsers) {
+		yes := make([]int, len(dates))
+		both := make([]int, len(dates))
+		for _, a := range m.Answers {
+			for i, d := range dates {
+				switch a.Marks[slotKey(d)] {
+				case "g":
+					yes[i]++
+					both[i]++
+				case "y":
+					both[i]++
+				}
+			}
+		}
+		// Both rows count availability (the combined row is the
+		// affirmative one, too), so both take the yes styling.
+		totals = []totalsRow{
+			{NameKey: "totals.yes", Name: translator.MustLocalize(c, "totals.yes"),
+				Cls: "tot-g", Mark: "g", Sym: "✓", Values: yes, Max: rowMax(yes)},
+			{NameKey: "totals.yes_maybe", Name: translator.MustLocalize(c, "totals.yes_maybe"),
+				Cls: "tot-g", Mark: "g", Sym: "✓", Sym2: "(✓)", Values: both, Max: rowMax(both)},
+		}
+	}
+
 	// The page's forms post through the same link the page is viewed on, so
 	// the handlers' back-redirect lands on this page (the admin stays on the
 	// admin page after answering, editing, or deleting an answer there).
@@ -332,15 +371,17 @@ func meetingHandler(c fiber.Ctx) error {
 				SubmitAnswerKey:   submitKey,
 				SubmitAnswerLabel: translator.MustLocalize(c, submitKey),
 			},
-			Tz:          tz,
-			TzName:      tzName,
-			Single:      m.SingleSignup,
-			Slots:       slots,
-			Header:      header,
-			HeaderYears: headerYears,
-			HasTime:     hasTime,
-			Cols:        cols,
-			FormCol:     formCol,
+			Tz:            tz,
+			TzName:        tzName,
+			Single:        m.SingleSignup,
+			Slots:         slots,
+			Header:        header,
+			HeaderYears:   headerYears,
+			HasTime:       hasTime,
+			Cols:          cols,
+			FormCol:       formCol,
+			Totals:        totals,
+			TotalsColspan: 1 + len(slots),
 		},
 	})
 }

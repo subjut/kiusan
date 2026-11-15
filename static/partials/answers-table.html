@@ -1,11 +1,13 @@
 {{/* The answers table: one row per visible respondent, plus the one form
-     row — always the table's last row, next to the save/cancel bar below
-     the answers (the empty row while the viewer has no answer yet, or the
-     row of the respondent the page is editing via ?edit=<id>, moved down
-     from its position). The form row renders only while the poll is open
-     (FormID / FormNew set by the handler) and the row's edit/delete icons
-     only then, too — on a closed poll the table renders as a static
-     matrix. */}}
+     row — the empty row while the viewer has no answer yet, or the row of
+     the respondent the page is editing via ?edit=<id>, moved down from its
+     position — and, below both, the totals rows (one per counted mark,
+     the row's highest cells in the accent, none while the totals are
+     hidden for the view: a single-signup poll, the user page of a poll
+     with hidden respondents). The form row renders only while the poll
+     is open (FormID / FormNew set by the handler) and the row's
+     edit/delete icons only then, too — on a closed poll the table renders
+     as a static matrix. */}}
 <p class="legend" data-i18n="meet.legend">{{.T "meet.legend"}}</p>
 <div class="table-breakout">
 	<div class="table-scroll" tabindex="0" role="region" aria-label="{{.TableAria}}" data-i18n-aria="meet.tableAria">
@@ -84,6 +86,24 @@
 					{{if not $.Single}}<button type="button" class="mark mark-y" aria-pressed="{{index $.FormCol.PressY $j}}">(&#10003;)</button>{{end}}
 				</div>
 			</td>
+			{{end}}
+		</tr>
+		{{end}}
+		{{if $.Totals}}
+		{{/* the borderless gap row sets the totals block off from the
+		     answers (border-collapsed tables can't take row margins) */}}
+		<tr class="totals-gap" aria-hidden="true">
+			<td colspan="{{$.TotalsColspan}}"></td>
+		</tr>
+		{{end}}
+		{{range $row := $.Totals}}
+		<tr class="totals-row {{$row.Cls}}">
+			<td>
+				<span data-i18n="totals.total">{{$.T "totals.total"}}</span>
+				<span class="totals-sym" title="{{$row.Name}}" data-i18n-title="{{$row.NameKey}}">{{$row.Sym}}{{if $row.Sym2}} <b class="totals-sym2">{{$row.Sym2}}</b>{{end}}</span>
+			</td>
+			{{range $j, $s := $.Slots}}
+			<td class="totals-cell{{if and (gt $row.Max 0) (eq (index $row.Values $j) $row.Max)}} st-{{$row.Mark}} totals-hot{{end}}">{{index $row.Values $j}}</td>
 			{{end}}
 		</tr>
 		{{end}}

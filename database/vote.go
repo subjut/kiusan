@@ -141,6 +141,9 @@ type Vote struct {
 	// cannot answer every option) and the yes type (the only mark is a
 	// yes, which must-answer would force on every option).
 	MustAnswer bool `gorm:"not null;default:false"`
+	// HideTotals keeps the answers table' totals rows off the user page;
+	// the admin page keeps them (like HideUsers).
+	HideTotals bool `gorm:"not null;default:false"`
 	// VoteType selects the answer mode: a yes-toggle, yes-no marks,
 	// yes-maybe-no marks, or a free-text note per choice.
 	VoteType string `gorm:"not null;default:'yes-no'"`

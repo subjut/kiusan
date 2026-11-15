@@ -1,13 +1,16 @@
 {{/* The vote's answers table: one row per visible voter, plus the one form
-     row — always the table's last row, next to the save/cancel bar below
-     the answers (the empty row while the viewer has no answer yet, or the
-     row of the voter the page is editing via ?edit=<id>, moved down from
-     its position). The form cells follow the vote's type: yes cells carry
-     one yes-toggle (an untouched cell stays neutral), yes-no cells carry
-     yes / no toggles, yes-maybe-no cells yes / maybe / no toggles,
-     free-text cells one text input per option (150 chars). An untouched
-     cell is neutral in every type. The form row renders only while the
-     vote is open; on a closed vote the table renders as a static matrix. */}}
+     row — the empty row while the viewer has no answer yet, or the row of
+     the voter the page is editing via ?edit=<id>, moved down from its
+     position — and, below both, the totals rows (one per counted mark of
+     the vote's type, the row's highest cells in the accent, none while
+     the totals are hidden for the view: a free-text vote, the hide-totals
+     option, the user page of a vote with hidden respondents). The form
+     cells follow the vote's type: yes cells carry one yes-toggle (an
+     untouched cell stays neutral), yes-no cells carry yes / no toggles,
+     yes-maybe-no cells yes / maybe / no toggles, free-text cells one text
+     input per option (150 chars). An untouched cell is neutral in every
+     type. The form row renders only while the vote is open; on a closed
+     vote the table renders as a static matrix. */}}
 {{if ne .VoteType "freetext"}}
 {{if eq .VoteType "yes"}}
 <p class="legend" data-i18n="vote.legendYes">{{.T "vote.legendYes"}}</p>
@@ -138,6 +141,24 @@
 				</div>
 			</td>
 			{{end}}
+			{{end}}
+		</tr>
+		{{end}}
+		{{if $.Totals}}
+		{{/* the borderless gap row sets the totals block off from the
+		     answers (border-collapsed tables can't take row margins) */}}
+		<tr class="totals-gap" aria-hidden="true">
+			<td colspan="{{$.TotalsColspan}}"></td>
+		</tr>
+		{{end}}
+		{{range $row := $.Totals}}
+		<tr class="totals-row {{$row.Cls}}">
+			<td>
+				<span data-i18n="totals.total">{{$.T "totals.total"}}</span>
+				<span class="totals-sym" title="{{$row.Name}}" data-i18n-title="{{$row.NameKey}}">{{$row.Sym}}{{if $row.Sym2}} <b class="totals-sym2">{{$row.Sym2}}</b>{{end}}</span>
+			</td>
+			{{range $j, $c := $.Choices}}
+			<td class="totals-cell{{if and (gt $row.Max 0) (eq (index $row.Values $j) $row.Max)}} st-{{$row.Mark}} totals-hot{{end}}">{{index $row.Values $j}}</td>
 			{{end}}
 		</tr>
 		{{end}}

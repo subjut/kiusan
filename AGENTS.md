@@ -24,7 +24,14 @@ Feature state (see `static/index.html`):
   edit, answer management), the per-poll identity cookie with CSRF
   token, poll expiry, the prefilled poll edit that keeps both links,
   and the admin-side poll lifecycle (close / re-open / delete, with a
-  dedicated 404 page for deleted links).
+  dedicated 404 page for deleted links). The answers table ends with
+  The answers table ends with
+  the per-slot totals rows (`Yes`, plus `Yes + Maybe`) with the row's
+  highest cells styled like the mark cells (green tint + text), the
+  rows labelled a localized `Total` prefix + the mark's symbol (e.g.
+  `Total ✓`, `Total ✓ (✓)`) — no totals on a single-signup poll, and
+  none on the user page while respondents are hidden (the admin page
+  keeps them).
 - "Vote on Something" — implemented end to end: the create/edit form
   (`/vote-form`; title, contact email, description, up to 20 options
   with stable IDs, the four exclusive voting types — `yes/no` (the
@@ -37,7 +44,15 @@ Feature state (see `static/index.html`):
   answer management, the prefilled poll edit that keeps both links,
   and the admin lifecycle close / re-open / delete with the dedicated
   404 page for deleted links), the per-vote identity cookie with CSRF
-token.
+token, and the per-choice totals rows per voting type (`Yes` always,
+  `Yes + Maybe` + `Maybe` in yes/maybe/no, `No` in yes/no and
+  yes/maybe/no; none for free text) with the row's highest cells
+  with the row's highest cells styled like the mark cells (green /
+  amber / red tint + text), the rows labelled `Total` + the mark's
+  symbol — the admin page keeps them while respondents are hidden or
+  the vote form's hide-totals option is on. The block is set off from
+  the answer rows by a borderless gap row (the vote's totals carry no
+  combined yes + maybe row).
 
 ## Commands
 
@@ -60,9 +75,12 @@ token.
   create -> redirect -> read round trip (timezone-aware slots), form
   validation (bad/malformed dates and times, invalid timezones, encoding),
   and the random URL key contract; `poll_test.go` covers the answer
+  `poll_test.go` covers the answer
   lifecycle on the two-link model (identity cookie + CSRF, answering,
-  visibility / hide-users, single-slot enforcement, answer edit/delete,
-  admin answer management, poll edit with stable links and mark pruning,
+  visibility / hide-users, single-slot enforcement, the totals rows
+  (placement below the form row, the max-cell highlight, the
+  single-signup / hide-users visibility), answer edit/delete, admin
+  answer management, poll edit with stable links and mark pruning,
   expiry and prolongation, the admin poll lifecycle (close / re-open /
   delete, incl. the dedicated 404 page for deleted links), the
   clickjacking headers, and the urlencoded-only POST gate;
@@ -73,7 +91,10 @@ token.
   vote), the answer round trips (incl. the type-specific rejections:
   no `n` mark in `yes`, no `m` outside yes/maybe/no, max one yes / note
   in single-choice, the must-answer completeness 400 in mark and
-  freetext modes), and the edit semantics (stable option IDs,
+  freetext modes), the totals rows per voting type (the per-type row
+  set, the max-cell highlight, no rows on free text, the hide-users
+  and hide-totals admin visibility, the hide-totals option stored +
+  edit-preserved), and the edit semantics (stable option IDs,
   text-change / delete / reorder answer handling, the vote-type flip's
   mark/note pruning); `i18n_test.go` covers the locale resolution
   order (cookie → `Accept-Language` → English) and base-tag matching,
@@ -116,7 +137,11 @@ token.
   the table's aria strings — embedded by `meetingPage` and `votePage`
   and received by the shared partials, which call its `T` method as
   `{{.T "key"}}`), `themeClass`, `localeChosen`, `absURL` (the public
-  origin for the copyable link boxes), `pressAttr`, `homeHandler`, the
+  origin for the copyable link boxes), `pressAttr`, the shared
+  `totalsRow` type (mark label + tooltip word, color/st classes, the
+  row's glyphs, per-column values, max) + `rowMax` (the answers
+  tables' summary rows),
+  `homeHandler`, the
   small response helpers (`notFoundHandler`, `linkGone` — the 404 page
   for a deleted poll or vote link, `static/meet-gone.html` rendered
   with a 404 status —, `sendErr`, `sendInternal`, `saveError`), the
@@ -142,18 +167,21 @@ token.
 - `meet-page.go` — the meeting page: the table cell types
   (`formSlot`, `timeCell`, `headerYear`, `headerDate`, `respCol`), the
   `meetingPage` struct (embeds `answerPage`; the poll's zone, the slot
-  grid, the respondent columns, the edit `FormCol`), and
+  grid, the respondent columns, the edit `FormCol`, the per-slot
+  `Totals` rows), and
   `meetingHandler` (user key → respondent view, admin key → admin
   view). The answer & lifecycle endpoints are the shared generics in
   `answers.go`.
 - `vote-form.go` — the vote form: the `voteForm` page struct (embeds
-  `formBase`; the choices, the two mode checkboxes, the vote type),
+  `formBase`; the choices, the two mode checkboxes, the hide-totals
+  checkbox, the vote type),
   `voteFormHandler` (create), `voteFormEditHandler` (admin link only,
   prefilled), `voteFormPostHandler` (create or update-in-place on a
   `votekey`).
 - `vote-page.go` — the vote page: the `voteCol` cell type, the
   `votePage` struct (embeds `answerPage`; the mode, the choices, the
-  vote columns, the edit `VoteFormCol`), and `voteHandler`. The answer
+  vote columns, the edit `VoteFormCol`, the per-choice `Totals` rows),
+  and `voteHandler`. The answer
   & lifecycle endpoints are the shared generics in `answers.go`.
 - `poll.go` — the poll plumbing shared by the handlers: the
   per-identity cookie pair shared with the vote's (name-based
@@ -203,9 +231,11 @@ token.
   same treatment). `database/vote.go` adds the vote types: `Vote`
   (incl. `VoteType` — `yes` / `yes-no` (the stored default) /
   `yes-maybe-no` / `freetext`, `SingleChoice` (valid only with `yes`
-  and `freetext`), and `MustAnswer` (valid only with `yes-no`,
+  and `freetext`), `MustAnswer` (valid only with `yes-no`,
   `yes-maybe-no`, and `freetext`; mutually exclusive with
-  `SingleChoice`)), `Choice`/`ChoiceList` (the options with their
+  `SingleChoice`), and `HideTotals` (keeps the totals rows off the
+  user page — the admin page keeps them)), `Choice`/`ChoiceList` (the
+  options with their
   stable IDs), and `VoteAnswer`/`VoteAnswerList` (answers whose `Marks`
   and `Notes` maps are keyed by choice ID, exactly one of them
   populated per vote type), same JSON-in-TEXT treatment. No handles
@@ -228,11 +258,14 @@ token.
   (`static/index.html`, `static/meet-form.html`, `static/meet.html`,
   `static/meet-gone.html` — the 404 page for a deleted poll or vote,
   `static/vote-form.html` — the vote create/edit form (incl. the
-  `Voting type:` radio group), `static/vote.html`; layout:
+  `Voting type:` radio group and the hide-totals checkbox),
+  `static/vote.html`; layout:
   `static/layouts/home.html`, partials in `static/partials/` — incl.
-  `answers-table.html` (the poll's), `vote-answers-table.html` (the
+  `answers-table.html` (the poll's) and `vote-answers-table.html` (the
   shared answers-table markup the live vote form and the closed
-  vote's read-only matrix both render), and `links.html` — the admin
+  vote's read-only matrix both render; both end with the totals block
+  — a borderless `tr.totals-gap` spacer row plus the `tr.totals-row`
+  summary rows — below the form row), and `links.html` — the admin
   links section (copyable link boxes + copy buttons, the edit link,
   the close/re-open/delete actions with the inline two-step warning),
   rendered only in the admin view),
@@ -475,14 +508,15 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   ✗ (`respCol.Csls`). Toggling a mark off clears it to the neutral
   state. The small legend above the table (`meet.legend`) documents the
   glyphs, which are rendered at 1.25rem inside the fixed 44px columns.
-- **The edit form row is the table's last row**: when editing an answer
-  (`?edit=<id>`), the respondent's row is *not* rendered in place — it is
-  skipped in the `{{range .Cols}}` loop and rendered as the table's last
-  row (prefilled from `meetingPage.FormCol`, the matching `respCol`),
-  directly above the save/cancel bar, so long tables need no scrolling.
-  Saving/canceling navigates to the plain page, where the row renders in
-  its normal list position again; the move is a render-only choice,
-  never persisted.
+- **The edit form row is the table's last respondent row**: when
+  editing an answer (`?edit=<id>`), the respondent's row is *not*
+  rendered in place — it is skipped in the `{{range .Cols}}` loop and
+  rendered as the table's last respondent row (prefilled from
+  `meetingPage.FormCol`, the matching `respCol`), directly above the
+  save/cancel bar and the totals rows (which stay the table's last
+  rows), so long tables need no scrolling. Saving/canceling navigates
+  to the plain page, where the row renders in its normal list position
+  again; the move is a render-only choice, never persisted.
 - **Two links, one route**: `meetingHandler` tries the user key, then the
   admin key, to pick the view. The admin link is a capability URL:
   admin-keyed endpoints (answer edit/delete, the poll edit form and its
@@ -527,6 +561,33 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   Fiber v3's `c.Render` only sets the body and content type, so the
   404 status set on the ctx around it is the one that ships; POST
   answer/lifecycle endpoints keep the plain 404.
+- **Totals rows**: both answers tables end with per-column summary
+  rows (`tr.totals-row`, one cell per slot/choice, one row per counted
+  mark): the meeting counts green (`Yes`) and green + yellow
+  (`Yes + Maybe`) per slot; the vote counts per choice in the type's
+  order (`Yes` always, `Maybe` in yes-maybe-no, `No` in yes-no +
+  in yes-no + yes-maybe-no; free text has no marks, no rows — the vote's totals
+  carry no combined yes + maybe row, only the meeting does). Each
+  row's max cell(s) get the `.totals-hot` class + the answer cells'
+  `st-*` styling (tint background + mark text color, via the
+  precomputed `Mark`/`Cls` on `totalsRow` — attribute-value template
+  actions may not carry quoted literals; the meeting's combined row
+  is green); ties highlight together, an all-zero row highlights
+  nothing, and non-max cells are dimmed to `--text-2` so the max
+  stands out. The label cell is a localized `Total` prefix
+  (`totals.total`) + the row's mark symbol in its mark color
+  (`tot-g` / `tot-y` / `tot-r`: `✓`, `(✓)`, `✗`; the combined row
+  carries `✓ (✓)`), the mark's word as a title tooltip (precomputed
+  `Name`/`NameKey`, swapped on language change via `data-i18n-title` —
+  html/template escapes the `+` in `Yes + Maybe` as `&#43;` in the
+  attribute). The totals are the table's *last* rows — below the
+  form row, which then sits second-to-last — set off from the answer
+  rows by the borderless `tr.totals-gap` spacer (border-collapsed
+  tables can't take row margins). Counts cover stored answers only (the form row's
+  in-flight state is not part of it). Visibility: always on the admin
+  page; on the user page they are hidden by a single-signup meeting,
+  by `Vote.HideTotals` (the vote form's hide-totals option), or by
+  hidden respondents on either page type.
 - **Voting types & the mode checkboxes**: `Vote.VoteType` is `yes`
   (a yes-toggle only — there is no no-button, unselected is neutral),
   `yes-no` (the stored default), `yes-maybe-no`, or `freetext`. Two

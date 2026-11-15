@@ -281,6 +281,27 @@ func runPollSuite(t *testing.T) {
 	bMut := p.body(p.get("/meet/"+mA.Key, cookie+"="+alice))
 	contains(bMut, "Alice")
 	contains(bMut, "Bob")
+	// The totals rows sit below every answer row — always the table's
+	// last rows. Per slot: slot 1 has two yes (Alice + Bob), slot 2 one
+	// yes + one maybe — the yes row highlights only slot 1, the yes +
+	// maybe row (2, 2) both.
+	// The label cell: a localized "Total" prefix + the mark's symbol in
+	// its mark color, a title tooltip naming the mark (incl. the
+	// combined row's two glyphs).
+	contains(bMut, `data-i18n="totals.total"`)
+	contains(bMut, `class="totals-sym"`)
+	contains(bMut, `title="Yes"`)
+	// html/template escapes the + in the attribute value (&#43; renders
+	// as a plain + in the tooltip).
+	contains(bMut, `title="Yes &#43; Maybe"`)
+	contains(bMut, `data-i18n-title="totals.yes_maybe"`)
+	contains(bMut, `class="totals-sym2"`)
+	if got := strings.Count(bMut, "totals-hot"); got != 3 {
+		t.Fatalf("totals: %d highlighted cells, want 3", got)
+	}
+	if i := strings.LastIndex(bMut, "<tr"); i < 0 || !strings.Contains(bMut[i:], `class="totals-row`) {
+		t.Fatalf("the totals rows must be the table's last rows")
+	}
 
 	// ---- poll B: hidden respondents ----
 	mB, _ := p.createPoll("title=Poll+B&email=poll%40example.com&description=B+description&timezone=Europe/Berlin&enddate=2026-12-31&hide-users=true&slot0=2026-11-01T10:00")
@@ -292,6 +313,10 @@ func runPollSuite(t *testing.T) {
 	absent(p.body(p.get("/meet/"+mB.Key, cb+"="+stranger)), "Carol")
 	adminB := p.cookie(p.get("/meet/"+mB.AdminKey, ""), cb)
 	contains(p.body(p.get("/meet/"+mB.AdminKey, cb+"="+adminB)), "Carol")
+	// With hidden respondents the totals rows are on the admin page
+	// only — the user page shows none.
+	absent(p.body(p.get("/meet/"+mB.Key, cb+"="+carol)), "totals-row")
+	contains(p.body(p.get("/meet/"+mB.AdminKey, cb+"="+adminB)), "totals-row")
 
 	// ---- poll C: single-slot signups ----
 	mC, _ := p.createPoll("title=Poll+C&email=poll%40example.com&description=C+description&timezone=Europe/Berlin&enddate=2026-12-31&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
@@ -302,6 +327,8 @@ func runPollSuite(t *testing.T) {
 	absent(bC, "mark-y")
 	absent(bC, "mark-r")
 	absent(bC, "form-cell st-r")
+	// A single-signup poll carries no totals rows at all.
+	absent(bC, "totals-row")
 	postC := func(form string) *http.Response {
 		return p.post("/meet/"+mC.Key+"/answer", form, cc+"="+cy)
 	}
@@ -422,19 +449,24 @@ func runPollSuite(t *testing.T) {
 		t.Fatalf("organizer answer not removed: %+v", gotA.Answers)
 	}
 
-	// The edit row renders as the table's last row (the form, next to the
-	// save/cancel bar below the answers), posting through the admin edit
-	// endpoint with their id and prefilled name; their old position shows
-	// neither a static row nor an edit icon.
+	// The edit row renders as the table's second-to-last row (the form,
+	// next to the save/cancel bar below the answers, the totals rows
+	// below it), posting through the admin edit endpoint with their id
+	// and prefilled name; their old position shows neither a static row
+	// nor an edit icon.
 	bEdRow := p.body(p.get("/meet/"+adminA+"?edit="+bob, cookie+"="+adminTok))
 	contains(bEdRow, `action="/meet/`+adminA+`/answer/edit"`)
 	contains(bEdRow, `name="respondentid" value="`+bob+`"`)
 	contains(bEdRow, `value="Bobby"`)
 	contains(bEdRow, "Save changes")
 	absent(bEdRow, `?edit=`+bob)
-	if i := strings.LastIndex(bEdRow, "<tr"); i < 0 ||
-		!strings.Contains(bEdRow[i:], `class="form-row"`) {
-		t.Fatalf("edit view: the form row must be the table's last row")
+	if iLast := strings.LastIndex(bEdRow, "<tr"); iLast < 0 ||
+		!strings.Contains(bEdRow[iLast:], `class="totals-row`) {
+		t.Fatalf("edit view: the totals rows must be the table's last rows")
+	}
+	if iForm := strings.Index(bEdRow, `class="form-row"`); iForm < 0 ||
+		iForm > strings.Index(bEdRow, `class="totals-row`) {
+		t.Fatalf("edit view: the form row must sit directly above the totals rows")
 	}
 	// A user link may never open someone else's row, and an unknown
 	// ?edit target just renders the plain page.

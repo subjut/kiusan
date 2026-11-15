@@ -42,6 +42,7 @@ func TestVoteFormRender(t *testing.T) {
 		`name="email"`,
 		`name="description"`,
 		`name="hide-users"`,
+		`name="hide-totals"`,
 		`name="single-choice"`,
 		`name="must-answer"`,
 		`name="votetype"`,
@@ -168,6 +169,7 @@ func TestVoteFormEdit(t *testing.T) {
 		"single-choice": {"true"},
 		"votetype":      {"freetext"},
 		"hide-users":    {"true"},
+		"hide-totals":   {"true"},
 		"enddate":       {"2026-12-31"},
 	}.Encode()
 
@@ -199,6 +201,7 @@ func TestVoteFormEdit(t *testing.T) {
 		`value="freetext" checked`,
 		`name="must-answer" value="true" disabled`,
 		`name="hide-users" value="true" checked`,
+		`name="hide-totals" value="true" checked`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET /vote-form/edit: missing %q in body", want)
@@ -333,6 +336,9 @@ func editVote(t *testing.T, app *fiber.App, adminKey string, rows []choiceRow, e
 	}
 	if old.HideUsers {
 		form.Set("hide-users", "true")
+	}
+	if old.HideTotals {
+		form.Set("hide-totals", "true")
 	}
 	for k, v := range extra {
 		form[k] = v
@@ -955,6 +961,142 @@ func TestVoteYesMaybeNo(t *testing.T) {
 	v, _ := db.GetVote(userKey)
 	if v.Answers[0].Marks[choices[0].ID] != "m" {
 		t.Errorf("maybe mark: %v", v.Answers[0].Marks)
+	}
+}
+
+// TestVoteTotals covers the answers table' totals rows: one row per
+// counted mark of the vote's type (yes always, yes + maybe / maybe / no
+// where the type has those marks), each row's highest cells highlighted,
+// the rows always the table's last ones, and the hiding rules — a
+// free-text vote has no marks to count, and the hide-totals option and
+// hidden respondents keep the rows on the admin page only.
+func TestVoteTotals(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+
+	// ---- yes/no vote: the yes row and the no row ----
+	userKey, _ := createVote(t, app, nil)
+	choices := voteChoices(t, userKey)
+	answerVote(t, app, userKey, "Ada", map[string]string{
+		"a" + choices[0].ID: "y",
+		"a" + choices[1].ID: "n",
+	})
+	answerVote(t, app, userKey, "Ben", map[string]string{
+		"a" + choices[0].ID: "y",
+		"a" + choices[1].ID: "y",
+	})
+	r, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+userKey, nil))
+	if err != nil {
+		t.Fatalf("GET /vote: %v", err)
+	}
+	b, _ := io.ReadAll(r.Body)
+	s := string(b)
+	for _, want := range []string{"totals.yes", "totals.no", `data-i18n="totals.total"`, `class="totals-sym"`} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("yes/no vote: missing %q", want)
+		}
+	}
+	for _, what := range []string{"totals.yes_maybe", "totals.maybe"} {
+		if strings.Contains(s, what) {
+			t.Fatalf("yes/no vote: the %q row must not render", what)
+		}
+	}
+	// per choice — yes [2, 1] (only option A at the max), no [0, 1]
+	// (only option B). No other hot cell exists on the page.
+	if got := strings.Count(s, "totals-hot"); got != 2 {
+		t.Fatalf("yes/no totals: %d highlighted cells, want 2", got)
+	}
+	if i := strings.LastIndex(s, "<tr"); i < 0 || !strings.Contains(s[i:], `class="totals-row`) {
+		t.Fatalf("the totals rows must be the table's last rows")
+	}
+
+	// ---- yes/maybe/no vote: three rows (yes, maybe, no) ----
+	ymKey, _ := createVote(t, app, url.Values{"votetype": {"yes-maybe-no"}})
+	ym := voteChoices(t, ymKey)
+	answerVote(t, app, ymKey, "Ada", map[string]string{
+		"a" + ym[0].ID: "y",
+		"a" + ym[1].ID: "m",
+	})
+	r2, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+ymKey, nil))
+	b2, _ := io.ReadAll(r2.Body)
+	s2 := string(b2)
+	for _, want := range []string{"totals.yes", "totals.maybe", "totals.no"} {
+		if !strings.Contains(s2, want) {
+			t.Fatalf("yes/maybe/no vote: missing the %q row", want)
+		}
+	}
+	if strings.Contains(s2, "totals.yes_maybe") {
+		t.Fatalf("yes/maybe/no vote: the combined yes + maybe row must not render")
+	}
+	// per choice — A: yes, B: maybe — yes [1, 0], maybe [0, 1], no
+	// [0, 0]: the all-zero no row stays plain, the other two carry one
+	// highlight each.
+	if got := strings.Count(s2, "totals-hot"); got != 2 {
+		t.Fatalf("yes/maybe/no totals: %d highlighted cells, want 2", got)
+	}
+
+	// ---- yes vote: the single yes row ----
+	yesKey, _ := createVote(t, app, url.Values{"votetype": {"yes"}})
+	yc := voteChoices(t, yesKey)
+	answerVote(t, app, yesKey, "Ada", map[string]string{"a" + yc[0].ID: "y"})
+	r3, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+yesKey, nil))
+	b3, _ := io.ReadAll(r3.Body)
+	s3 := string(b3)
+	if got := strings.Count(s3, `class="totals-row`); got != 1 {
+		t.Fatalf("yes vote: %d totals rows, want 1", got)
+	}
+	for _, what := range []string{"totals.no", "totals.maybe"} {
+		if strings.Contains(s3, what) {
+			t.Fatalf("yes vote: the %q row must not render", what)
+		}
+	}
+
+	// ---- free-text vote: no marks to count, no totals rows ----
+	ftKey, _ := createVote(t, app, url.Values{"votetype": {"freetext"}})
+	r4, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+ftKey, nil))
+	b4, _ := io.ReadAll(r4.Body)
+	if strings.Contains(string(b4), "totals-row") {
+		t.Fatalf("free-text vote: the totals rows must not render")
+	}
+
+	// ---- hidden respondents: admin page only ----
+	cuKey, cuAdm := createVote(t, app, url.Values{"hide-users": {"true"}})
+	cu := voteChoices(t, cuKey)
+	answerVote(t, app, cuKey, "Ada", map[string]string{"a" + cu[0].ID: "y"})
+	r5, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+cuKey, nil))
+	if b5, _ := io.ReadAll(r5.Body); strings.Contains(string(b5), "totals-row") {
+		t.Fatalf("hidden respondents: the user page must not show the totals rows")
+	}
+	r6, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+cuAdm, nil))
+	if b6, _ := io.ReadAll(r6.Body); !strings.Contains(string(b6), "totals-row") {
+		t.Fatalf("hidden respondents: the admin page must keep the totals rows")
+	}
+
+	// ---- the hide-totals option: stored, user page only, edit keeps it ----
+	htKey, htAdm := createVote(t, app, url.Values{"hide-totals": {"true"}})
+	ht := voteChoices(t, htKey)
+	answerVote(t, app, htKey, "Ada", map[string]string{"a" + ht[0].ID: "y"})
+	v, err := db.GetVoteAdmin(htAdm)
+	if err != nil {
+		t.Fatalf("loading vote: %v", err)
+	}
+	if !v.HideTotals {
+		t.Fatalf("hide-totals not stored: %+v", v)
+	}
+	r7, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+htKey, nil))
+	if b7, _ := io.ReadAll(r7.Body); strings.Contains(string(b7), "totals-row") {
+		t.Fatalf("hide-totals: the user page must not show the totals rows")
+	}
+	r8, _ := app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+htAdm, nil))
+	if b8, _ := io.ReadAll(r8.Body); !strings.Contains(string(b8), "totals-row") {
+		t.Fatalf("hide-totals: the admin page must keep the totals rows")
+	}
+	edited := editVote(t, app, htAdm, []choiceRow{
+		{text: "Option A", oldID: ht[0].ID},
+		{text: "Option B", oldID: ht[1].ID},
+	}, nil)
+	if !edited.HideTotals {
+		t.Fatalf("editing must keep the hide-totals option: %+v", edited)
 	}
 }
 
