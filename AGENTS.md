@@ -65,6 +65,12 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   - `KIUSAN_STORE=mysql KIUSAN_DSN="user:pass@tcp(localhost:3306)/kiusan" go run .`
     (mariadb: same DSN with `KIUSAN_STORE=mariadb`)
   - `KIUSAN_STORE=postgres KIUSAN_DSN="postgres://user:pass@localhost:5432/kiusan?sslmode=disable" go run .`
+- Test database: `go run ./tools/testdb -o test.db` recreates the seed
+  sqlite file (six answer tables at every defined size cap — two 100-slot
+  meetings x 100/50 respondents, four 20-option votes covering all voting
+  types — 50-year end dates; it prints each table's admin + user links);
+  run the server on it with `KIUSAN_DSN=./test.db go run .` (the DSN of a
+  sqlite backend is just the data-file path).
 - Environment: `KIUSAN_SECRET` (the CSRF secret — set it so tokens
   survive restarts), `KIUSAN_BASE_URL` (the public origin for the
   copyable link boxes; `https://` enables Secure cookies),
@@ -390,6 +396,15 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (`locale_test.mjs`, `dater_test.mjs`, `poll_test.mjs`,
   `vote_test.mjs`), whose fixtures mirror the `static/` template
   markup. `node_modules/` is gitignored.
+- `tools/testdb/` — the seed test-database generator (a `main` package,
+  see Commands → Test database): it builds `test.db` through the app's
+  own `store` package (same GORM schema, same key minting, so the file is
+  production-exact) with the size-capped tables, the field-length caps
+  (100-char titles, 256-char emails, 5000-char descriptions, 100-char
+  option labels, 150-char notes, 50-char names) and a deterministic
+  `rand`-seeded mark/notes distribution (slot/option 1 is all-marked,
+  option 2 unanswered — both totals edge cases). Re-running overwrites
+  the file (gitignored).
 - Root test files: `smoke_test.go` (the shared `withStore` /
   `newTestApp` / `postForm` helpers + `futureEnd` / `testEndDate`),
   `htmltest_test.go` (the parser-based page assertions, see Commands →
@@ -400,7 +415,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (the project's steering history across agent sessions); entries are
   appended automatically per prompt (see Conventions).
 - `meetings.db` — the default runtime data file in the working directory
-  (sqlite; gitignored).
+  (sqlite; gitignored); `test.db` — the generated seed test database
+  (same treatment, see Commands → Test database).
 
 ## Conventions
 
