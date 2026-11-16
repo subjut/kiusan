@@ -1061,6 +1061,10 @@
 		color: var(--text-2);
 		font-size: 0.875rem;
 		margin-top: 1rem;
+		/* the contact email is one unbreakable token (up to 256 chars); let
+		   it wrap in place instead of pushing the page past the container
+		   width (headings and .description carry the same guard) */
+		overflow-wrap: anywhere;
 	}
 
 	/* hugs the text — clamped to the container width, so never wider than
