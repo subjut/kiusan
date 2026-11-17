@@ -214,12 +214,35 @@
 
 	var sel = document.getElementById("locale");
 	if (sel) {
+		// The select shows the effective UI language: the explicit cookie
+		// pin (a shipped tag), else the browser language matched onto a
+		// shipped option (English while it is unshipped). The server
+		// already rendered its resolution as selected — this re-confirms
+		// it and covers a navigator/header divergence.
+		var c = cookieValue();
+		if (c && valid(c) && sel.querySelector('option[value="' + c + '"]')) {
+			sel.value = c;
+		} else {
+			// Overwrite the server-rendered selection on purpose: the header
+			// can resolve onto a different language than navigator (no or a
+			// diverging Accept-Language), and the client's language is the
+			// one the date values follow.
+			var base = browserLocale().split("-")[0];
+			var v = "en";
+			for (var i = 0; i < sel.options.length; i++) {
+				if (sel.options[i].value === base) { v = base; break; }
+			}
+			sel.value = v;
+		}
 		sel.addEventListener("change", function () {
-			cookieSet(sel.value);
-			// "" (Browser default) fetches the browser's own language; the
-			// server resolves it onto a shipped language, so an unshipped
-			// one simply serves the English dictionary.
-			fetch("/i18n/" + encodeURIComponent(sel.value || browserLocale()))
+			// A pick that deviates from the server's implicit language
+			// (data-implicit: Accept-Language resolved onto a shipped
+			// language, English while none matches) pins it to a cookie;
+			// a pick back to the implicit language deletes the pin, so
+			// the browser keeps following the device default. A pin
+			// stores a deviation only.
+			cookieSet(sel.value === sel.getAttribute("data-implicit") ? "" : sel.value);
+			fetch("/i18n/" + encodeURIComponent(sel.value))
 				.then(function (r) {
 					if (!r.ok) throw new Error("status " + r.status);
 					return r.json();

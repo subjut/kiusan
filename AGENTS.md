@@ -104,9 +104,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   text-change / delete / reorder answer handling, the vote-type flip's
   mark/note pruning); `i18n_test.go` covers the locale resolution
   order (cookie → `Accept-Language` → English) and base-tag matching,
-  the `/i18n/boot` + `/i18n/:lang` contract (merged dicts, the English
-  fallback for unshipped tags, 404 for malformed tags), key parity
-  between catalogs, and that every `data-i18n*` marker in the
+  the dropdown's selected state + `data-implicit` (cookie / header /
+  default), the `/i18n/boot` + `/i18n/:lang` contract (merged dicts, the
+  English fallback for unshipped tags, 404 for malformed tags), key
+  parity between catalogs, and that every `data-i18n*` marker in the
   templates names a key the English catalog defines. The end dates the
   suites submit are derived from now (`futureEnd()` / `testEndDate()`
   in `smoke_test.go`) — a fixed calendar date would rot the suite, since
@@ -162,8 +163,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   hint flash), and the locale display + dictionary swap (the
   cookie → browser resolution, the date-value contract per `data-*` key
   in the poll's zone, the UTC-offset annotation, the marker swaps,
-  the `data-i18n-prefix` suffix keep, the dropdown fetch, the
-  browser-default fetch, the failed-fetch no-op).
+  the `data-i18n-prefix` suffix keep, the select's effective-language
+  sync, the dropdown fetch, the pin/un-pin cookie policy (pin on
+  deviation from the implicit, delete on return to it), the
+  failed-fetch no-op).
 
 ## Layout
 
@@ -196,7 +199,7 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   pages — header meta, the admin links section, the answer form row,
   the table's aria strings — embedded by `meetingPage` and `votePage`
   and received by the shared partials, which call its `T` method as
-  `{{.T "key"}}`), `themeClass`, `localeChosen`, `absURL` (the public
+  `{{.T "key"}}`), `themeClass`, `absURL` (the public
   origin for the copyable link boxes), `pressAttr`, the shared
   `totalsRow` type (mark label + tooltip word, color/st classes, the
   row's glyphs, per-column values, max) + `rowMax` (the answers
@@ -274,8 +277,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
 - `i18n.go` — the interface-localization plumbing: the `translator`
   (`gofiber/contrib/v3/i18n` over `go-i18n/v2` with a YAML
   `EmbedLoader` on the `locales/` directory), the `langHandler` hook
-  (locale resolution: `kiusan-locale` cookie → `Accept-Language` →
-  English), `matchLang` (base-tag matching so `de-CH` → `de`), the
+  (locale resolution: `kiusan-locale` cookie → `implicitLang` →
+  English; `implicitLang` is the `Accept-Language` → English chain the
+  select's `data-implicit` attribute carries), `matchLang` (base-tag
+  matching so `de-CH` → `de`), the
   `/i18n/boot` handler (serves `window.I18N = {…}` as same-origin JS),
   and the `/i18n/:lang` handler (serves the JSON dict built live from
   the in-memory bundle with English fallback). The `pageData`,
@@ -350,8 +355,12 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   single-choice yes-exclusivity, the must-answer submit gate),
   `locale.js` — browser-locale date display: rewrites the
   server-rendered date labels (kept as the no-JS fallback) in the
-  viewer's locale and owns the site-header Display dropdown
-  (`partials/locale-select.html`); loaded from `partials/header.html`,
+  the viewer's locale and owns the site-header Display dropdown
+  (`partials/locale-select.html` — the selected option is always the
+  effective UI language, the select's `data-implicit` attribute
+  carries the cookie-less `Accept-Language` language; see Gotchas →
+  Interface localization for the pin/un-pin policy); loaded from
+  `partials/header.html`,
   so it runs on every page, and `theme.js` — the light/dark toggle
   (`partials/theme-toggle.html`, a ghost button with a fixed
   sun–slash–moon icon beside the locale select; see Gotchas → Theme) —
@@ -503,10 +512,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   viewer's browser locale — `static/js/locale.js` rewrites the
   server-rendered labels (which stay as the no-JS fallback) with
   `Intl.DateTimeFormat`. Locale resolution: the `kiusan-locale` cookie
-  (an unpersonalized BCP-47 tag, JS-only, 1-year `Lax`, set by the
-  site-header Display dropdown in `partials/locale-select.html`; curated
-  ~15 locales shown by native name + the browser's own language
-  auto-added) wins, else `navigator.language`. `locale.js` loads from
+  (an unpersonalized BCP-47 tag, JS-only, 1-year `Lax`) wins, else
+  `navigator.language`; the cookie is written by the site-header Display
+  dropdown (`partials/locale-select.html`) only while a pick deviates
+  from the device default and deleted while it returns to it (the full
+  pin/un-pin policy is under Interface localization below). `locale.js` loads from
   the header (before the page body), so its initial reformat waits for
   `DOMContentLoaded`. Every value is formatted with the poll's zone —
   the page container's `data-tz` (IANA name, `UTC` when the poll has
@@ -537,7 +547,18 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   the `dater.js`/`poll.js`/`vote.js` widget strings. Language switch: the
   dropdown `change` handler fetches `GET /i18n/<tag>` (JSON dict
   built live from the in-memory bundle, English fallback for missing
-  keys) and calls `applyDict` — no page reload. The initial dict is
+  keys) and calls `applyDict` — no page reload. The dropdown has no
+  "Browser default" row: the selected option is always the effective UI
+  language — the server renders `selected` on the option matching the
+  resolved language (the same chain the page content uses) and carries
+  the cookie-less implicit language (`Accept-Language` → shipped →
+  English) in the select's `data-implicit` attribute; `locale.js`
+  re-syncs the selection on load (cookie pin → browser language
+  matched onto a shipped option → English, overwriting the
+  server-rendered selection on a navigator/header divergence). A
+  dropdown change writes the `kiusan-locale` pin only while the pick
+  deviates from `data-implicit` and deletes it while it returns to the
+  implicit language — a pin stores a deviation only. The initial dict is
   served by `GET /i18n/boot` as `window.I18N = {…}` (same-origin JS
   file, CSP `script-src 'self'` — no inline scripts). Catalogs are
   YAML in `locales/` (embedded, loaded at startup); maintenance =

@@ -104,8 +104,12 @@ function dictFixture() {
 
 // The locale <select> lives in the site header — ahead of locale.js, so
 // the script finds it while it runs at parse time.
+// data-implicit is the language the server would serve without a cookie
+// (Accept-Language resolved onto a shipped language, English while none
+// matches) — the pick it compares against for the pin/un-pin decision.
 const LOCALE_SELECT =
-	'<select id="locale"><option value="" selected>Browser default</option><option value="de">Deutsch</option></select>';
+	'<select id="locale" data-implicit="en">'+
+	'<option value="en">English</option><option value="de">Deutsch</option></select>';
 
 const deDict = {
 	lang: "de",
@@ -153,7 +157,27 @@ test("the dropdown fetches the dictionary and swaps the marked nodes", async (t)
 	assert.equal(changes, 1);
 });
 
-test("switching to the browser default fetches the browser language", async (t) => {
+test("the select shows the effective language on load", async (t) => {
+	const head = '<select id="locale" data-implicit="de">'+
+		'<option value="en">English</option><option value="de" selected>Deutsch</option></select>';
+	// a cookie pin beats the browser language
+	let w = boot(dictFixture(), {
+		lang: "fr-FR", cookies: { "kiusan-locale": "de" },
+		head: head, headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	assert.equal(w.document.getElementById("locale").value, "de");
+	// without a cookie, the browser language matches a shipped option
+	w = boot(dictFixture(), { lang: "de-DE", head: head, headerScripts: ["locale.js"] });
+	await settled(w);
+	assert.equal(w.document.getElementById("locale").value, "de");
+	// an unshipped browser language falls back to English
+	w = boot(dictFixture(), { lang: "fr-FR", head: head, headerScripts: ["locale.js"] });
+	await settled(w);
+	assert.equal(w.document.getElementById("locale").value, "en");
+});
+
+test("a pick of the implicit language un-pins (deletes the cookie)", async (t) => {
 	const urls = [];
 	const w = boot(dictFixture(), {
 		lang: "fr-FR",
@@ -161,14 +185,22 @@ test("switching to the browser default fetches the browser language", async (t) 
 			urls.push(u);
 			return Promise.resolve({ ok: true, json: () => Promise.resolve(deDict) });
 		},
-		head: LOCALE_SELECT,
+		head: LOCALE_SELECT, // data-implicit="en": a French browser
 		headerScripts: ["locale.js"],
 	});
 	await settled(w);
-	w.document.getElementById("locale").value = "";
-	w.document.getElementById("locale").dispatchEvent(new w.Event("change"));
+	const sel = w.document.getElementById("locale");
+	// a deviation pins
+	sel.value = "de";
+	sel.dispatchEvent(new w.Event("change"));
 	await tick();
-	assert.deepEqual(urls, ["/i18n/fr-FR"]);
+	assert.ok(w.document.cookie.includes("kiusan-locale=de"));
+	// back to the implicit language: the pin is deleted
+	sel.value = "en";
+	sel.dispatchEvent(new w.Event("change"));
+	await tick();
+	assert.ok(!w.document.cookie.includes("kiusan-locale"));
+	assert.deepEqual(urls, ["/i18n/de", "/i18n/en"]);
 });
 
 test("a failed dictionary fetch leaves the page as-is", async (t) => {

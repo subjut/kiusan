@@ -76,17 +76,32 @@ func TestI18nResolution(t *testing.T) {
 	// A region variant of a shipped language resolves to it.
 	check("/", "kiusan-locale=de-CH", "", "de", `>Zum Inhalt springen<`)
 
-	// The dropdown marks the cookie's language selected — and only it.
-	b := i18nBody(t, i18nGet(t, app, "/", "kiusan-locale=de", ""))
-	if !strings.Contains(b, `<option value="de" selected>Deutsch</option>`) {
-		t.Fatalf("dropdown: de option not marked selected:\n%s", b)
+	// The dropdown marks the resolved language selected — and only it —
+	// and carries the cookie-less (implicit) language as data-implicit.
+	b := i18nBody(t, i18nGet(t, app, "/", "kiusan-locale=de", "fr-FR"))
+	for _, want := range []string{
+		`<select id="locale" data-implicit="en">`,
+		`<option value="de" selected>Deutsch</option>`,
+	} {
+		if !strings.Contains(b, want) {
+			t.Fatalf("dropdown: want %q:\n%s", want, b)
+		}
 	}
-	if strings.Contains(b, `<option value="" selected>`) {
-		t.Fatalf("dropdown: browser-default option must not be selected with a cookie:\n%s", b)
+	if strings.Contains(b, `<option value="en" selected>`) {
+		t.Fatalf("dropdown: the un-pinned option must not be selected:\n%s", b)
 	}
+	// Without a cookie the selection follows Accept-Language, and
+	// data-implicit agrees with it.
+	b = i18nBody(t, i18nGet(t, app, "/", "", "de-DE,de;q=0.9,en;q=0.8"))
+	if !strings.Contains(b, `<option value="de" selected>Deutsch</option>`) ||
+		!strings.Contains(b, `data-implicit="de"`) {
+		t.Fatalf("dropdown: the Accept-Language language must be selected with a matching data-implicit:\n%s", b)
+	}
+	// No cookie, no header: the implicit default (English) is selected.
 	b = i18nBody(t, i18nGet(t, app, "/", "", ""))
-	if !strings.Contains(b, `<option value="" selected>Browser default</option>`) {
-		t.Fatalf("dropdown: browser-default option not marked selected without a cookie:\n%s", b)
+	if !strings.Contains(b, `<option value="en" selected>English</option>`) ||
+		!strings.Contains(b, `data-implicit="en"`) {
+		t.Fatalf("dropdown: the default must be selected without cookie and header:\n%s", b)
 	}
 
 	// The meeting and form pages translate too.

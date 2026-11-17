@@ -62,14 +62,23 @@ var translator = contribi18n.New(&contribi18n.Config{
 const localeCookieName = "kiusan-locale"
 
 // langHandler resolves the request's language: the kiusan-locale cookie
-// (the viewer's explicit choice) wins, then the Accept-Language header
-// (the browser default), then English. The result is always one of the
-// shipped tags — the translator's localizer map is keyed by those exact
-// strings.
+// (the viewer's explicit choice) wins, then the implicit language (the
+// browser default). The result is always one of the shipped tags — the
+// translator's localizer map is keyed by those exact strings.
 func langHandler(c fiber.Ctx, defaultLang string) string {
 	if v := c.Cookies(localeCookieName); v != "" {
 		return matchLang(v)
 	}
+	return implicitLang(c, defaultLang)
+}
+
+// implicitLang is the language a request would get without the cookie —
+// the "browser default" the dropdown compares picks against: the first
+// Accept-Language entry (q-values beyond list order are ignored) matched
+// onto a shipped language, else the default. The select renders it as its
+// data-implicit attribute, so the client knows whether a pick deviates
+// (a pin is written) or returns to the device default (the pin is deleted).
+func implicitLang(c fiber.Ctx, defaultLang string) string {
 	for _, part := range strings.Split(c.Get("Accept-Language"), ",") {
 		// "de-DE,de;q=0.9,en;q=0.8": the first listed preference is the
 		// browser default; q-values beyond it are ignored.

@@ -8,7 +8,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v3"
-	"golang.org/x/text/language"
 )
 
 // pageData is the binding every page renders through the home layout. A
@@ -23,13 +22,14 @@ type pageData struct {
 	c fiber.Ctx
 
 	// i18n base, filled by renderPage.
-	Lang          string
-	TitleKey      string
-	TitleSuffix   string
-	PageTitle     string
-	Metadesc      string
-	LocaleChosen  string
-	LocaleOptions []localeOption
+	Lang           string
+	TitleKey       string
+	TitleSuffix    string
+	PageTitle      string
+	Metadesc       string
+	LocaleChosen   string
+	LocaleImplicit string
+	LocaleOptions  []localeOption
 
 	// themeClass: the viewer's explicit theme choice ("" / theme-dark /
 	// theme-light on <html>), filled by renderPage.
@@ -155,7 +155,8 @@ func renderPage(c fiber.Ctx, page, titleKey, titleSuffix string, d *pageData) er
 	d.TitleSuffix = titleSuffix
 	d.PageTitle = translator.MustLocalize(c, titleKey) + titleSuffix
 	d.Metadesc = translator.MustLocalize(c, "meta.description")
-	d.LocaleChosen = localeChosen(c)
+	d.LocaleChosen = d.Lang
+	d.LocaleImplicit = implicitLang(c, "en")
 	d.LocaleOptions = localeOptions
 	d.ThemeClass = themeClass(c)
 	return c.Render(page, d, "layouts/home")
@@ -175,20 +176,6 @@ func themeClass(c fiber.Ctx) string {
 	default:
 		return ""
 	}
-}
-
-// localeChosen is the language the dropdown marks selected: the resolved
-// cookie choice, "" while the browser default is in effect (so the
-// "Browser default" row stays marked).
-func localeChosen(c fiber.Ctx) string {
-	v := c.Cookies(localeCookieName)
-	if v == "" {
-		return ""
-	}
-	if _, err := language.Parse(v); err != nil {
-		return ""
-	}
-	return matchLang(v)
 }
 
 // absURL renders a site-absolute URL for the copyable link boxes on the

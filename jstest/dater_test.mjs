@@ -46,7 +46,8 @@ const timeEn = (h, m) =>
 // The locale <select> lives in the site header — ahead of locale.js, so
 // the script finds it while it runs at parse time.
 export const LOCALE_SELECT =
-	'<select id="locale"><option value="" selected>Browser default</option><option value="de">Deutsch</option></select>';
+	'<select id="locale" data-implicit="en">'+
+	'<option value="en" selected>English</option><option value="de">Deutsch</option></select>';
 
 function formFixture({ slots = "", tzOptions = ["America/New_York", "Europe/Berlin", "UTC"], tzSelected = "", localeSelect = false } = {}) {
 	const opts = tzOptions.map((z) =>
