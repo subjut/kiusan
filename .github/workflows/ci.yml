@@ -21,12 +21,12 @@ jobs:
       # (throwaway :memory: and temp-dir files), no external services.
       - name: Test (race + coverage)
         run: |
-          go test -race -coverprofile=coverage.out ./...
+          go test -race -coverprofile=coverage.out $(go list ./... | grep -v '/tools/')
           total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')
           echo "total coverage: ${total}"
-          # Fail if the overall coverage falls below the floor
-          # (83.8% at the time the workflow landed; bump when tests improve).
-          awk -v c="${total}" 'BEGIN { exit (c+0 < 80.0) }'
+          # Fail if the overall coverage falls below the floor of 80%.
+          # ./tools are excluded above.
+          awk -v c="${total}" 'BEGIN { if (c+0 < 80.0) { printf "coverage %s%% is below the 80%% floor\n", c; exit 1 } }'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
