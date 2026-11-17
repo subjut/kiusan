@@ -141,7 +141,7 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `probeForm`). The suites run on GORM-sqlite; each test chdirs into
   `t.TempDir()` and opens a throwaway store, so the dev data files are
   never touched. Coverage: main ~85%, store ~76%, database ~75%.
-- CI: `.github/workflows/ci.yml` (push to main + PRs): `go build
+- CI: `.github/workflows/tests.yml` (push to main + PRs): `go build
   ./...`, `go vet ./...`, `go test -race` with an 80% total-coverage
   floor (currently ~84%) — the coverage run is scoped to the app
   packages (`go list ./... | grep -v '/tools/'`): the dev-only
@@ -443,7 +443,7 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `newTestApp` / `postForm` helpers + `futureEnd` / `testEndDate`),
   `htmltest_test.go` (the parser-based page assertions, see Commands →
   Tests), `helpers_test.go` (the pure-helper unit tests) and the other
-  suites live in the root package; `.github/workflows/ci.yml` is the CI
+  suites live in the root package; `.github/workflows/tests.yml` is the CI
   definition (see Commands → CI).
 - `docs/prompts/` — verbatim log of user prompts, one file per date
   (the project's steering history across agent sessions); entries are

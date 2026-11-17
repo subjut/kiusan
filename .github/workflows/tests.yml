@@ -1,4 +1,4 @@
-name: CI
+name: Tests
 
 on:
   push:
@@ -9,8 +9,8 @@ jobs:
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Build
@@ -27,7 +27,7 @@ jobs:
           # Fail if the overall coverage falls below the floor of 80%.
           # ./tools are excluded above.
           awk -v c="${total}" 'BEGIN { if (c+0 < 80.0) { printf "coverage %s%% is below the 80%% floor\n", c; exit 1 } }'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage
@@ -36,8 +36,8 @@ jobs:
   js:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Syntax-check the page scripts
