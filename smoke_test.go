@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"golang.org/x/net/html"
 
 	"github.com/subjut/kiusan/store"
 )
@@ -130,17 +131,19 @@ func runSmokeSuite(t *testing.T) {
 		t.Fatalf("GET /meet-form: timezone </select> not found in body")
 	}
 	selEnd := selStart + relEnd
-	sel := fb[selStart:selEnd]
+	// html/template escapes the labels' + signs as &#43; (attribute and text
+	// context); unescape so the assertions can match the literal option
+	// values and labels.
+	sel := html.UnescapeString(fb[selStart:selEnd])
 	for _, want := range []string{
-		`<option value="Europe/Berlin">Europe/Berlin</option>`,
-		`<option value="America/New_York">America/New York</option>`,
+		`<option value="Europe/Berlin">Europe/Berlin (UTC+1)</option>`,
+		`<option value="America/New_York">America/New York (UTC-5)</option>`,
 		`<option value="UTC">UTC</option>`,
 	} {
 		if !strings.Contains(sel, want) {
 			t.Fatalf("GET /meet-form: timezone select missing %s", want)
 		}
 	}
-	// The options render in alphabetical order.
 	var names []string
 	for _, o := range strings.Split(sel, `<option value="`)[1:] {
 		names = append(names, o[:strings.Index(o, `">`)])
@@ -148,8 +151,10 @@ func runSmokeSuite(t *testing.T) {
 	if len(names) == 0 {
 		t.Fatalf("GET /meet-form: no timezone options rendered")
 	}
+	// The options render in alphabetical order (the labels carry the
+	// standard offset, the values stay the IANA names).
 	for k := 1; k < len(names); k++ {
-		if names[k-1] > names[k] {
+		if names[k-1] >= names[k] {
 			t.Fatalf("GET /meet-form: timezone options not alphabetical: %q before %q", names[k-1], names[k])
 		}
 	}

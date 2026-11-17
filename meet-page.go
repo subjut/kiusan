@@ -151,12 +151,13 @@ func meetingHandler(c fiber.Ctx) error {
 		loc = time.UTC
 	}
 	// tz is the raw IANA name for the client's Intl formatting (data-tz);
-	// tzName is the same name with underscores as spaces for display.
+	// tzName is its display form (zoneLabel: underscores as spaces, UTC±N
+	// for the fixed-offset tail).
 	tz := m.TimeZone
 	if tz == "" {
 		tz = "UTC"
 	}
-	tzName := strings.ReplaceAll(tz, "_", " ")
+	tzName := zoneLabel(tz)
 	ends := m.Expires.In(loc).Format("2006-01-02")
 	endsKey := slotKey(m.Expires)
 

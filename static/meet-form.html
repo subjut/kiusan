@@ -39,8 +39,8 @@
 			<div class="form-field">
 				<label for="timezone" data-i18n="form.timezone">{{.T "form.timezone"}}</label>
 				<select id="timezone" name="timezone">
-{{range .MeetForm.Timezones}}<option value="{{.}}"{{if eq . $.MeetForm.Timezone}} selected{{end}}>{{zoneDisplay .}}</option>
-{{end}}{{if .MeetForm.ExtraTz}}<option value="{{.MeetForm.ExtraTz}}" selected>{{zoneDisplay .MeetForm.ExtraTz}}</option>
+{{range .MeetForm.Timezones}}<option value="{{.}}"{{if eq . $.MeetForm.Timezone}} selected{{end}}>{{zoneOption .}}</option>
+{{end}}{{if .MeetForm.ExtraTz}}<option value="{{.MeetForm.ExtraTz}}" selected>{{zoneOption .MeetForm.ExtraTz}}</option>
 {{end}}</select>
 			</div>
 		</div>

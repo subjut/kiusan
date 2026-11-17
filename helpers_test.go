@@ -452,3 +452,57 @@ func TestCollectVoteAnswers(t *testing.T) {
 		t.Fatalf("an overlong note: %q", msg)
 	}
 }
+
+func TestZoneLabel(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"Etc/GMT-5", "UTC+5"}, // the IANA sign is inverted
+		{"Etc/GMT+5", "UTC-5"},
+		{"Etc/GMT+12", "UTC-12"},
+		{"Etc/GMT-14", "UTC+14"},
+		{"Etc/GMT", "UTC"},
+		{"UTC", "UTC"},
+		{"America/New_York", "America/New York"},
+		{"Europe/Berlin", "Europe/Berlin"},
+	}
+	for _, c := range cases {
+		if got := zoneLabel(c.in); got != c.want {
+			t.Fatalf("zoneLabel(%q): %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestOffsetLabel(t *testing.T) {
+	cases := []struct {
+		in   int
+		want string
+	}{
+		{0, "UTC"},
+		{3600, "UTC+1"},
+		{-18000, "UTC-5"},
+		{19800, "UTC+5:30"},
+		{20700, "UTC+5:45"},
+		{-43200, "UTC-12"},
+	}
+	for _, c := range cases {
+		if got := offsetLabel(c.in); got != c.want {
+			t.Fatalf("offsetLabel(%d): %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestZoneOptionLabel(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"UTC", "UTC"}, // bare UTC stands alone
+		{"Europe/Berlin", "Europe/Berlin (UTC+1)"}, // standard offset, not the summer one
+		{"America/New_York", "America/New York (UTC-5)"},
+		{"Europe/London", "Europe/London (UTC)"},    // zero standard offset
+		{"Asia/Kolkata", "Asia/Kolkata (UTC+5:30)"}, // fractional offset
+		{"Asia/Kathmandu", "Asia/Kathmandu (UTC+5:45)"},
+		{"Not/AZone", "Not/AZone"}, // unloadable: no offset
+	}
+	for _, c := range cases {
+		if got := zoneOptionLabel(c.in); got != c.want {
+			t.Fatalf("zoneOptionLabel(%q): %q, want %q", c.in, got, c.want)
+		}
+	}
+}

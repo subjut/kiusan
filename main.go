@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -70,6 +71,88 @@ var timezoneList = func() []string {
 	sort.Strings(zones)
 	return zones
 }()
+
+// zoneOptionLabels is the dropdown option label per zone: the display name
+// plus the zone's standard (non-DST) UTC offset in parentheses, e.g.
+// "Europe/Berlin (UTC+1)". Precomputed at process start; a zone the server
+// can load but the list doesn't offer (the browser's own zone, inserted by
+// dater.js) falls back to computing the label on demand.
+var zoneOptionLabels = func() map[string]string {
+	labels := make(map[string]string, len(timezoneList))
+	for _, z := range timezoneList {
+		labels[z] = zoneOptionLabel(z)
+	}
+	return labels
+}()
+
+// zoneLabel renders a zone for display: Etc/GMT±N zones become compact
+// UTC±N labels (the IANA sign is inverted: Etc/GMT-5 is UTC+5), every other
+// name gets its underscores as spaces. Option values keep the real IANA
+// name, so the form still submits a loadable zone.
+func zoneLabel(z string) string {
+	switch {
+	case z == "Etc/GMT":
+		return "UTC"
+	case strings.HasPrefix(z, "Etc/GMT-"):
+		return "UTC+" + z[len("Etc/GMT-"):]
+	case strings.HasPrefix(z, "Etc/GMT+"):
+		return "UTC-" + z[len("Etc/GMT+"):]
+	default:
+		return strings.ReplaceAll(z, "_", " ")
+	}
+}
+
+// standardOffset is a zone's standard (non-DST) UTC offset in seconds. DST
+// always advances the clock, so the smaller of the January/July offsets is
+// the standard one — true in both hemispheres.
+func standardOffset(loc *time.Location) int {
+	jan := time.Date(2020, 1, 1, 12, 0, 0, 0, loc)
+	jul := time.Date(2020, 7, 1, 12, 0, 0, 0, loc)
+	_, janOff := jan.Zone()
+	_, julOff := jul.Zone()
+	if janOff < julOff {
+		return janOff
+	}
+	return julOff
+}
+
+// offsetLabel renders a UTC offset in seconds compactly: 0 is plain UTC,
+// whole hours UTC±H, fractional offsets add :MM (UTC+5:30, UTC+5:45).
+func offsetLabel(offsetSec int) string {
+	if offsetSec == 0 {
+		return "UTC"
+	}
+	sign := "+"
+	if offsetSec < 0 {
+		sign = "-"
+		offsetSec = -offsetSec
+	}
+	h := offsetSec / 3600
+	m := (offsetSec % 3600) / 60
+	if m == 0 {
+		return "UTC" + sign + strconv.Itoa(h)
+	}
+	mm := strconv.Itoa(m)
+	if len(mm) < 2 {
+		mm = "0" + mm
+	}
+	return "UTC" + sign + strconv.Itoa(h) + ":" + mm
+}
+
+// zoneOptionLabel is the dropdown's option label: the display name
+// (zoneLabel) plus the zone's standard (non-DST) UTC offset in
+// parentheses — "Europe/Berlin (UTC+1)". Bare UTC stands alone; an
+// unloadable zone renders its name without the offset.
+func zoneOptionLabel(z string) string {
+	if z == "UTC" {
+		return zoneLabel(z)
+	}
+	loc, err := time.LoadLocation(z)
+	if err != nil {
+		return zoneLabel(z)
+	}
+	return zoneLabel(z) + " (" + offsetLabel(standardOffset(loc)) + ")"
+}
 
 // loadableTimezones drops names the server cannot load; the list is
 // validated once at process start, not per request. Blank lines and `#`
@@ -173,11 +256,16 @@ func newApp(staticDir string) *fiber.App {
 	// We use html template engine
 	engine := html.New(staticDir, ".html")
 
-	// Dropdown labels show zone names with underscores as spaces
-	// ("America/New York"); option values keep the real IANA name so
-	// the form still submits a loadable zone.
-	engine.AddFunc("zoneDisplay", func(z string) string {
-		return strings.ReplaceAll(z, "_", " ")
+	// Dropdown labels come from zoneOptionLabels (the display name plus the
+	// zone's standard UTC offset, e.g. "Europe/Berlin (UTC+1)"); option
+	// values keep the real IANA name so the form still submits a loadable
+	// zone. zoneOptionLabels precomputes for the curated list and falls back
+	// to computing on demand for a zone the browser inserts that isn't in it.
+	engine.AddFunc("zoneOption", func(z string) string {
+		if l, ok := zoneOptionLabels[z]; ok {
+			return l
+		}
+		return zoneOptionLabel(z)
 	})
 
 	// Template reload and parse logging are development conveniences, off by

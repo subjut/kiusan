@@ -78,9 +78,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
 - Tests: `go test ./...` (add `-race` in CI) — `smoke_test.go` runs the app
   in-process (no server, no network) and covers page rendering,
   favicon/static serving, the 404 fallthrough, a full meeting
-  create -> redirect -> read round trip (timezone-aware slots), form
-  validation (bad/malformed dates and times, invalid timezones, encoding),
-  and the random URL key contract; `poll_test.go` covers the answer
+  create -> redirect -> read round trip (timezone-aware slots), the form's
+  timezone select (alphabetical options, the labels carrying the standard
+  UTC offset in parentheses on the entity-decoded body), form validation
+  (bad/malformed dates and times, invalid timezones, encoding), and the
+  random URL key contract; `poll_test.go` covers the answer
   `poll_test.go` covers the answer
   lifecycle on the two-link model (identity cookie + CSRF, answering,
   visibility / hide-users, single-slot enforcement, the totals rows
@@ -134,6 +136,7 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   table-driven unit tests for the pure helpers (`rowMax`, `slotKey`,
   `parseEndDate` / `endOf`, `matchLang`, `csrfToken`, `absURL`,
   `isFormPost`, `validVoteMark`, `assignChoiceIDs`, `pruneVoteAnswers`,
+  `zoneLabel`, `offsetLabel` / `zoneOptionLabel` (the dropdown labels),
   `collectMarks` / `collectVoteAnswers` through a live form ctx via
   `probeForm`). The suites run on GORM-sqlite; each test chdirs into
   `t.TempDir()` and opens a throwaway store, so the dev data files are
@@ -179,7 +182,12 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (`store.Store`, opened in `main` via `store.Open`, env-selected),
   `loadConfig` (`KIUSAN_BASE_URL` / `KIUSAN_DEV` / secure-cookies),
   the per-client rate-limit consts, the embedded `data/timezones.txt`
-  (sorted + loadable-filtered into `timezoneList` at process start),
+  (loadable-filtered + sorted into `timezoneList` at process start),
+  `zoneOptionLabels` (the dropdown option labels — the display name plus
+  the standard non-DST UTC offset in parentheses, e.g.
+  `Europe/Berlin (UTC+1)` — precomputed at process start), and the
+  `zoneLabel` / `standardOffset` / `offsetLabel` / `zoneOptionLabel`
+  helpers,
   `initRoutes` (the security-header middleware, the i18n endpoints, the
   four static-dir middlewares, the per-route rate limiters, and all
   page/form routes: `GET/POST /meet-form`, `GET /meet-form/edit/+`
@@ -189,7 +197,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   answer/lifecycle routes register the shared `pollOps` builders —
   `meetOps.postAnswer()`, `voteOps.postAnswer()`, …), the same triple
   for `/vote/+`, and the 404 fallthrough), and `newApp`
-  (template engine, the `zoneDisplay` func, the request logger whose
+  (template engine, the `zoneOption` template func (the precomputed
+  option labels), the request logger whose
   `Skip` covers every capability URL so link keys never reach the log).
 - `render.go` — the page-rendering plumbing: the `pageData` struct
   (the i18n base + `ThemeClass`, filled by `renderPage`, plus exactly
@@ -408,8 +417,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   select (a curated list, grouped by UTC offset for maintainers: the 1-2
   most important zones per offset per region, plus UTC; `#` lines are
   comments). Rendered alphabetically in the form (sorted in `main.go`),
-  independent of the file order; embedded via `go:embed` and validated at
-  process start. Hand-edit when the list should change.
+  each label carrying the zone's standard (non-DST) UTC offset in
+  parentheses — e.g. `Europe/Berlin (UTC+1)`, `Asia/Kolkata (UTC+5:30)` —
+  computed in `main.go` from the zone itself, independent of the file
+  order; embedded via `go:embed` and validated at process start.
+  Hand-edit when the list should change.
 - `jstest/` — the standalone npm package for the JS unit tests (see
   Commands → JS tests): `package.json` (the single dev dependency is
   jsdom), `harness.mjs` (the jsdom boot + load order: cookie / navigator
@@ -506,13 +518,22 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `main.go`, so any name the server cannot load is dropped with a
   startup warning), so every option is loadable by the server — don't
   hardcode zone options in the template. The options are presented in
-  alphabetical order (sorted into `timezoneList` at process start in
+  alphabetical order (built into `timezoneList` at process start in
   `main.go`, independent of the file's grouping); `static/js/dater.js`
-  inserts the browser's own zone at its alphabetical position when it is
-  not in the list, so the prefill always shows and submits. Labels show
-  the zone name with underscores as spaces (the `zoneDisplay` template
-  function in `main.go`, also applied to the poll page's `Timezone:`
-  line); option values and stored data keep the real IANA name.
+  inserts the browser's own zone at its value-alphabetical position when
+  it is not in the list, so the prefill always shows and submits. The
+  dropdown labels come from `zoneOptionLabel` (precomputed at startup
+  into `zoneOptionLabels`, the `zoneOption` template function in
+  `main.go`): the display name (underscores as spaces for locations,
+  compact `UTC±N` for an `Etc/GMT` zone — the IANA sign is inverted:
+  `Etc/GMT-5` is UTC+5) plus the zone's *standard (non-DST)* UTC offset in
+  parentheses — `Europe/Berlin (UTC+1)`, `Asia/Kolkata (UTC+5:30)`, bare
+  `UTC` stands alone — the standard offset being the smaller of the zone's
+  January/July offsets (DST always advances the clock, true in both
+  hemispheres). The poll page's `Timezone:` line uses the bare `zoneLabel`
+  (no offset). Option values and stored data keep the real IANA name. Note
+  html/template escapes the labels' `+` as `&#43;` in the rendered HTML
+  (the browser decodes it; raw-string test assertions must unescape).
 - **Locale display (client-side)**: date/time *values* show in the
   viewer's browser locale — `static/js/locale.js` rewrites the
   server-rendered labels (which stay as the no-JS fallback) with
