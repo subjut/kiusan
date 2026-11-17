@@ -140,8 +140,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   never touched. Coverage: main ~85%, store ~76%, database ~75%.
 - CI: `.github/workflows/ci.yml` (push to main + PRs): `go build
   ./...`, `go vet ./...`, `go test -race` with an 80% total-coverage
-  floor (currently ~84%), `node --check` on every `static/js/*.js`,
-  and the jstest npm suite — sqlite-only, no external services.
+  floor (currently ~84%) — the coverage run is scoped to the app
+  packages (`go list ./... | grep -v '/tools/'`): the dev-only
+  `tools/testdb` seed tool has no tests of its own, and a 0% package in
+  the combined profile would drag the module total below the floor — and
+  the floor check prints a message when it fails, `node --check` on
+  every `static/js/*.js`, and the jstest npm suite — sqlite-only, no
+  external services.
 - JS tests: `npm --prefix jstest install && npm --prefix jstest test`
   (a standalone `node --test` package in `jstest/`) — the real
   `static/js/*` scripts are injected inline into jsdom in the browser's
