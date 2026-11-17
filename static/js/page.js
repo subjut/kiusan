@@ -40,9 +40,34 @@ if (breakout && table) {
 			Math.ceil(table.getBoundingClientRect().width) + 2 + "px"
 		);
 	};
-	setTableWidth();
+	// The sticky thead's rows pin at the cumulative height of the rows
+	// above them (--th-2 / --th-3 on the table, read by the CSS); the
+	// date label wraps to 1–3 lines, so the offsets are measured, not
+	// written. The .table-sticky class activates the pinning only once
+	// measured — without JS the table keeps the plain page-scrolled
+	// layout.
+	var thead = table.querySelector("thead");
+	var setHeaderOffsets = function () {
+		if (!thead) return;
+		var y = 0;
+		for (var i = 0; i < thead.rows.length; i++) {
+			table.style.setProperty("--th-" + (i + 1), Math.ceil(y) + "px");
+			y += thead.rows[i].offsetHeight;
+		}
+		table.classList.add("table-sticky");
+	};
+	var measure = function () {
+		setTableWidth();
+		setHeaderOffsets();
+	};
+	measure();
 	if (typeof ResizeObserver !== "undefined") {
-		new ResizeObserver(setTableWidth).observe(table);
+		new ResizeObserver(measure).observe(table);
+	}
+	// A locale switch rewrites the header's date labels and can change a
+	// row's height — re-measure the offsets then, too.
+	if (window.Locale) {
+		window.Locale.onChange(setHeaderOffsets);
 	}
 }
 

@@ -757,23 +757,32 @@
 	}
 
 	/* the scroll box fills the breakout; content-box, so the border does
-	   not steal 2px from the table and raise a needless scrollbar — the
-	   table only overflows it, and thus scrolls, when it is wider than
-	   the viewport */
+	   not steal 2px from the table and raise a needless scrollbar. The box
+	   is the table's vertical scroller, too (max-height capped near the
+	   viewport), so long tables scroll in place and the sticky thead
+	   (below) keeps the header in view; the page keeps its natural height
+	   for everything else. The table only overflows it horizontally when
+	   it is wider than the viewport */
 	.table-scroll {
 		box-sizing: content-box;
-		overflow-x: auto;
+		overflow: auto;
 		-webkit-overflow-scrolling: touch;
+		max-height: clamp(320px, calc(100vh - 18rem), 100vh);
+		max-height: clamp(320px, calc(100dvh - 18rem), 100dvh);
 		background: var(--surface);
 		border: 1px solid var(--border);
 		border-radius: var(--radius-card);
 	}
 
 	/* width follows the content: narrow polls shrink to their slots, long
-	   polls grow to their natural width and never shrink to fit */
+	   polls grow to their natural width and never shrink to fit. Separate
+	   borders (spacing 0) so the sticky thead's borders stick with its
+	   cells — collapse mode drops them in Chrome; cells draw only their
+	   right + bottom borders, so nothing doubles and nothing is lost */
 	.answers-table {
 		width: max-content;
-		border-collapse: collapse;
+		border-collapse: separate;
+		border-spacing: 0;
 		font-variant-numeric: tabular-nums;
 	}
 
@@ -803,6 +812,28 @@
 	.answers-table th {
 		background: var(--bg);
 		font-weight: 600;
+	}
+
+	/* the sticky header: the thead pins to the top of .table-scroll, one
+	   row at a time — each row's `top` is the sum of the rows above it,
+	   measured in JS (--th-2 / --th-3; the date label wraps to 1–3 lines,
+	   so CSS can't know the offsets). Activated only by the .table-sticky
+	   class JS applies after measuring: without JS the offsets would all
+	   be 0 and the rows would stack on top of each other, so a no-JS
+	   browser keeps the plain page-scrolled table. The pinned cells need
+	   the opaque surface background, or the rows scroll visibly under the
+	   gap-less --bg tint */
+	.table-sticky thead th {
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		background: var(--surface);
+	}
+	.table-sticky thead tr:nth-child(2) th {
+		top: var(--th-2, 0px);
+	}
+	.table-sticky thead tr:nth-child(3) th {
+		top: var(--th-3, 0px);
 	}
 
 	/* every slot column is one 44px square: submitted-answer cells are

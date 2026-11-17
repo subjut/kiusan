@@ -25,6 +25,10 @@ function fixture({ single = false, prefill = [] } = {}) {
 		formCell(s, { status: prefill[i] || "", yellow: !single }));
 	return `<form id="answer-form" data-single="${single}">
 	<div class="table-breakout"><div class="table-scroll"><table class="answers-table">
+	<thead>
+	<tr><th rowspan="2">Name</th><th>11/01</th><th>11/02</th><th>11/03</th></tr>
+	<tr><th>10:00</th><th>10:00</th><th>10:00</th></tr>
+	</thead>
 	<tbody>
 	<tr><td>alice</td><td class="cell st-g">✓</td><td class="cell">✗</td><td class="cell st-y">(✓)</td></tr>
 	<tr class="form-row">
@@ -126,6 +130,18 @@ test("a greyed slot cannot be marked", async (t) => {
 	click(w, all[1].querySelector(".mark-g"));
 	assert.equal(all[1].getAttribute("data-status"), "");
 	assert.equal(all[0].getAttribute("data-status"), "g");
+});
+
+test("the sticky header is activated with measured row offsets", async (t) => {
+	const w = await page();
+	const table = w.document.querySelector(".answers-table");
+	assert.ok(table.classList.contains("table-sticky"));
+	// jsdom reports zero row heights — the offsets come out 0px (row 1
+	// pins at the top) for as many header rows as the fixture has, and
+	// the CSS's third-row fallback is left unset
+	assert.equal(table.style.getPropertyValue("--th-1"), "0px");
+	assert.equal(table.style.getPropertyValue("--th-2"), "0px");
+	assert.equal(table.style.getPropertyValue("--th-3"), "");
 });
 
 test("an edited row is prefilled and editable", async (t) => {

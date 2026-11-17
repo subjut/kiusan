@@ -154,8 +154,9 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   warning, the locale-switch re-render), the poll answers-table
   behaviour (the mark toggles, mark switching, the neutral unmarked
   state, the submitted-rows-untouched invariant, the single-slot
-  grey-out incl. the disabled-button guard, the edit-row prefill), the
-  vote answers-table behaviour (the per-type toggles, the yes vote's
+  grey-out incl. the disabled-button guard, the edit-row prefill, the
+  sticky-header activation (the `table-sticky` class + the measured
+  `--th-*` offset vars)), the vote answers-table behaviour (the per-type toggles, the yes vote's
   missing no-button, single-choice yes-exclusivity, the free-text
   note gate, the must-answer submit gate incl. the disabled-submit
   hint flash), and the locale display + dictionary swap (the
@@ -333,9 +334,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   rendered only in the admin view),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
   widget (locale-aware labels via `locale.js`), `poll.js` — the poll
+  	`poll.js` — the poll
   page's answer-table toggling + single-slot grey-out, `page.js` — the
   shared page behaviour both page types have in common (the
-  answers-table width measurement, the answer-delete confirmations,
+  answers-table width measurement, the sticky-header row offsets —
+  see Gotchas → Sticky table header —, the answer-delete confirmations,
   the two-step delete-poll/vote warning, the copy-box selection + copy
   buttons + link-box sizing; loaded ahead of `poll.js`/`vote.js` and
   providing their `t()`/`fill()` globals), `chooser.js` — the vote
@@ -372,7 +375,12 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   carry the a11y structure: `lang="en"`, a skip link, one `h1`
   (the wordmark) with `h2` page/card titles, a `<main id="main">`
   landmark, and the answers table wrapped in a focusable
-  `.table-scroll` region with a visually-hidden `<caption>`.
+  `.table-scroll` region with a visually-hidden `<caption>` — the
+  region is the table's bounded vertical scroller (a `max-height`
+  near the viewport) whose `thead` pins via `position: sticky`,
+  activated by the `table-sticky` class `page.js` applies after
+  measuring the header row heights (see Gotchas → Sticky table
+  header).
 - `locales/` — the i18n YAML catalogs (`en.yaml` is the source of
   truth, `de.yaml` is the German translation; one file per language).
   Embedded via `go:embed` in `i18n.go` and loaded at process start.
@@ -693,3 +701,26 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   edit re-shapes stored answers via `pruneVoteAnswers`: to `yes` drops
   the `n`/`m` marks, to `yes-no` drops the `m` marks, to freetext
   drops the marks, from freetext drops the notes.
+- **Sticky table header (bounded scroll box)**: `.table-scroll` is the
+  table's vertical scroller, too (`overflow: auto` + `max-height:
+  clamp(320px, calc(100dvh − 18rem), 100dvh)`, `vh` fallback line), so a
+  long table scrolls in place while the page keeps its natural height
+  for everything else. The `thead` pins via `position: sticky` on the
+  `th`s, one row at a time — each row's `top` is the sum of the rows
+  above it, measured in `page.js` (the `--th-2` / `--th-3` CSS vars on
+  the table; the date label wraps to 1–3 lines, so CSS can't know the
+  offsets). Pinning activates only with the `table-sticky` class the
+  same code applies after measuring — without JS every offset would be
+  0px and the rows would stack on top of each other, so a no-JS browser
+  keeps the plain page-scrolled table. `.answers-table` uses
+  `border-collapse: separate` (`border-spacing: 0`) — collapse mode
+  drops a sticky `thead`'s borders in Chrome; cells draw only their
+  right + bottom borders, so nothing doubles and nothing is lost. The
+  pinned `th`s take the opaque `--surface` background. The offsets are
+  re-measured on table resize (the same `ResizeObserver` as the `--tw`
+  width) and on `Locale.onChange` (a locale switch rewrites the date
+  labels and can change a row's height). The meeting's `th-name` cell
+  keeps its `rowspan="2|3"` — the spanning cell pins with the first row
+  while the other rows pin at the exact offsets that tile it; if a
+  browser misrenders the sticky span, the fallback is a per-row
+  spacer cell in the templates instead of the rowspan.
