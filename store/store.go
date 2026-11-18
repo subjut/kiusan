@@ -2,15 +2,17 @@
 // storage only through the MeetingStore interface, so the backend can be
 // swapped without touching request code.
 //
-// Supported backends (selected via the KIUSAN_STORE environment variable):
+// Supported backends (selected via the KIUSAN_STORE environment variable;
+// the DSN passed to Open is assembled by the app's config layer from the
+// KIUSAN_DB_* parts, see the main package's config.go):
 //
 //   - "sqlite" (or empty): GORM + pure-Go sqlite (no cgo). This is the
-//     default and needs no configuration; KIUSAN_DSN defaults to
-//     "./meetings.db".
+//     default and needs no configuration; the DSN is the data file path
+//     (default "./meetings.db").
 //   - "mysql" / "mariadb": GORM + go-sql-driver/mysql.
-//     KIUSAN_DSN, e.g. "user:pass@tcp(localhost:3306)/kiusan"
+//     DSN, e.g. "user:pass@tcp(localhost:3306)/kiusan"
 //   - "postgres": GORM + pgx.
-//     KIUSAN_DSN, e.g. "postgres://user:pass@localhost:5432/kiusan?sslmode=disable"
+//     DSN, e.g. "postgres://user:pass@localhost:5432/kiusan?sslmode=disable"
 package store
 
 import (
@@ -59,8 +61,8 @@ type MeetingStore interface {
 	Close() error
 }
 
-// defaultSqliteName is the default data-file name, used when KIUSAN_DSN is
-// not set for the default sqlite backend.
+// defaultSqliteName is the default data-file name, used when no DSN is
+// set for the default sqlite backend.
 const defaultSqliteName = "meetings.db"
 
 // Store combines the meeting and vote storage contracts. A single

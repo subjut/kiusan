@@ -13,7 +13,8 @@ per-poll browser cookie — there are no user accounts.
 Written in Go with the Fiber v3 web framework (v3.6.1). Storage is pluggable
 behind `store.Store` (`store/`, embedding `MeetingStore` + `VoteStore`),
 backed by GORM on the relational engines (sqlite — the default — plus
-mysql, mariadb, postgres), selected via `KIUSAN_STORE` + `KIUSAN_DSN`.
+mysql, mariadb, postgres), selected via the app configuration (env vars
+over a config file — see Commands → Configuration and `config.go`).
 GORM schemas are auto-migrated at startup (additive-only).
 
 Feature state (see `static/index.html`):
@@ -60,21 +61,37 @@ token, and the per-choice totals rows per voting type (`Yes` always,
 - Vet: `go vet ./...`
 - Run: `go run .` (listens on `:8080`, default sqlite storage in
   `./meetings.db`)
-- Other backends:
-  - `KIUSAN_STORE=sqlite KIUSAN_DSN=./other.db go run .` (a non-default sqlite file)
-  - `KIUSAN_STORE=mysql KIUSAN_DSN="user:pass@tcp(localhost:3306)/kiusan" go run .`
-    (mariadb: same DSN with `KIUSAN_STORE=mariadb`)
-  - `KIUSAN_STORE=postgres KIUSAN_DSN="postgres://user:pass@localhost:5432/kiusan?sslmode=disable" go run .`
+- Other backends (the DSN is always assembled from these parts — there
+  is no `KIUSAN_DSN` any more):
+  - `KIUSAN_STORE=sqlite KIUSAN_DB_NAME=other.db go run .` (a non-default sqlite file)
+  - `KIUSAN_STORE=mysql KIUSAN_DB_HOST=localhost KIUSAN_DB_USER=user KIUSAN_DB_PASSWORD=pass KIUSAN_DB_NAME=kiusan go run .`
+    (mariadb: the same parts with `KIUSAN_STORE=mariadb`)
+  - `KIUSAN_STORE=postgres KIUSAN_DB_HOST=localhost KIUSAN_DB_USER=user KIUSAN_DB_PASSWORD=pass KIUSAN_DB_NAME=kiusan KIUSAN_DB_SSLMODE=disable go run .`
 - Test database: `go run ./tools/testdb -o test.db` recreates the seed
   sqlite file (six answer tables at every defined size cap — two 100-slot
   meetings x 100/50 respondents, four 20-option votes covering all voting
   types — 50-year end dates; it prints each table's admin + user links);
-  run the server on it with `KIUSAN_DSN=./test.db go run .` (the DSN of a
-  sqlite backend is just the data-file path).
-- Environment: `KIUSAN_SECRET` (the CSRF secret — set it so tokens
-  survive restarts), `KIUSAN_BASE_URL` (the public origin for the
-  copyable link boxes; `https://` enables Secure cookies),
-  `KIUSAN_DEV` (`1` enables template reload + parse logging).
+  run the server on it with `KIUSAN_DB_NAME=test.db go run .` (the
+  sqlite data file is `$KIUSAN_DATA_DIR/<db.name>`, default
+  `./meetings.db`).
+- Configuration: every key resolves env (`KIUSAN_*`) > the config file
+  (`$KIUSAN_DATA_DIR/kiusan.yaml`) > the built-in default. The file
+  mirrors the effective settings: on every start, values given via env
+  are written into it (overwriting old values), plus the auto-generated
+  CSRF secret on first run — 0600, app-managed; hand edits to keys the
+  env does not provide survive. Removing an env var does not undo it (the
+  persisted value stands) — edit the file to change a persistent setting.
+  Keys:
+  `KIUSAN_PORT` (listen port, default 8080), `KIUSAN_BASE_URL` (the
+  public origin for the copyable link boxes; `https://` enables Secure
+  cookies), `KIUSAN_SECRET` (the CSRF secret — while no source sets it
+  it is generated once and persisted to the config file), `KIUSAN_DEV`
+  (template reload + parse logging), `KIUSAN_STORE` (`sqlite` / `mysql`
+  / `mariadb` / `postgres`), `KIUSAN_DB_HOST` / `KIUSAN_DB_PORT` /
+  `KIUSAN_DB_USER` / `KIUSAN_DB_PASSWORD` / `KIUSAN_DB_NAME` (relational:
+  the database name; sqlite: the data-file name) / `KIUSAN_DB_SSLMODE`
+  (postgres, default `disable`), and `KIUSAN_DATA_DIR` (env-only — the
+  config file and the sqlite file live there, default `.`).
 - Release: to ship a version, edit `VERSION` (the one-line semver at the
   repo root — the single source of truth, embedded into the binary by
   `version.go` and shown in the footer of every page), rebuild, commit,
@@ -116,7 +133,15 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   default), the `/i18n/boot` + `/i18n/:lang` contract (merged dicts, the
   English fallback for unshipped tags, 404 for malformed tags), key
   parity between catalogs, and that every `data-i18n*` marker in the
-  templates names a key the English catalog defines. The end dates the
+  templates names a key the English catalog defines; `config_test.go`
+  covers the configuration layer (the env > file > default precedence
+  per key, the 0600 file contract — first-run creation with the generated
+  secret + stability, the env values written back over the file's values
+  while the file's other values survive, the env-secret persistence, the
+  explicit dev-off persistence, a file without a secret gaining one —,
+  the data-dir location, the port/file validation errors, and the
+  per-backend DSN construction incl. postgres password escaping + the
+  missing-user errors). The end dates the
   suites submit are derived from now (`futureEnd()` / `testEndDate()`
   in `smoke_test.go`) — a fixed calendar date would rot the suite, since
   `parseEndDate` rejects past end dates; the candidate slots stay fixed
@@ -185,8 +210,7 @@ token, and the per-choice totals rows per voting type (`Yes` always,
 ## Layout
 
 - `main.go` — server setup only: the package-level `db` global
-  (`store.Store`, opened in `main` via `store.Open`, env-selected),
-  `loadConfig` (`KIUSAN_BASE_URL` / `KIUSAN_DEV` / secure-cookies),
+  (`store.Store`, opened in `main` from the config via `store.Open`),
   the per-client rate-limit consts, the embedded `data/timezones.txt`
   (loadable-filtered + sorted into `timezoneList` at process start),
   `zoneOptionLabels` (the dropdown option labels — the display name plus
@@ -206,6 +230,15 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (template engine, the `zoneOption` template func (the precomputed
   option labels), the request logger whose
   `Skip` covers every capability URL so link keys never reach the log).
+- `config.go` — the runtime configuration: `Config` + `loadConfig`
+  (every key resolves env `KIUSAN_*` > `$KIUSAN_DATA_DIR/kiusan.yaml` >
+  the built-in default; every start writes the effective values back to
+  the 0600 YAML — the file's values merged with the env's, which
+  overwrite them — so a later start without the env keeps them; removing
+  an env var does not undo it), the DSN
+  assembly (`Config.dsn` — the data-dir path for sqlite, the driver
+  DSNs for the relational backends; there is no `KIUSAN_DSN` any
+  more), and the secret generator.
 - `version.go` — the release version: the root `VERSION` file embedded
   at compile time (`go:embed`) into the package var `Version` (the
   single place a version bump happens); `renderPage` fills it onto
@@ -278,7 +311,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   until the poll or vote ends; a closed one mints none, like an
   expired one), `isFormPost` (the urlencoded-only POST gate), the
   stateless CSRF token (HMAC-SHA256 over the cookie value, secret from
-  `KIUSAN_SECRET` or random per start), `slotKey` (the slot's absolute
+  the config — env / config file / generated-and-persisted, see
+  `config.go`), `slotKey` (the slot's absolute
   UTC instant, seconds stripped), `resolveMeeting` (user key first,
   then admin key — the `pollOps` adapter's resolver), the
   answer-list operations (find/upsert/remove/prune), the generic
@@ -333,8 +367,9 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   four list types (see Commands → Tests).
 - `store/` — `store.Store` (`store.go`, embedding `MeetingStore` +
   `VoteStore`) and its GORM-backed implementation `gorm.go` (sqlite —
-  the default when `KIUSAN_STORE` is empty, DSN defaulting to
-  `./meetings.db` — plus mysql/mariadb/postgres; schema auto-migrated at
+  the default — plus mysql/mariadb/postgres; the DSN arrives assembled
+  by the app's config layer, defaulting to `./meetings.db` for sqlite;
+  schema auto-migrated at
   startup; the admin link is a `uniqueIndex`ed `admin_key` column).
   `Create` mints two unique link keys via the shared `createEntity`
   (collision-checked against both key columns, retry-capped);
@@ -343,7 +378,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   key; the user key never changes. `VoteStore` (`vote.go`) carries the
   vote mirror — `CreateVote`, `GetVote`/`GetVoteAdmin`, and
   `UpdateVote`, the same compare-and-set. `Open(kind, dsn)` dispatches
-  on `KIUSAN_STORE`; `RandomKey` in `key.go` builds the URL-safe keys.
+  on the backend kind (the config layer passes it the configured
+  store); `RandomKey` in `key.go` builds the URL-safe keys.
   `store_test.go` pins the backend contract on an in-memory sqlite
   (see Commands → Tests). A new backend = implement `Store` + add a
   case in `Open`.
@@ -631,9 +667,10 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
 - **AutoMigrate is additive-only**: it creates tables and adds columns at
   startup but does not drop or modify anything; destructive schema changes
   need explicit SQL migrations (none exist yet).
-- **Template engine** `Reload`/`Debug` are gated on `KIUSAN_DEV` —
-  while set, template edits do not require a restart; without it the
-  templates render as parsed at startup.
+- **Template engine** `Reload`/`Debug` are gated on the dev flag
+  (`KIUSAN_DEV` / the config file's `dev` key) — while set, template
+  edits do not require a restart; without it the templates render as
+  parsed at startup.
 - **Slices before indexing**: `meeting.Dates` must be checked for empty
   before indexing (handlers must not panic on malformed stored data).
 - **Template action quotes & range root**: never put quoted string
@@ -678,9 +715,13 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   `meetingkey` field) are authorized by the key alone and carry no CSRF
   token; the cookie-identity endpoints (answering, deleting the own
   answer) require the `csrftoken` form field.
-- **CSRF secret**: set `KIUSAN_SECRET` so tokens survive server restarts
-  (still-open pages keep working); without it the secret is random per
-  start and open pages must be reloaded after a restart.
+- **CSRF secret**: resolves env `KIUSAN_SECRET` > the config file's
+  `secret` > auto-generated (while no source sets it); the effective
+  value is persisted to the 0600 `kiusan.yaml` on every start (the env
+  is the setter-of-record), so tokens survive restarts out of the box.
+  The secret is plaintext in the file — the 0600 permission is the
+  protection (no encrypted secrets store: a local key beside local
+  ciphertext adds nothing).
 - **Rate limiting & link keys in the log**: the unauthenticated write
   routes carry per-client limits (20 creates / 30 answers per minute,
   consts in `main.go`) on top of the per-poll size caps; the request

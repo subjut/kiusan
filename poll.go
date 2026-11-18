@@ -2,12 +2,9 @@ package main
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -51,7 +48,7 @@ func ensureIdentityCookie(c fiber.Ctx, name string, expires time.Time, closed bo
 	}
 	c.Cookie(&fiber.Cookie{
 		Name: name, Value: token, Expires: expires,
-		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
+		HTTPOnly: true, SameSite: "Lax", Secure: cfg.SecureCookies, Path: "/",
 	})
 	return token
 }
@@ -61,32 +58,20 @@ func ensureIdentityCookie(c fiber.Ctx, name string, expires time.Time, closed bo
 func dropIdentityCookie(c fiber.Ctx, name string) {
 	c.Cookie(&fiber.Cookie{
 		Name: name, Value: "", Expires: time.Unix(0, 0), MaxAge: 0,
-		HTTPOnly: true, SameSite: "Lax", Secure: secureCookies, Path: "/",
+		HTTPOnly: true, SameSite: "Lax", Secure: cfg.SecureCookies, Path: "/",
 	})
 }
 
 // ---- CSRF protection ----
 
-// csrfSecret signs the per-identity CSRF tokens. It is random per process
-// unless KIUSAN_SECRET is set, which keeps still-open pages able to submit
-// across a server restart.
-var csrfSecret = func() []byte {
-	if s := os.Getenv("KIUSAN_SECRET"); s != "" {
-		return []byte(s)
-	}
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		log.Printf("warning: could not generate CSRF secret: %v", err)
-	}
-	return b
-}()
-
 // csrfToken is the per-identity form token: an HMAC over the identity
-// cookie value. A forged cross-site POST carries no cookie (SameSite) and
-// cannot mint a token (the cookie value is HttpOnly), so token plus
-// cookie pin the request to the page that rendered it.
+// cookie value, keyed by the configured signing secret (config.go —
+// KIUSAN_SECRET, the config file, or the generated-and-persisted one).
+// A forged cross-site POST carries no cookie (SameSite) and cannot mint
+// a token (the cookie value is HttpOnly), so token plus cookie pin the
+// request to the page that rendered it.
 func csrfToken(identity string) string {
-	mac := hmac.New(sha256.New, csrfSecret)
+	mac := hmac.New(sha256.New, []byte(cfg.Secret))
 	mac.Write([]byte(identity))
 	return hex.EncodeToString(mac.Sum(nil))
 }

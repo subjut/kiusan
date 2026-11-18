@@ -24,10 +24,10 @@ type gormStore struct {
 
 // openGorm connects to a relational backend and prepares the schema.
 // engine is one of mysql, mariadb, postgres, sqlite; dsn is the
-// connection string (KIUSAN_DSN).
+// connection string (assembled by the app's config layer).
 func openGorm(engine, dsn string) (Store, error) {
 	if dsn == "" {
-		return nil, fmt.Errorf("store: %s backend needs a connection string (set KIUSAN_DSN)", engine)
+		return nil, fmt.Errorf("store: %s backend needs a connection string", engine)
 	}
 
 	var dialector gorm.Dialector

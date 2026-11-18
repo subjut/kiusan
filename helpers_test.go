@@ -149,11 +149,11 @@ func TestCsrfToken(t *testing.T) {
 }
 
 func TestAbsURL(t *testing.T) {
-	oldBase := baseURL
-	defer func() { baseURL = oldBase }()
+	oldBase := cfg.BaseURL
+	defer func() { cfg.BaseURL = oldBase }()
 
 	// the public origin, when configured, is authoritative
-	baseURL = "https://meet.example.org"
+	cfg.BaseURL = "https://meet.example.org"
 	probeForm(t, "", "application/x-www-form-urlencoded", func(c fiber.Ctx) {
 		if got := absURL(c, "/meet/xyz"); got != "https://meet.example.org/meet/xyz" {
 			t.Errorf("absURL with base: %q", got)
@@ -161,7 +161,7 @@ func TestAbsURL(t *testing.T) {
 	})
 
 	// without one, the request's own scheme and host stand in
-	baseURL = ""
+	cfg.BaseURL = ""
 	app := fiber.New()
 	app.Post("/probe", func(c fiber.Ctx) error {
 		if got := absURL(c, "/x"); got != "http://example.com/x" {

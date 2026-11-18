@@ -188,8 +188,8 @@ func themeClass(c fiber.Ctx) string {
 // so the links stay correct behind a proxy; without it, it falls back to
 // the request's scheme+host.
 func absURL(c fiber.Ctx, path string) string {
-	if baseURL != "" {
-		return baseURL + path
+	if cfg.BaseURL != "" {
+		return cfg.BaseURL + path
 	}
 	return c.Scheme() + "://" + c.Host() + path
 }

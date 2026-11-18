@@ -1,11 +1,10 @@
 __debug_bin
 kiusan
-
 # databases
 meetings.db
-
 # js test deps
 jstest/node_modules
-
 # coverage artifact (CI uploads it as a job artifact)
 coverage.out
+# server config file
+kiusan.yaml

@@ -12,7 +12,7 @@
 //
 // and start the server on it:
 //
-//	KIUSAN_DSN=./test.db go run .
+//	KIUSAN_DB_NAME=test.db go run .
 package main
 
 import (

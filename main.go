@@ -29,16 +29,9 @@ import (
 // only through it; tests swap it for a throwaway instance per run.
 var db store.Store
 
-// Runtime configuration, read once from the environment in loadConfig.
-// devMode enables template reload + parse logging (off by default);
-// baseURL is the public origin (KIUSAN_BASE_URL) for the copyable link
-// boxes, empty falls back to the request's scheme+host; secureCookies sets
-// the Secure cookie flag, derived from baseURL being https.
-var (
-	devMode       bool
-	baseURL       string
-	secureCookies bool
-)
+// Runtime configuration (cfg, filled by loadConfig in config.go): every
+// key resolves env (KIUSAN_*) > the data dir's kiusan.yaml > the
+// built-in default.
 
 // Per-client rate limits on the unauthenticated write routes.
 const (
@@ -46,16 +39,6 @@ const (
 	createMaxPerMinute = 20
 	answerMaxPerMinute = 30
 )
-
-// loadConfig reads the runtime configuration from the environment.
-func loadConfig() {
-	baseURL = strings.TrimRight(os.Getenv("KIUSAN_BASE_URL"), "/")
-	secureCookies = strings.HasPrefix(baseURL, "https://")
-	switch strings.ToLower(os.Getenv("KIUSAN_DEV")) {
-	case "1", "true", "yes", "on":
-		devMode = true
-	}
-}
 
 //go:embed data/timezones.txt
 var timezoneNamesRaw string
@@ -269,10 +252,10 @@ func newApp(staticDir string) *fiber.App {
 	})
 
 	// Template reload and parse logging are development conveniences, off by
-	// default (enable with KIUSAN_DEV); reload re-reads the templates from
-	// disk on every render.
-	engine.Reload(devMode)
-	engine.Debug(devMode)
+	// default (enable with KIUSAN_DEV or the config file's dev key); reload
+	// re-reads the templates from disk on every render.
+	engine.Reload(cfg.DevMode)
+	engine.Debug(cfg.DevMode)
 
 	// Create app
 	app := fiber.New(fiber.Config{
@@ -301,11 +284,20 @@ func newApp(staticDir string) *fiber.App {
 }
 
 func main() {
-	loadConfig()
-
-	// Open the storage backend selected by KIUSAN_STORE / KIUSAN_DSN.
 	var err error
-	db, err = store.Open(os.Getenv("KIUSAN_STORE"), os.Getenv("KIUSAN_DSN"))
+	cfg, err = loadConfig()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
+	// Open the storage backend selected by KIUSAN_STORE; the DSN is built
+	// from the config's db parts (Config.dsn) — there is no KIUSAN_DSN.
+	var dsn string
+	dsn, err = cfg.dsn()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	db, err = store.Open(cfg.Store, dsn)
 	if err != nil {
 		log.Fatalf("Could not open store: %s", err)
 	}
@@ -334,7 +326,7 @@ func main() {
 		}
 	}()
 
-	if err := app.Listen(":8080"); err != nil {
+	if err := app.Listen(":" + strconv.Itoa(cfg.Port)); err != nil {
 		log.Println("Server stopped with error:", err)
 	}
 
