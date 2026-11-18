@@ -75,9 +75,15 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   survive restarts), `KIUSAN_BASE_URL` (the public origin for the
   copyable link boxes; `https://` enables Secure cookies),
   `KIUSAN_DEV` (`1` enables template reload + parse logging).
+- Release: to ship a version, edit `VERSION` (the one-line semver at the
+  repo root — the single source of truth, embedded into the binary by
+  `version.go` and shown in the footer of every page), rebuild, commit,
+  and (optionally) tag the commit `v<version>` — the tag is bookkeeping
+  only; the version lives in the file, not the tag.
 - Tests: `go test ./...` (add `-race` in CI) — `smoke_test.go` runs the app
-  in-process (no server, no network) and covers page rendering,
-  favicon/static serving, the 404 fallthrough, a full meeting
+  in-process (no server, no network) and covers page rendering (the
+  footer's release version among them), favicon/static serving, the 404
+  fallthrough, a full meeting
   create -> redirect -> read round trip (timezone-aware slots), the form's
   timezone select (alphabetical options, the labels carrying the standard
   UTC offset in parentheses on the entity-decoded body), form validation
@@ -200,8 +206,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (template engine, the `zoneOption` template func (the precomputed
   option labels), the request logger whose
   `Skip` covers every capability URL so link keys never reach the log).
+- `version.go` — the release version: the root `VERSION` file embedded
+  at compile time (`go:embed`) into the package var `Version` (the
+  single place a version bump happens); `renderPage` fills it onto
+  `pageData.Version`, and the footer (`static/partials/footer.html`)
+  renders it on every page.
 - `render.go` — the page-rendering plumbing: the `pageData` struct
-  (the i18n base + `ThemeClass`, filled by `renderPage`, plus exactly
+  (the i18n base + `ThemeClass` + `Version`, filled by `renderPage`, plus exactly
   one of four page pointers per render — `Meet` / `Vote` / `MeetForm` /
   `VoteForm` — the templates reach a page's data through it, e.g.
   `{{.Meet.Tz}}`, `{{.VoteForm.Choices}}`; both it and `answerPage`
@@ -413,6 +424,9 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   YAML and restart. Never use `{{...}}` in values (go-i18n treats it
   as a template action); client-side placeholders use single braces
   (`{name}`, `{date}`).
+- `VERSION` — the release version (semver, one line, e.g. `0.5.0`),
+  the single file a release bump edits; embedded via `go:embed` by
+  `version.go` (the same idiom as `data/timezones.txt`).
 - `data/timezones.txt` — the IANA zones offered in the form's timezone
   select (a curated list, grouped by UTC offset for maintainers: the 1-2
   most important zones per offset per region, plus UTC; `#` lines are

@@ -108,9 +108,15 @@ func runSmokeSuite(t *testing.T) {
 	if r.StatusCode != http.StatusOK {
 		t.Fatalf("GET /: status %d", r.StatusCode)
 	}
-	if fb := body(r); !strings.Contains(fb, "kiusan") ||
-		!strings.Contains(fb, `id="locale"`) {
+	home := body(r)
+	if !strings.Contains(home, "kiusan") ||
+		!strings.Contains(home, `id="locale"`) {
 		t.Fatalf("GET /: body missing page content or the header locale dropdown")
+	}
+	// The footer carries the release version, compiled in from the VERSION
+	// file (the single bump point) — assert it is on the page.
+	if !strings.Contains(home, "v"+Version) {
+		t.Fatalf("GET /: footer missing the release version %q", Version)
 	}
 	// The timezone select is rendered from data/timezones.txt (curated:
 	// 1-2 zones per UTC offset per region, plus UTC). The assertion is

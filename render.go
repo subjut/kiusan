@@ -35,6 +35,10 @@ type pageData struct {
 	// theme-light on <html>), filled by renderPage.
 	ThemeClass string
 
+	// Version: the release version (compiled in from the VERSION file),
+	// shown in the footer of every page, filled by renderPage.
+	Version string
+
 	// The page's own data (defined in the page's file).
 	Meet     *meetingPage
 	Vote     *votePage
@@ -159,6 +163,7 @@ func renderPage(c fiber.Ctx, page, titleKey, titleSuffix string, d *pageData) er
 	d.LocaleImplicit = implicitLang(c, "en")
 	d.LocaleOptions = localeOptions
 	d.ThemeClass = themeClass(c)
+	d.Version = Version
 	return c.Render(page, d, "layouts/home")
 }
 
