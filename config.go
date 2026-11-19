@@ -78,8 +78,13 @@ type configFile struct {
 func loadConfig() (Config, error) {
 	var c Config
 
-	// The data dir is env-only: a file cannot carry its own location.
+	// The data dir is env-only: a file cannot carry its own location. Log the
+	// resolved absolute path on every start so a misconfigured start is
+	// obvious in the journal.
 	c.DataDir = envOr("KIUSAN_DATA_DIR", ".")
+	if abs, err := filepath.Abs(c.DataDir); err == nil {
+		log.Printf("using data dir %s", abs)
+	}
 	path := filepath.Join(c.DataDir, configFileName)
 
 	// Layer 1: the config file, if present. It is loaded both into c (the

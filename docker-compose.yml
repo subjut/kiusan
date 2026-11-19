@@ -4,8 +4,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # The public origin of the installation (shown in the copyable
-      # link boxes); "https://" additionally enables Secure cookies.
+      # Public origin of the installation;
       KIUSAN_BASE_URL: https://your.example
       # Switch off the embedded sqlite for an external postgres by
       # uncommenting the db service below and these lines:
