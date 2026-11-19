@@ -1,0 +1,11 @@
+.git
+.github
+.devcontainer
+.vscode
+docs
+tools/
+AGENTS.md
+meetings.db
+test.db
+kiusan.yaml
+jstest/node_modules

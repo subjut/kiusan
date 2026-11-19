@@ -480,6 +480,27 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (`locale_test.mjs`, `dater_test.mjs`, `poll_test.mjs`,
   `vote_test.mjs`), whose fixtures mirror the `static/` template
   markup. `node_modules/` is gitignored.
+- `Dockerfile` + `.dockerignore` — the deployment image: a two-stage Alpine
+  build (`golang:1.27-alpine` → `alpine:3.24`, minor tags — patch updates
+  to the base flow in on each rebuild automatically), the static
+  `CGO_ENABLED=0` binary (all three DB drivers are pure Go, and the
+  `time/tzdata` bundle in `main.go` means no tzdata package at runtime),
+  a non-root `kiusan` user, `KIUSAN_DATA_DIR=/data` as the volume for the
+  config file + sqlite file, and a `wget` healthcheck against `/`.
+  `docker-compose.yml` is the ready-to-run example (the
+  `ghcr.io/subjut/kiusan:latest` service with the `data` volume; the
+  external-postgres switch — a commented-out `postgres:17-alpine` `db`
+  service plus the `KIUSAN_STORE`/`KIUSAN_DB_*` env block — is included
+  but off by default). `.github/workflows/docker.yml` (the `Docker`
+  workflow) builds `linux/amd64,linux/arm64` and pushes them to
+  `ghcr.io/subjut/kiusan` tagged `v<VERSION>` (read from the `VERSION`
+  file) + `latest` — triggered by `workflow_dispatch` (an optional custom
+  `tag` input) and by `push: tags: ["v*"]`, which builds the tagged
+  commit under the git tag name; `docker/metadata-action`'s
+  short-circuit expression picks the git tag on tag pushes and
+  `v<VERSION>` / the input on manual runs; `GITHUB_TOKEN` login (the
+  package must be toggled to Public in the GitHub package settings for
+  pulls), gha build cache.
 - `tools/testdb/` — the seed test-database generator (a `main` package,
   see Commands → Test database): it builds `test.db` through the app's
   own `store` package (same GORM schema, same key minting, so the file is

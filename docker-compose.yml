@@ -1,0 +1,38 @@
+services:
+  kiusan:
+    image: ghcr.io/subjut/kiusan:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # The public origin of the installation (shown in the copyable
+      # link boxes); "https://" additionally enables Secure cookies.
+      KIUSAN_BASE_URL: https://your.example
+      # Switch off the embedded sqlite for an external postgres by
+      # uncommenting the db service below and these lines:
+      # KIUSAN_STORE: postgres
+      # KIUSAN_DB_HOST: db
+      # KIUSAN_DB_PORT: "5432"
+      # KIUSAN_DB_USER: kiusan
+      # KIUSAN_DB_PASSWORD: secret
+      # KIUSAN_DB_NAME: kiusan
+      # KIUSAN_DB_SSLMODE: disable
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    # Uncomment together with the db service:
+    # depends_on:
+    #   - db
+
+  # Optional external postgres (uncomment to switch off embedded sqlite):
+  # db:
+  #   image: postgres:17-alpine
+  #   environment:
+  #     POSTGRES_USER: kiusan
+  #     POSTGRES_PASSWORD: secret
+  #     POSTGRES_DB: kiusan
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+
+volumes:
+  data:
+  # pgdata:
