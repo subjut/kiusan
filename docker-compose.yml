@@ -5,7 +5,11 @@ services:
       - "8080:8080"
     environment:
       # Public origin of the installation;
-      KIUSAN_BASE_URL: https://your.example
+      KIUSAN_BASE_URL: https://your.domain
+      # Run the app as a host user's id:gid so a bind-mounted data dir
+      # doesn't run into permission issues:
+      # KIUSAN_UID: "1000"
+      # KIUSAN_GID: "1000"
       # Switch off the embedded sqlite for an external postgres by
       # uncommenting the db service below and these lines:
       # KIUSAN_STORE: postgres

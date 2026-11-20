@@ -15,16 +15,13 @@ Kiusan is a single static binary with everything embedded. The easiest ways to r
 The image is based on `alpine` and is published as `ghcr.io/subjut/kiusan` for amd64 and arm64, tagged with the version (e.g. `v0.5.0`) and `latest`. The versioned tags make it easy to roll back to a known-good release if a newer image breaks something.
 
 
-### Permissions & where the data lives
+### Data directory and permissions
 
-Inside the container, Kiusan runs as the non-root user `kiusan` (uid `1000`) and expects the data dir in `/data`.
+Inside the container, Kiusan runs as the non-root user `kiusan` (uid `1000`, gid `1000`) and expects the data dir in `/data`.
 
-- **Named volume** (see examples below): Docker sets the ownership for you, nothing to do.
-- **Bind mount** — if you'd rather keep the data in a directory you choose (a compose `./data:/data` volume entry or a `docker run` `-v` flag), the host directory has to be owned by the container's user, or Kiusan cannot write to it:
+The image's entrypoint takes care of the data dir's ownership on every start: it briefly runs as root, makes sure the data dir exists and is owned by the run user, and only then drops down to that user. So a fresh named volume, a bind-mounted directory in any starting ownership, and a directory Docker creates for you on mount all end up writable.
 
-  ```sh
-  chown -R 1000:1000 ./data
-  ```
+If you want to **bind mount** the data dir into the container with permissions from a specific host user, set `KIUSAN_UID` and `KIUSAN_GID` to the host user's uid and gid. The entrypoint script takes care of running kiusan in the container with these ids so there are no permission conflicts. Beware that these environment variables are only used by docker and not Kiusan itself. So there are no corresponding entries in the configuration file.
 
 To back up an installation with the default SQLite backend, copy the contents of the data dir; with an external database, back up the database itself and the `kiusan.yaml` config file in the data dir.
 

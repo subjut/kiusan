@@ -485,13 +485,20 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   to the base flow in on each rebuild automatically), the static
   `CGO_ENABLED=0` binary (all three DB drivers are pure Go, and the
   `time/tzdata` bundle in `main.go` means no tzdata package at runtime),
-  a non-root `kiusan` user, `KIUSAN_DATA_DIR=/data` as the volume for the
-  config file + sqlite file, and a `wget` healthcheck against `/`.
-  `docker-compose.yml` is the ready-to-run example (the
-  `ghcr.io/subjut/kiusan:latest` service with the `data` volume; the
-  external-postgres switch — a commented-out `postgres:17-alpine` `db`
-  service plus the `KIUSAN_STORE`/`KIUSAN_DB_*` env block — is included
-  but off by default). `.github/workflows/docker.yml` (the `Docker`
+  a non-root `kiusan` user pinned to 1000:1000, `KIUSAN_DATA_DIR=/data`
+  as the volume for the config file + sqlite file, and a `wget`
+  healthcheck against `/`. There is no `USER` directive: `entrypoint.sh`
+  (repo root, copied into the image) starts as root, does `mkdir -p` +
+  `chown -R` on the data dir, and drops to `KIUSAN_UID`/`KIUSAN_GID`
+  (default 1000:1000 via the baked `kiusan` user) through `gosu`; a
+  non-root start (`--user`) skips the setup and runs as-is. The two env
+  vars are image-level only (the config layer ignores them — see
+  Gotchas → `USER` directive). `docker-compose.yml` is the ready-to-run
+  example (the `ghcr.io/subjut/kiusan:latest` service with the `data`
+  volume; the external-postgres switch — a commented-out
+  `postgres:17-alpine` `db` service plus the `KIUSAN_STORE`/`KIUSAN_DB_*`
+  env block — is included but off by default, and the
+  `KIUSAN_UID`/`KIUSAN_GID` bind-mount hint is commented out). `.github/workflows/docker.yml` (the `Docker`
   workflow) builds `linux/amd64,linux/arm64` and pushes them to
   `ghcr.io/subjut/kiusan` tagged `v<VERSION>` (read from the `VERSION`
   file) + `latest` — triggered by `workflow_dispatch` (an optional custom
@@ -847,3 +854,12 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   while the other rows pin at the exact offsets that tile it; if a
   browser misrenders the sticky span, the fallback is a per-row
   spacer cell in the templates instead of the rowspan.
+- **The image has no `USER` directive**: `entrypoint.sh` runs as root,
+  normalizes the data dir's ownership (`mkdir -p` + `chown -R` on
+  `KIUSAN_DATA_DIR`), and drops to `KIUSAN_UID`/`KIUSAN_GID` (default
+  the baked `kiusan` user, pinned 1000:1000 in the `Dockerfile`) via
+  `gosu`. Don't re-add `USER`, and don't set compose's `user:` /
+  `docker run --user` for uid matching — a non-root start skips the
+  ownership setup (`--user` still works on an already correctly owned
+  dir). `KIUSAN_UID`/`KIUSAN_GID` are image-level only: no
+  `kiusan.yaml` keys, the config layer's fixed key list ignores them.
