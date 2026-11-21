@@ -14,7 +14,7 @@ func clearKiusanEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"KIUSAN_DATA_DIR", "KIUSAN_PORT", "KIUSAN_BASE_URL", "KIUSAN_DEV",
-		"KIUSAN_SECRET", "KIUSAN_STORE", "KIUSAN_DB_HOST", "KIUSAN_DB_PORT",
+		"KIUSAN_SECRET", "KIUSAN_FINISHED_TTL", "KIUSAN_STORE", "KIUSAN_DB_HOST", "KIUSAN_DB_PORT",
 		"KIUSAN_DB_USER", "KIUSAN_DB_PASSWORD", "KIUSAN_DB_NAME", "KIUSAN_DB_SSLMODE",
 	} {
 		t.Setenv(k, "")
@@ -35,7 +35,7 @@ func TestConfigDefaults(t *testing.T) {
 	if c.Port != 8080 || c.Store != "sqlite" || c.DataDir != "." ||
 		c.DBHost != "127.0.0.1" || c.DBPort != "3306" ||
 		c.DBName != "meetings.db" || c.DBSSLMode != "disable" ||
-		c.DevMode || c.BaseURL != "" || c.SecureCookies {
+		c.DevMode || c.BaseURL != "" || c.SecureCookies || c.FinishedTTL != 6 {
 		t.Fatalf("unexpected defaults: %+v", c)
 	}
 	if c.Secret == "" {
@@ -73,6 +73,7 @@ func TestConfigPrecedence(t *testing.T) {
 
 	file := "secret: file-secret\n" +
 		"port: 9090\n" +
+		"finished_ttl: 9\n" +
 		"base_url: \"https://file.example/\"\n" +
 		"dev: true\n" +
 		"store: mysql\n" +
@@ -86,9 +87,11 @@ func TestConfigPrecedence(t *testing.T) {
 	if err := os.WriteFile("kiusan.yaml", []byte(file), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// The env overrides port and base_url; the rest stay file-sourced.
+	// The env overrides port, base_url, and the retention; the rest stay
+	// file-sourced.
 	t.Setenv("KIUSAN_PORT", "9999")
 	t.Setenv("KIUSAN_BASE_URL", "https://env.example/")
+	t.Setenv("KIUSAN_FINISHED_TTL", "3")
 
 	c, err := loadConfig()
 	if err != nil {
@@ -113,6 +116,9 @@ func TestConfigPrecedence(t *testing.T) {
 		c.DBPassword != "filepass" || c.DBName != "filedb" || c.DBSSLMode != "require" {
 		t.Fatalf("db parts: %+v, want the file values", c)
 	}
+	if c.FinishedTTL != 3 {
+		t.Fatalf("FinishedTTL: %d, want 3 (env over file's 9)", c.FinishedTTL)
+	}
 
 	// The file was rewritten with the effective values: the env's overwrote
 	// the file's, the file's other values (no env for them) survived.
@@ -123,6 +129,7 @@ func TestConfigPrecedence(t *testing.T) {
 	fb := string(b)
 	for _, want := range []string{
 		"port: 9999",
+		"finished_ttl: 3",
 		"env.example/",
 		"secret: file-secret",
 		"store: mysql",
@@ -144,12 +151,14 @@ func TestConfigPrecedence(t *testing.T) {
 	// persisted): file > defaults.
 	t.Setenv("KIUSAN_PORT", "")
 	t.Setenv("KIUSAN_BASE_URL", "")
+	t.Setenv("KIUSAN_FINISHED_TTL", "")
 	c3, err := loadConfig()
 	if err != nil {
 		t.Fatalf("third loadConfig: %v", err)
 	}
 	if c3.Port != 9999 || c3.BaseURL != "https://env.example" ||
-		c3.Store != "mysql" || c3.Secret != "file-secret" || !c3.DevMode {
+		c3.Store != "mysql" || c3.Secret != "file-secret" || !c3.DevMode ||
+		c3.FinishedTTL != 3 {
 		t.Fatalf("values not kept without the env vars: %+v", c3)
 	}
 }
@@ -268,6 +277,16 @@ func TestConfigErrors(t *testing.T) {
 		t.Fatalf("out-of-range port: err = %v", err)
 	}
 	t.Setenv("KIUSAN_PORT", "")
+
+	t.Setenv("KIUSAN_FINISHED_TTL", "nope")
+	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "KIUSAN_FINISHED_TTL") {
+		t.Fatalf("non-numeric retention: err = %v, want one naming KIUSAN_FINISHED_TTL", err)
+	}
+	t.Setenv("KIUSAN_FINISHED_TTL", "0")
+	if _, err := loadConfig(); err == nil || !strings.Contains(err.Error(), "KIUSAN_FINISHED_TTL") {
+		t.Fatalf("out-of-range retention: err = %v, want one naming KIUSAN_FINISHED_TTL", err)
+	}
+	t.Setenv("KIUSAN_FINISHED_TTL", "")
 
 	if err := os.WriteFile("kiusan.yaml", []byte("port: [broken\n"), 0o600); err != nil {
 		t.Fatal(err)

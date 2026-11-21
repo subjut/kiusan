@@ -420,6 +420,23 @@ func TestVotePageRender(t *testing.T) {
 		t.Errorf("GET /vote/user: missing the name input")
 	}
 
+	// The meta line carries the end date and the auto-deletion date
+	// (the open vote's end + the pinned retention, the vote carries no
+	// closure stamp).
+	v, err := db.GetVoteAdmin(adminKey)
+	if err != nil {
+		t.Fatalf("loading the created vote: %v", err)
+	}
+	for _, want := range []string{
+		`data-i18n="meet.endsLabel"`,
+		`data-i18n="meet.deletesLabel"`,
+		`data-slot="` + slotKey(v.DeletionDate(cfg.FinishedTTL)) + `"`,
+	} {
+		if !strings.Contains(body2, want) {
+			t.Errorf("GET /vote/user: meta line missing %q", want)
+		}
+	}
+
 	// Unknown key: the gone page.
 	r3, err := app.Test(httptest.NewRequest(http.MethodGet, "/vote/nonexistentkey1234", nil))
 	if err != nil {

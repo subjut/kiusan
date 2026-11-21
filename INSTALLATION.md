@@ -199,6 +199,7 @@ The file is created on first run (mode `0600`) and carries the auto-generated CS
 | `KIUSAN_DB_PASSWORD` | `db.password` | *(empty)* | The database password. |
 | `KIUSAN_DB_NAME` | `db.name` | `meetings.db` | sqlite: the data file's name in the data dir. MySQL/MariaDB/Postgres: the database name (the database itself must already exist; Kiusan auto-creates the tables). |
 | `KIUSAN_DB_SSLMODE` | `db.sslmode` | `disable` | The postgres SSL mode (postgres only). |
+| `KIUSAN_FINISHED_TTL` | `finished_ttl` | `6` | Time in months (`1`–`120`) until it's deleted after a poll ends or it was closed. |
 | `KIUSAN_DATA_DIR` | *(env only)* | `.` | The data dir for the config file and the sqlite file. |
 
 

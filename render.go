@@ -68,11 +68,20 @@ type formBase struct {
 type answerPage struct {
 	c fiber.Ctx
 
-	Title             string
-	Description       string
-	Email             string
-	Ends              string
-	EndsKey           string
+	Title       string
+	Description string
+	Email       string
+	Ends        string
+	EndsKey     string
+	// Deletes/DeletesKey: the auto-deletion date (the earlier of
+	// closure and end date, plus the configured retention) shown on
+	// the meta line next to the end date.
+	Deletes    string
+	DeletesKey string
+	// ClosedAt/ClosedAtKey: the closure moment (a datetime) shown on the
+	// closed notice; empty while the poll never was closed.
+	ClosedAt          string
+	ClosedAtKey       string
 	Ended             bool
 	Closed            bool
 	IsAdmin           bool

@@ -18,6 +18,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/subjut/kiusan/database"
 )
@@ -57,6 +58,11 @@ type MeetingStore interface {
 	Update(m *database.Meeting) error
 	// Delete removes the meeting stored under key.
 	Delete(key string) error
+	// PurgeFinished deletes the finished meetings — closed or past
+	// their end date — that finished at least months ago (calendar
+	// months after the earlier of closure and end date), and returns
+	// how many it removed.
+	PurgeFinished(now time.Time, months int) (int, error)
 	// Close releases the backend's resources.
 	Close() error
 }
@@ -70,6 +76,11 @@ const defaultSqliteName = "meetings.db"
 type Store interface {
 	MeetingStore
 	VoteStore
+	// Maintenance performs the backend's periodic housekeeping:
+	// sqlite checkpoints its WAL (and compacts the file while compact
+	// is set — call it after a purge removed rows); the relational
+	// backends maintain themselves and it is a no-op there.
+	Maintenance(compact bool) error
 }
 
 // Open returns a Store for the given backend kind. An empty kind

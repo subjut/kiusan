@@ -1123,8 +1123,10 @@
 		padding: 0.75rem 1rem;
 	}
 
-	/* a closed poll is a deliberate state, not an error — amber, not red */
+	/* a closed poll is a deliberate state, not an error — amber, not red;
+	   inline-block so the box shrinks to the text instead of spanning */
 	.closed {
+		display: inline-block;
 		background: var(--mark-amber-bg);
 		border: 1px solid var(--mark-amber-text);
 		border-radius: var(--radius-input);

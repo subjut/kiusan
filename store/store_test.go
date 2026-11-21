@@ -282,3 +282,83 @@ func TestAutoMigrateIdempotent(t *testing.T) {
 		t.Fatalf("Create after re-migration: %v", err)
 	}
 }
+
+// TestPurgeFinished pins the store's retention sweep: finished (closed
+// or expired) rows are removed only once they finished at least the
+// given months ago (the earlier of closure and end date), everything
+// younger survives — including a closed row whose closure is recent and
+// a legacy closed row without a stamp (it falls back to the end date).
+func TestPurgeFinished(t *testing.T) {
+	s := openTestStore(t)
+	now := time.Now()
+	stamp := func(dt time.Time) *time.Time { return &dt }
+
+	mk := func(title string, closed bool, closedAt *time.Time, expires time.Time) string {
+		t.Helper()
+		m := &database.Meeting{
+			Title: title, Description: "d", Email: "e@example.com",
+			Dates:    database.TimeSlice{time.Date(2026, 5, 4, 9, 30, 0, 0, time.UTC)},
+			TimeZone: "UTC",
+			Expires:  expires,
+		}
+		key, err := s.Create(m)
+		if err != nil {
+			t.Fatalf("Create %q: %v", title, err)
+		}
+		if closed || closedAt != nil {
+			got, err := s.Get(key)
+			if err != nil {
+				t.Fatalf("Get %q: %v", title, err)
+			}
+			got.Closed = closed
+			got.ClosedAt = closedAt
+			if err := s.Update(got); err != nil {
+				t.Fatalf("Update %q: %v", title, err)
+			}
+		}
+		return key
+	}
+
+	open := mk("open", false, nil, now.AddDate(0, 1, 0))
+	closedFresh := mk("closed-fresh", true, stamp(now.AddDate(0, -1, 0)), now.AddDate(0, 1, 0))
+	closedOld := mk("closed-old", true, stamp(now.AddDate(0, -7, 0)), now.AddDate(0, 1, 0))
+	legacy := mk("legacy-closed", true, nil, now.AddDate(0, -7, 0))
+	expiredOld := mk("expired-old", false, nil, now.AddDate(0, -7, 0))
+	expiredFresh := mk("expired-fresh", false, nil, now.AddDate(0, -1, 0))
+
+	n, err := s.PurgeFinished(now, 6)
+	if err != nil {
+		t.Fatalf("PurgeFinished: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("PurgeFinished removed %d, want 3 (closed-old, legacy-closed, expired-old)", n)
+	}
+	for _, key := range []string{closedOld, legacy, expiredOld} {
+		if _, err := s.Get(key); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("purged poll %q: err %v, want ErrNotFound", key, err)
+		}
+	}
+	for _, key := range []string{open, closedFresh, expiredFresh} {
+		if _, err := s.Get(key); err != nil {
+			t.Fatalf("surviving poll %q: %v", key, err)
+		}
+	}
+}
+
+// TestMaintenance pins the backend housekeeping: the sqlite checkpoint
+// and compact run without error and the data survives both.
+func TestMaintenance(t *testing.T) {
+	s := openTestStore(t)
+	key, err := s.Create(sampleMeeting())
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	for _, compact := range []bool{false, true} {
+		if err := s.Maintenance(compact); err != nil {
+			t.Fatalf("Maintenance(%v): %v", compact, err)
+		}
+	}
+	if _, err := s.Get(key); err != nil {
+		t.Fatalf("Get after maintenance: %v", err)
+	}
+}

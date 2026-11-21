@@ -44,6 +44,10 @@ func withStore(t *testing.T, kind, dsn string) {
 		t.Fatalf("opening %q store: %v", kind, err)
 	}
 	db = st
+	// The app's runtime config is zero-valued in the tests (only main() runs
+	// loadConfig); pin the finished-poll retention to the built-in default
+	// so the rendered deletion dates match a production start.
+	cfg.FinishedTTL = 6
 	t.Cleanup(func() { _ = st.Close() })
 }
 

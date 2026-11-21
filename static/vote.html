@@ -1,6 +1,6 @@
 <div class="container" data-tz="UTC">
 	<h2>{{.Vote.Title}}</h2>
-	<p class="meta"><span data-i18n="{{.Vote.ModeKey}}">{{.T .Vote.ModeKey}}</span> &middot; <span data-i18n="meet.endsLabel">{{.T "meet.endsLabel"}}</span> <span class="f-date" data-slot="{{.Vote.EndsKey}}" data-style="medium">{{.Vote.Ends}}</span>{{if .Vote.Email}} &middot; {{.Vote.Email}}{{end}}</p>
+	<p class="meta"><span data-i18n="{{.Vote.ModeKey}}">{{.T .Vote.ModeKey}}</span> &middot; <span data-i18n="meet.endsLabel">{{.T "meet.endsLabel"}}</span> <span class="f-date" data-slot="{{.Vote.EndsKey}}" data-style="medium">{{.Vote.Ends}}</span> &middot; <span data-i18n="meet.deletesLabel">{{.T "meet.deletesLabel"}}</span> <span class="f-date" data-slot="{{.Vote.DeletesKey}}" data-style="medium">{{.Vote.Deletes}}</span>{{if .Vote.Email}} &middot; {{.Vote.Email}}{{end}}</p>
 
 	{{template "partials/links" .Vote}}
 
@@ -9,9 +9,9 @@
 	{{end}}
 
 	{{if .Vote.Closed}}
-	<p class="closed"><span data-i18n="meet.closedPre">{{.T "meet.closedPre"}}</span><span data-i18n="meet.closedPost">{{.T "meet.closedPost"}}</span></p>
+	<p class="closed"><span data-i18n="meet.closed">{{.T "meet.closed"}}</span> <span class="f-date" data-slot="{{.Vote.ClosedAtKey}}" data-style="datetime">{{.Vote.ClosedAt}}</span></p>
 	{{else if .Vote.Ended}}
-	<p class="ended"><span data-i18n="meet.endedPre">{{.T "meet.endedPre"}}</span><span class="f-date" data-slot="{{.Vote.EndsKey}}" data-style="long">{{.Vote.Ends}}</span><span data-i18n="meet.endedPost">{{.T "meet.endedPost"}}</span></p>
+	<p class="ended"><span data-i18n="meet.ended">{{.T "meet.ended"}}</span><span class="f-date" data-slot="{{.Vote.EndsKey}}" data-style="long">{{.Vote.Ends}}</span></p>
 	{{end}}
 
 	{{if .Vote.Choices}}

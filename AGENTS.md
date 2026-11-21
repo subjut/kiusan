@@ -90,8 +90,12 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   / `mariadb` / `postgres`), `KIUSAN_DB_HOST` / `KIUSAN_DB_PORT` /
   `KIUSAN_DB_USER` / `KIUSAN_DB_PASSWORD` / `KIUSAN_DB_NAME` (relational:
   the database name; sqlite: the data-file name) / `KIUSAN_DB_SSLMODE`
-  (postgres, default `disable`), and `KIUSAN_DATA_DIR` (env-only — the
-  config file and the sqlite file live there, default `.`).
+  (postgres, default `disable`), `KIUSAN_FINISHED_TTL` (the retention of
+  finished polls in months, default `6`, validated `1`–`120` where the
+  value is provided — env and file, before the default can swallow a 0;
+  feeds the janitor's purge and the deletion date shown on the poll/vote
+  pages), and `KIUSAN_DATA_DIR` (env-only — the config file and the
+  sqlite file live there, default `.`).
 - Release: to ship a version, edit `VERSION` (the one-line semver at the
   repo root — the single source of truth, embedded into the binary by
   `version.go` and shown in the footer of every page), rebuild, commit,
@@ -139,7 +143,9 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   secret + stability, the env values written back over the file's values
   while the file's other values survive, the env-secret persistence, the
   explicit dev-off persistence, a file without a secret gaining one —,
-  the data-dir location, the port/file validation errors, and the
+  the data-dir location, the port/file validation errors, the
+  `KIUSAN_FINISHED_TTL` precedence + range validation (an out-of-range
+  provided value fails before the default swallows it), and the
   per-backend DSN construction incl. postgres password escaping + the
   missing-user errors). The end dates the
   suites submit are derived from now (`futureEnd()` / `testEndDate()`
@@ -160,10 +166,14 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `Create`'s key minting, the two-link resolution, the field round
   trip, `Delete`; the CAS `Update` / `UpdateVote` — success bumps
   `Generation`, a stale stamp returns `store.ErrConflict`; plus
-  AutoMigrate's idempotency on re-open), `database/database_test.go`
+  AutoMigrate's idempotency on re-open, the `PurgeFinished`/`PurgeFinishedVote`
+  retention sweep (the per-state matrix, legacy nil-stamp fallback),
+  and `Maintenance`), `database/database_test.go`
   the JSON-in-TEXT codec contract of the four list types (`TimeSlice`,
   `AnswerList`, `ChoiceList`, `VoteAnswerList`: round trips, nil →
-  `[]`, malformed / mistyped `Scan` → error), and `helpers_test.go`
+  `[]`, malformed / mistyped `Scan` → error) plus the
+  `FinishedAt`/`DeletionDate` retention helpers (the earlier-of rule,
+  the legacy nil-stamp fallback, calendar-month arithmetic), and `helpers_test.go`
   table-driven unit tests for the pure helpers (`rowMax`, `slotKey`,
   `parseEndDate` / `endOf`, `matchLang`, `csrfToken`, `absURL`,
   `isFormPost`, `validVoteMark`, `assignChoiceIDs`, `pruneVoteAnswers`,
@@ -345,11 +355,22 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   the in-memory bundle with English fallback). The `pageData`,
   `formBase`, and `answerPage` structs (and their `T` methods) live in
   `render.go`.
+- `janitor.go` — the database-maintenance loop (see Gotchas →
+  Finished-poll retention): `purgeFinished` (one pass — `PurgeFinished`
+  + `PurgeFinishedVote` on the store, then `Maintenance` (compact while
+  the pass removed anything), errors logged not returned so one bad pass
+  can't stop the loop) and `runJanitor` (the goroutine: one pass at
+  start, then a `janitorInterval` = 24 h ticker; the interval is
+  hardcoded, only the retention `cfg.FinishedTTL` is configurable).
 - `database/database.go` — model types only: `Meeting` (incl. the IANA
   `TimeZone` (empty renders as UTC), the `uniqueIndex`ed `AdminKey`, the
   always-set `Expires`, `Closed` (a closed poll stops accepting
-  answers, independent of `Expires`), `SingleSignup` (at most one slot
-  per answer), `Answers`, and the CAS stamp `Generation`),
+  answers, independent of `Expires`) + `ClosedAt` (the closure moment —
+  set by the close handler, cleared by re-open, nil on legacy rows),
+  `SingleSignup` (at most one slot per answer), `Answers`, and the CAS
+  stamp `Generation`), plus the retention helpers `FinishedAt()` (the
+  earlier of closure and end date, nil-stamp fallback to `Expires`) and
+  `DeletionDate(months)` (`FinishedAt` + calendar months);
   `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
   a JSON document in a TEXT column) and `TimeSlice` (candidate slots,
   same treatment). `database/vote.go` adds the vote types: `Vote`
@@ -376,10 +397,18 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `Get`/`GetAdmin` resolve the two links; `Update` is a compare-and-set
   on `Generation` (`ErrConflict` when stale) and honors a changed admin
   key; the user key never changes. `VoteStore` (`vote.go`) carries the
+  `VoteStore` (`vote.go`) carries the
   vote mirror — `CreateVote`, `GetVote`/`GetVoteAdmin`, and
-  `UpdateVote`, the same compare-and-set. `Open(kind, dsn)` dispatches
-  on the backend kind (the config layer passes it the configured
-  store); `RandomKey` in `key.go` builds the URL-safe keys.
+  `UpdateVote`, the same compare-and-set. `PurgeFinished` /
+  `PurgeFinishedVote` delete the finished rows whose `DeletionDate`
+  (earlier of closure and end date, + months) has passed — candidate
+  query `closed OR expires <= now` in SQL, the min/+months check per
+  row in Go so it stays portable, due rows removed through the regular
+  `Delete`/`DeleteVote`; `Maintenance(compact)` is sqlite-only
+  (`wal_checkpoint(TRUNCATE)` always, `PRAGMA optimize` + `VACUUM` while
+  compact) and a no-op on the relational backends. `Open(kind, dsn)`
+  dispatches on the backend kind (the config layer passes it the
+  configured store); `RandomKey` in `key.go` builds the URL-safe keys.
   `store_test.go` pins the backend contract on an in-memory sqlite
   (see Commands → Tests). A new backend = implement `Store` + add a
   case in `Open`.
@@ -520,8 +549,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
 - Root test files: `smoke_test.go` (the shared `withStore` /
   `newTestApp` / `postForm` helpers + `futureEnd` / `testEndDate`),
   `htmltest_test.go` (the parser-based page assertions, see Commands →
-  Tests), `helpers_test.go` (the pure-helper unit tests) and the other
-  suites live in the root package; `.github/workflows/tests.yml` is the CI
+  Tests), `helpers_test.go` (the pure-helper unit tests),
+  `janitor_test.go` (one `purgeFinished` pass: the due finished
+  polls + votes are gone, the younger ones survive, the compaction
+  loses no data) and the other suites live in the root package; `.github/workflows/tests.yml` is the CI
   definition (see Commands → CI).
 - `docs/prompts/` — verbatim log of user prompts, one file per date
   (the project's steering history across agent sessions); entries are
@@ -627,9 +658,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   none); the viewer's own zone is never used for the values. The
   contract: `data-slot` (a `slotKey` instant) on the year/date/time
   header cells, `data-lines` (1|2|3) on date cells, `data-slot` +
-  `data-style` (`medium`|`long`) on the `f-date` expiry spans, and
-  `data-base` on the `tz-name` span (the client appends the UTC offset,
-  `longOffset` form e.g. `GMT+1`). The form's calendar (`dater.js`)
+  `data-style` (`medium`|`long`|`datetime`) on the `f-date` spans (end
+  date, deletion date, ended-notice date — `medium`/`long`; the
+  closed-notice's closure moment — `datetime`), and `data-base` on the
+  `tz-name` span (the client appends the UTC offset, `longOffset` form
+  e.g. `GMT+1`). The form's calendar (`dater.js`)
   formats its wall-clock labels through `Locale.dtf` (no `timeZone`),
   follows the locale's first weekday best-effort
   (`resolvedOptions().firstDay`, Sunday fallback) and re-renders on
@@ -854,6 +887,28 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   while the other rows pin at the exact offsets that tile it; if a
   browser misrenders the sticky span, the fallback is a per-row
   spacer cell in the templates instead of the rowspan.
+- **Finished-poll retention (the janitor)**: a poll or vote is finished
+  when it is closed or past its end date; its row is purged by the
+  `janitor.go` loop once `now >= FinishedAt() + KIUSAN_FINISHED_TTL`
+  months (the earlier of closure and end date + the retention,
+  calendar months via `AddDate`). The closure moment is stamped in
+  `ClosedAt` by the close handler and cleared by re-open; a legacy
+  closed row without a stamp falls back to `Expires` (deletion only
+  ever later). The loop runs one pass at start, then every 24 h
+  (hardcoded); only the retention is configurable. The min/+months
+  math runs in Go per candidate row (portable SQL); `Maintenance`
+  compacts the sqlite file only after a pass removed rows (no-op on
+  the relational backends). The meta line of both page types always
+  shows the resulting deletion date (an `f-date` span, `data-style`
+  `medium`), and the closed notice shows the closure moment as a
+  datetime (`data-style` `datetime`, the `meet.closed` key — the ended
+  notice uses `meet.ended`; both are bare pre-date text, no
+  "no longer accepts answers" tail, no date-less legacy fallback).
+  `purgeFinished` is the pure, directly
+  testable core (`janitor_test.go`); `runJanitor` wraps it in the
+  goroutine. `VACUUM` is only ever issued by `Maintenance`, which must
+  run outside a transaction (the pooled connections sit idle between
+  queries in this single-process app, so it holds).
 - **The image has no `USER` directive**: `entrypoint.sh` runs as root,
   normalizes the data dir's ownership (`mkdir -p` + `chown -R` on
   `KIUSAN_DATA_DIR`), and drops to `KIUSAN_UID`/`KIUSAN_GID` (default

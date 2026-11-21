@@ -151,12 +151,21 @@
 			fmt(els[i], { hour: "numeric", minute: "2-digit" });
 		}
 
-		// "Poll ends" / "ended on" dates.
+		// "Poll ends" / "deleted after" / "ended on" dates and the
+		// "closed on" datetime (data-style: medium, long, datetime).
 		els = root.querySelectorAll(".f-date[data-slot]");
 		for (i = 0; i < els.length; i++) {
-			fmt(els[i], els[i].getAttribute("data-style") === "long"
-				? { day: "numeric", month: "long", year: "numeric" }
-				: { day: "numeric", month: "short", year: "numeric" });
+			var style = els[i].getAttribute("data-style");
+			var fopts;
+			if (style === "long") {
+				fopts = { day: "numeric", month: "long", year: "numeric" };
+			} else if (style === "datetime") {
+				fopts = { day: "numeric", month: "short", year: "numeric",
+						hour: "numeric", minute: "2-digit" };
+			} else {
+				fopts = { day: "numeric", month: "short", year: "numeric" };
+			}
+			fmt(els[i], fopts);
 		}
 
 		// Timezone line: append the poll's UTC offset.

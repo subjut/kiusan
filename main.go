@@ -307,6 +307,12 @@ func main() {
 		}
 	}()
 
+	// The maintenance loop: purges finished polls and votes once their
+	// retention (KIUSAN_FINISHED_TTL, months after the earlier of
+	// closure and end date) has passed, and checkpoints/compacts the
+	// database.
+	runJanitor(db, cfg.FinishedTTL)
+
 	// Create app
 	app := newApp("./static")
 

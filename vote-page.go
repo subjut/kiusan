@@ -250,6 +250,17 @@ func voteHandler(c fiber.Ctx) error {
 	}
 	ends := v.Expires.UTC().Format("2006-01-02")
 	endsKey := slotKey(v.Expires)
+	// The auto-deletion date (finished + retention) always shows on the
+	// meta line; the closure moment, a datetime, only while the vote is
+	// closed and stamped (legacy closed rows carry no stamp). The vote
+	// has no zone of its own, so both render in UTC like the end date.
+	deletes := v.DeletionDate(cfg.FinishedTTL)
+	closedAt := ""
+	var closedAtKey string
+	if v.Closed && v.ClosedAt != nil {
+		closedAt = v.ClosedAt.UTC().Format("2 Jan 2006 15:04")
+		closedAtKey = slotKey(*v.ClosedAt)
+	}
 
 	return renderPage(c, "vote", "pagetitle.meet", v.Title, &pageData{
 		Vote: &votePage{
@@ -260,6 +271,10 @@ func voteHandler(c fiber.Ctx) error {
 				Email:       v.Email,
 				Ends:        ends,
 				EndsKey:     endsKey,
+				Deletes:     deletes.UTC().Format("2006-01-02"),
+				DeletesKey:  slotKey(deletes),
+				ClosedAt:    closedAt,
+				ClosedAtKey: closedAtKey,
 				Ended:       ended,
 				Closed:      closed,
 				IsAdmin:     isAdmin,

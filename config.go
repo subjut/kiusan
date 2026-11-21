@@ -36,6 +36,9 @@ type Config struct {
 	DevMode       bool   // template reload + parse logging (KIUSAN_DEV / dev)
 	Secret        string // CSRF signing secret (KIUSAN_SECRET / secret); auto-generated and persisted while no source sets it
 
+	// Maintenance (KIUSAN_FINISHED_TTL / finished_ttl).
+	FinishedTTL int // retention of finished polls in months; the janitor purges a row once it is this old, the page shows the resulting deletion date
+
 	// Storage (KIUSAN_STORE / KIUSAN_DB_* / KIUSAN_DATA_DIR).
 	Store      string // sqlite | mysql | mariadb | postgres
 	DataDir    string // data dir (KIUSAN_DATA_DIR only); config file + sqlite file live here
@@ -52,12 +55,13 @@ type Config struct {
 // contributes no value. Dev is a pointer so an explicit env "off" can be
 // told apart from "absent" and persisted as `dev: false`.
 type configFile struct {
-	Secret  string `yaml:"secret,omitempty"`
-	Port    int    `yaml:"port,omitempty"`
-	BaseURL string `yaml:"base_url,omitempty"`
-	Dev     *bool  `yaml:"dev,omitempty"`
-	Store   string `yaml:"store,omitempty"`
-	DB      struct {
+	Secret      string `yaml:"secret,omitempty"`
+	Port        int    `yaml:"port,omitempty"`
+	FinishedTTL int    `yaml:"finished_ttl,omitempty"`
+	BaseURL     string `yaml:"base_url,omitempty"`
+	Dev         *bool  `yaml:"dev,omitempty"`
+	Store       string `yaml:"store,omitempty"`
+	DB          struct {
 		Host     string `yaml:"host,omitempty"`
 		Port     string `yaml:"port,omitempty"`
 		User     string `yaml:"user,omitempty"`
@@ -101,6 +105,10 @@ func loadConfig() (Config, error) {
 		if file.Dev != nil {
 			c.DevMode = *file.Dev
 		}
+		c.FinishedTTL = file.FinishedTTL
+		if c.FinishedTTL != 0 && (c.FinishedTTL < 1 || c.FinishedTTL > 120) {
+			return Config{}, fmt.Errorf("finished_ttl in %s must be 1-120 months, got %d", path, c.FinishedTTL)
+		}
 		c.Store = file.Store
 		c.DBHost = file.DB.Host
 		c.DBPort = file.DB.Port
@@ -137,6 +145,21 @@ func loadConfig() (Config, error) {
 		c.Secret = v
 		file.Secret = v
 	}
+	// The retention is validated where it is provided (env, file): a
+	// 0 falls back to the built-in default, so an out-of-range value
+	// provided out-of-range must fail here, before the default swallows
+	// it.
+	if v := os.Getenv("KIUSAN_FINISHED_TTL"); v != "" {
+		ttl, err := strconv.Atoi(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("KIUSAN_FINISHED_TTL must be a number, got %q", v)
+		}
+		if ttl < 1 || ttl > 120 {
+			return Config{}, fmt.Errorf("KIUSAN_FINISHED_TTL must be 1-120 months, got %q", v)
+		}
+		c.FinishedTTL = ttl
+		file.FinishedTTL = ttl
+	}
 	if v := os.Getenv("KIUSAN_STORE"); v != "" {
 		c.Store = v
 		file.Store = v
@@ -171,6 +194,9 @@ func loadConfig() (Config, error) {
 	// defaults).
 	if c.Port == 0 {
 		c.Port = 8080
+	}
+	if c.FinishedTTL == 0 {
+		c.FinishedTTL = 6
 	}
 	if c.Store == "" {
 		c.Store = store.BackendSQLite

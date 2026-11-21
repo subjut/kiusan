@@ -158,3 +158,64 @@ func TestVoteAnswerListCodec(t *testing.T) {
 		t.Fatalf("Scan(malformed): expected an error")
 	}
 }
+
+// TestFinishedAt pins the "the earlier of closure and end date" rule on
+// both models: an open poll finishes at its end date, a closed one at
+// its closure (while the closure is earlier), and a closed row without a
+// stamp (legacy data) falls back to the end date, so its deletion is
+// only ever later.
+func TestFinishedAt(t *testing.T) {
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	stamp := func(dt time.Time) *time.Time { return &dt }
+
+	m := &Meeting{Expires: now.AddDate(0, 3, 0)}
+	if got := m.FinishedAt(); !got.Equal(now.AddDate(0, 3, 0)) {
+		t.Fatalf("open poll: %v, want the end date", got)
+	}
+	m.Closed = true
+	if got := m.FinishedAt(); !got.Equal(now.AddDate(0, 3, 0)) {
+		t.Fatalf("closed poll without a stamp: %v, want the end date (legacy fallback)", got)
+	}
+	m.ClosedAt = stamp(now)
+	if got := m.FinishedAt(); !got.Equal(now) {
+		t.Fatalf("closed before the end date: %v, want the closure", got)
+	}
+	m.ClosedAt = stamp(now.AddDate(0, 4, 0))
+	if got := m.FinishedAt(); !got.Equal(now.AddDate(0, 3, 0)) {
+		t.Fatalf("closed after the end date: %v, want the end date", got)
+	}
+	m.Closed = false
+	if got := m.FinishedAt(); !got.Equal(now.AddDate(0, 3, 0)) {
+		t.Fatalf("re-opened poll (the stamp lingers in memory): %v, want the end date", got)
+	}
+
+	v := &Vote{Expires: now.AddDate(0, 1, 0)}
+	if got := v.FinishedAt(); !got.Equal(now.AddDate(0, 1, 0)) {
+		t.Fatalf("open vote: %v, want the end date", got)
+	}
+	v.Closed = true
+	v.ClosedAt = stamp(now)
+	if got := v.FinishedAt(); !got.Equal(now) {
+		t.Fatalf("closed vote: %v, want the closure", got)
+	}
+}
+
+// TestDeletionDate pins the calendar-month retention arithmetic (AddDate,
+// so a 31st never skips a month) on both models.
+func TestDeletionDate(t *testing.T) {
+	jan31 := time.Date(2026, 1, 31, 23, 59, 59, 0, time.UTC)
+	m := &Meeting{Expires: jan31}
+	if got := m.DeletionDate(6); !got.Equal(time.Date(2026, 7, 31, 23, 59, 59, 0, time.UTC)) {
+		t.Fatalf("DeletionDate(6) from Jan 31: %v, want Jul 31", got)
+	}
+	at := time.Date(2026, 1, 20, 10, 0, 0, 0, time.UTC)
+	m.Closed = true
+	m.ClosedAt = &at
+	if got := m.DeletionDate(6); !got.Equal(time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("DeletionDate(6) from the closure: %v, want Jul 20 10:00", got)
+	}
+	v := &Vote{Expires: jan31}
+	if got := v.DeletionDate(12); !got.Equal(time.Date(2027, 1, 31, 23, 59, 59, 0, time.UTC)) {
+		t.Fatalf("vote DeletionDate(12): %v, want Jan 31 2027", got)
+	}
+}

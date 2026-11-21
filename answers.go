@@ -288,6 +288,12 @@ var meetOps = &pollOps[*database.Meeting]{
 	closed:   func(m *database.Meeting) bool { return m.Closed },
 	setClosed: func(m *database.Meeting, closed bool) {
 		m.Closed = closed
+		if closed {
+			now := time.Now()
+			m.ClosedAt = &now
+		} else {
+			m.ClosedAt = nil
+		}
 	},
 	hasAns: func(m *database.Meeting, id string) bool {
 		return findAnswer(m.Answers, id) != nil
@@ -321,6 +327,12 @@ var voteOps = &pollOps[*database.Vote]{
 	closed:   func(v *database.Vote) bool { return v.Closed },
 	setClosed: func(v *database.Vote, closed bool) {
 		v.Closed = closed
+		if closed {
+			now := time.Now()
+			v.ClosedAt = &now
+		} else {
+			v.ClosedAt = nil
+		}
 	},
 	hasAns: func(v *database.Vote, id string) bool {
 		return findVoteAnswer(v.Answers, id) != nil

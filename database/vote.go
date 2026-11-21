@@ -148,11 +148,34 @@ type Vote struct {
 	// yes-maybe-no marks, or a free-text note per choice.
 	VoteType string `gorm:"not null;default:'yes-no'"`
 	// Closed stops a vote from accepting answers before its end date.
-	Closed  bool           `gorm:"not null;default:false"`
-	Choices ChoiceList     `gorm:"not null"`
-	Expires time.Time      `gorm:"not null"`
-	Answers VoteAnswerList `gorm:"not null;default:'[]'"`
+	Closed bool `gorm:"not null;default:false"`
+	// ClosedAt stamps the moment the vote was closed; the close handler
+	// sets it and the re-open handler clears it. Rows closed before this
+	// column existed carry nil — FinishedAt then falls back to Expires.
+	ClosedAt *time.Time     `gorm:"default:null"`
+	Choices  ChoiceList     `gorm:"not null"`
+	Expires  time.Time      `gorm:"not null"`
+	Answers  VoteAnswerList `gorm:"not null;default:'[]'"`
 	// Generation advances with every store-level write; it is the
 	// compare-and-set stamp of VoteStore.UpdateVote.
 	Generation int `gorm:"not null;default:0"`
+}
+
+// FinishedAt is the moment the vote stopped accepting answers: its
+// closure (a closed vote can expire later) or its end date, whichever
+// comes first. A closed row without a closure stamp (legacy data) falls
+// back to the end date, so its deletion is only ever later, never
+// earlier.
+func (v *Vote) FinishedAt() time.Time {
+	if v.Closed && v.ClosedAt != nil && v.ClosedAt.Before(v.Expires) {
+		return *v.ClosedAt
+	}
+	return v.Expires
+}
+
+// DeletionDate is when the vote's row is auto-purged by the maintenance
+// job: the finished moment plus the retention in calendar months
+// (AddDate, so a 31st never skips a month).
+func (v *Vote) DeletionDate(months int) time.Time {
+	return v.FinishedAt().AddDate(0, months, 0)
 }

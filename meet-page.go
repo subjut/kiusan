@@ -160,6 +160,16 @@ func meetingHandler(c fiber.Ctx) error {
 	tzName := zoneLabel(tz)
 	ends := m.Expires.In(loc).Format("2006-01-02")
 	endsKey := slotKey(m.Expires)
+	// The auto-deletion date (finished + retention) always shows on the
+	// meta line; the closure moment, a datetime, only while the poll is
+	// closed and stamped (legacy closed rows carry no stamp).
+	deletes := m.DeletionDate(cfg.FinishedTTL)
+	closedAt := ""
+	var closedAtKey string
+	if m.Closed && m.ClosedAt != nil {
+		closedAt = m.ClosedAt.In(loc).Format("2 Jan 2006 15:04")
+		closedAtKey = slotKey(*m.ClosedAt)
+	}
 
 	// Display order: chronological. Storage order follows the form's chip
 	// order, which can be out of order, and marks are keyed by the slot's
@@ -337,6 +347,10 @@ func meetingHandler(c fiber.Ctx) error {
 				Email:       m.Email,
 				Ends:        ends,
 				EndsKey:     endsKey,
+				Deletes:     deletes.In(loc).Format("2006-01-02"),
+				DeletesKey:  slotKey(deletes),
+				ClosedAt:    closedAt,
+				ClosedAtKey: closedAtKey,
 				Ended:       ended,
 				Closed:      closed,
 				IsAdmin:     isAdmin,

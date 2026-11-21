@@ -11,7 +11,8 @@ import { boot, settled, tick } from "./harness.mjs";
 function pageFixture(tz = "Europe/Berlin") {
 	return `<div class="container" data-tz="${tz}">
 	<p class="meta"><span class="tz-name" data-base="${tz}">${tz}</span>
-	  <span class="f-date" data-slot="2026-11-07T10:00Z" data-style="medium">Nov 7, 2026</span></p>
+	  <span class="f-date" data-slot="2026-11-07T10:00Z" data-style="medium">Nov 7, 2026</span>
+	  <span class="f-date" data-slot="2026-11-07T10:00Z" data-style="datetime">7 Nov 2026 11:00</span></p>
 	<table class="answers-table"><thead>
 	  <tr><th class="th-year" data-slot="2026-11-07T10:00Z" colspan="3">2026</th></tr>
 	  <tr>
@@ -54,6 +55,9 @@ test("date values render in the browser locale (en-US)", async (t) => {
 	assert.equal(q(w, '.th-date[data-lines="1"]').title, "Saturday, November 7, 2026");
 	assert.equal(q(w, ".th-time").textContent, "11:00 AM");
 	assert.equal(q(w, ".f-date").textContent, "Nov 7, 2026");
+	// The datetime style carries the clock, in the poll's zone (10:00Z =
+	// 11:00 in November Berlin).
+	assert.equal(q(w, '.f-date[data-style="datetime"]').textContent, "Nov 7, 2026, 11:00 AM");
 	assert.equal(q(w, ".tz-name").textContent, `Europe/Berlin (${longOffset("Europe/Berlin")})`);
 });
 
@@ -65,6 +69,7 @@ test("the kiusan-locale cookie beats the browser language", async (t) => {
 	assert.equal(q(w, '.th-date[data-lines="1"]').title, "Samstag, 7. November 2026");
 	assert.equal(q(w, ".th-time").textContent, "11:00");
 	assert.equal(q(w, ".f-date").textContent, "7. Nov. 2026");
+	assert.equal(q(w, '.f-date[data-style="datetime"]').textContent, "7. Nov. 2026, 11:00");
 	assert.equal(q(w, ".tz-name").textContent, `Europe/Berlin (${longOffset("Europe/Berlin")})`);
 });
 

@@ -189,6 +189,12 @@ func runPollSuite(t *testing.T) {
 	bUser := p.body(r)
 	for _, want := range []string{
 		"Poll A", "Pick a time",
+		// The meta line carries the end date and the auto-deletion date
+		// (finished + the pinned retention — while open: end + 6 months).
+		`data-i18n="meet.endsLabel"`,
+		`data-slot="` + slotKey(expA) + `" data-style="medium">`,
+		`data-i18n="meet.deletesLabel"`,
+		`data-slot="` + slotKey(mA.DeletionDate(cfg.FinishedTTL)) + `"`,
 		`class="tz-name" data-base="Europe/Berlin">Europe/Berlin</span>`,
 		`class="th-year" colspan="2"`, "2026",
 		`class="th-date" colspan="2"`, `title="Sun 1 Nov 2026"`,
@@ -572,7 +578,7 @@ func runPollSuite(t *testing.T) {
 	bEnd := p.body(rEnd)
 	contains(bEnd, "This poll has ended")
 	// the expiry date renders as a data-slot f-date span; the "on " prefix
-	// lives inside the i18n meet.endedPre span, so we assert the span alone.
+	// lives inside the i18n meet.ended span, so we assert the span alone.
 	contains(bEnd, `<span class="f-date" data-slot="`+slotKey(past)+`" data-style="long">`+past.In(berlin).Format("2006-01-02")+`</span>`)
 	absent(bEnd, `id="answer-form"`)
 	if p.hasCookie(rEnd, cd) {
@@ -626,12 +632,20 @@ func runPollSuite(t *testing.T) {
 	if !gotA.Closed {
 		t.Fatalf("poll must be closed after close: %+v", gotA)
 	}
+	if gotA.ClosedAt == nil || gotA.ClosedAt.IsZero() {
+		t.Fatalf("closing must stamp the closure moment: %+v", gotA)
+	}
 	// The respondent page shows the closed notice and the answers table
 	// (without the form), and mints no new identity cookie.
 	rCl := p.get("/meet/"+mA.Key, "")
 	status(rCl, http.StatusOK)
 	bClRsp := p.body(rCl)
-	contains(bClRsp, `data-i18n="meet.closedPre"`)
+	// The closed notice carries the closure moment as a datetime, and the
+	// meta line's deletion date moves to closure + retention (earlier than
+	// the end date's).
+	contains(bClRsp, `data-i18n="meet.closed"`)
+	contains(bClRsp, `data-style="datetime"`)
+	contains(bClRsp, `data-slot="`+slotKey(gotA.DeletionDate(cfg.FinishedTTL))+`"`)
 	contains(bClRsp, `Bobby`)
 	absent(bClRsp, `id="answer-form"`)
 	absent(bClRsp, `id="del-form"`)
@@ -654,6 +668,9 @@ func runPollSuite(t *testing.T) {
 	gotA, _ = db.Get(mA.Key)
 	if gotA.Closed {
 		t.Fatalf("poll must be open after re-open: %+v", gotA)
+	}
+	if gotA.ClosedAt != nil {
+		t.Fatalf("re-opening must clear the closure stamp: %+v", gotA)
 	}
 	slotA := slotKey(gotA.Dates[0])
 	status(p.post("/meet/"+mA.Key+"/answer",

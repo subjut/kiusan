@@ -1,6 +1,10 @@
 package store
 
-import "github.com/subjut/kiusan/database"
+import (
+	"time"
+
+	"github.com/subjut/kiusan/database"
+)
 
 // VoteStore is the storage contract for votes. A vote is stored under two
 // random keys (user link and admin link), like MeetingStore.
@@ -20,4 +24,9 @@ type VoteStore interface {
 	UpdateVote(v *database.Vote) error
 	// DeleteVote removes the vote stored under key.
 	DeleteVote(key string) error
+	// PurgeFinishedVote deletes the finished votes — closed or past
+	// their end date — that finished at least months ago (calendar
+	// months after the earlier of closure and end date), and returns
+	// how many it removed.
+	PurgeFinishedVote(now time.Time, months int) (int, error)
 }

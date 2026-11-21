@@ -114,8 +114,12 @@ type Meeting struct {
 	// the admin closes a running poll and re-opens it at will. It is
 	// independent of Expires — a closed poll can expire, an expired one
 	// can be closed, and re-opening only clears the flag.
-	Closed bool      `gorm:"not null;default:false"`
-	Dates  TimeSlice `gorm:"not null"`
+	Closed bool `gorm:"not null;default:false"`
+	// ClosedAt stamps the moment the poll was closed; the close handler
+	// sets it and the re-open handler clears it. Rows closed before this
+	// column existed carry nil — FinishedAt then falls back to Expires.
+	ClosedAt *time.Time `gorm:"default:null"`
+	Dates    TimeSlice  `gorm:"not null"`
 	// TimeZone is the IANA zone (e.g. "Europe/Berlin") the meeting's
 	// dates and times are authored in; slots are absolute instants,
 	// rendered in this zone. Empty renders as UTC (the fallback a
@@ -130,4 +134,23 @@ type Meeting struct {
 	// Generation advances with every store-level write; it is the
 	// compare-and-set stamp of MeetingStore.Update.
 	Generation int `gorm:"not null;default:0"`
+}
+
+// FinishedAt is the moment the poll stopped accepting answers: its
+// closure (a closed poll can expire later) or its end date, whichever
+// comes first. A closed row without a closure stamp (legacy data) falls
+// back to the end date, so its deletion is only ever later, never
+// earlier.
+func (m *Meeting) FinishedAt() time.Time {
+	if m.Closed && m.ClosedAt != nil && m.ClosedAt.Before(m.Expires) {
+		return *m.ClosedAt
+	}
+	return m.Expires
+}
+
+// DeletionDate is when the poll's row is auto-purged by the maintenance
+// job: the finished moment plus the retention in calendar months
+// (AddDate, so a 31st never skips a month).
+func (m *Meeting) DeletionDate(months int) time.Time {
+	return m.FinishedAt().AddDate(0, months, 0)
 }
