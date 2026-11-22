@@ -186,6 +186,12 @@ func meetFormPostHandler(c fiber.Ctx) error {
 			time.Date(newDate.Year(), newDate.Month(), newDate.Day(),
 				newTime.Hour(), newTime.Minute(), 0, 0, loc))
 	}
+	// A poll with no candidate slots is a dead link: reject a submission
+	// that carries no slot (the picker's submit gate mirrors this client-side,
+	// so the browser never reaches it).
+	if len(form.Dates) == 0 {
+		return sendErr(c, 400, "At least one date is required")
+	}
 
 	// End date (form field "enddate" — deliberately not named after
 	// Meeting.Expires, whose binding the date-only value could not feed).

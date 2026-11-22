@@ -15,7 +15,7 @@
 		<thead>
 		{{if .HasTime}}
 		<tr>
-			<th scope="col" rowspan="3" class="th-name" data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</th>
+			<th scope="col" rowspan="3" class="th-name"><span data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</span>{{if or $.FormNew $.FormID}}<span class="req" aria-hidden="true">*</span>{{end}}</th>
 			{{range .HeaderYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
 		</tr>
 		<tr>
@@ -26,7 +26,7 @@
 		</tr>
 		{{else}}
 		<tr>
-			<th scope="col" rowspan="2" class="th-name" data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</th>
+			<th scope="col" rowspan="2" class="th-name"><span data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</span>{{if or $.FormNew $.FormID}}<span class="req" aria-hidden="true">*</span>{{end}}</th>
 			{{range .HeaderYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
 		</tr>
 		<tr>

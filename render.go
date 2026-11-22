@@ -291,6 +291,8 @@ const (
 // shares.
 func validateTextFields(title, email, description string) string {
 	switch {
+	case title == "":
+		return "Title is required"
 	case utf8.RuneCountInString(title) > maxTitleLen:
 		return "Title is too long (max 100 characters)"
 	case utf8.RuneCountInString(email) > maxEmailLen:

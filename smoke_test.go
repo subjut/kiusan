@@ -247,9 +247,10 @@ func runFormPostSuite(t *testing.T) {
 		// when set, must appear in the response body
 		wantBody string
 	}{
+		{"no title", "email=a%40b.c&description=d&slot0=2026-11-01", 400, "Title is required"},
 		{"single date", "title=A&email=a%40b.c&description=d&slot0=2026-11-01", 303, ""},
 		{"two dates", "title=A&email=a%40b.c&description=d&slot0=2026-11-01&slot1=2026-11-02", 303, ""},
-		{"no dates (accepted today; pinned as current behavior)", "title=A&email=a%40b.c&description=d", 303, ""},
+		{"no dates", "title=A&email=a%40b.c&description=d", 400, "At least one date is required"},
 		{"swapped month/day", "title=A&email=a%40b.c&description=d&slot0=01-11-2026", 400, "Invalid date"},
 		{"two dates with two times", "title=A&email=a%40b.c&description=d&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00&slot2=2026-11-02T10:00&slot3=2026-11-02T14:00", 303, ""},
 		{"per-date times", "title=A&email=a%40b.c&description=d&slot0=2026-11-01T10:00&slot1=2026-11-02T14:00", 303, ""},

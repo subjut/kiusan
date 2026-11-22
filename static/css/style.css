@@ -520,6 +520,18 @@
 		display: block;
 	}
 
+	/* the required-field marker: a red asterisk on the group heading —
+	   the title label, the options legend, and the answer tables' Name
+	   header while the form row is live. It is an aria-hidden sibling of
+	   the data-i18n span (the locale swap rewrites the span's textContent
+	   only, so the star survives), and the inputs' own required attribute
+	   carries the semantics for assistive tech */
+	.req {
+		color: var(--mark-red-text);
+		font-weight: 600;
+		margin-left: 0.25em;
+	}
+
 	/* the end-date / timezone rows share one label column (max-content = the
 	   widest label in the current language), so the boxes line up edge to edge;
 	   the labels stay in front of the boxes, centered against the 40px box
@@ -566,7 +578,8 @@
 		color: var(--on-accent);
 	}
 
-	button[type="submit"]:disabled {
+	button[type="submit"]:disabled,
+	input[type="submit"]:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 		/* out of hit testing: browsers fire no click events for disabled

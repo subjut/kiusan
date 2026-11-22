@@ -448,11 +448,62 @@ if (ss && ssWarn) {
 		});
 	});
 
+	// ---- submit gate -----------------------------------------------------------
+	// At least one date is required: the submit button stays disabled until
+	// the picker carries a date (the server enforces the same in
+	// meetFormPostHandler, so a direct POST without slots 400s). The hint
+	// below the date picker reads amber while no date is picked and is
+	// hidden once one is; a click on the greyed submit turns it red and
+	// shakes it — a disabled control swallows its own clicks, so the
+	// form-level handler hit-tests the coordinates against the button's
+	// rect (the same trick as the vote page's must-answer gate).
+	var submitBtn = form.querySelector('input[type="submit"]');
+	var dateHint = document.getElementById("date-hint");
+	function refreshSubmit() {
+		var empty = Object.keys(dateTimes).length === 0;
+		if (submitBtn) submitBtn.disabled = empty;
+		if (dateHint) {
+			dateHint.hidden = !empty;
+			if (!empty) dateHint.classList.remove("err");
+		}
+	}
+	if (dateHint) {
+		dateHint.addEventListener("animationend", function () {
+			dateHint.classList.remove("err");
+		});
+		form.addEventListener("click", function (e) {
+			if (!submitBtn || !submitBtn.disabled) return;
+			var b = submitBtn.getBoundingClientRect();
+			if (
+				e.clientX >= b.left &&
+				e.clientX <= b.right &&
+				e.clientY >= b.top &&
+				e.clientY <= b.bottom
+			) {
+				var r = dateHint.getBoundingClientRect();
+				var shake = function () {
+					// Remove before re-adding (reflow between) so the shake
+					// restarts on a repeated click.
+					dateHint.classList.remove("err");
+					void dateHint.offsetWidth;
+					dateHint.classList.add("err");
+				};
+				if (r.top >= 0 && r.bottom <= window.innerHeight) {
+					shake();
+				} else {
+					dateHint.scrollIntoView({ block: "center", behavior: "smooth" });
+					window.setTimeout(shake, 250);
+				}
+			}
+		});
+	}
+
 	function renderAll() {
 		renderCalendar();
 		renderDateChips();
 		renderDateTimes();
 		renderPreview();
+		refreshSubmit();
 	}
 	Locale.onChange(renderAll); // the "Display" dropdown re-renders the picker
 	renderAll();

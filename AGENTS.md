@@ -116,7 +116,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   create -> redirect -> read round trip (timezone-aware slots), the form's
   timezone select (alphabetical options, the labels carrying the standard
   UTC offset in parentheses on the entity-decoded body), form validation
-  (bad/malformed dates and times, invalid timezones, encoding), and the
+  (missing title, zero selected dates, bad/malformed dates and times,
+  invalid timezones, encoding), and the
   random URL key contract; `poll_test.go` covers the answer
   lifecycle on the two-link model (identity cookie + CSRF, answering,
   visibility / hide-users, single-slot enforcement, the totals rows
@@ -215,7 +216,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   template markup, and cover: the dater picker (calendar rendering,
   select/deselect, past-day disabling, add-time-to-all, per-date times
   incl. Enter, chip removal, the clear buttons, the submit slot
-  serialization, the seeded edit-mode prefill, the timezone prefill /
+  serialization, the submit gate (disabled until at least one date is
+  selected) + the date hint (visible while empty, the disabled-submit
+  click flash, hidden after a pick), the seeded edit-mode prefill, the
+  timezone prefill /
   edit-mode keep, the character counters, the single-signup wipe
   warning, the locale-switch re-render), the poll answers-table
   behaviour (the mark toggles, mark switching, the neutral unmarked
@@ -295,7 +299,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   small response helpers (`notFoundHandler`, `linkGone` — the 404 page
   for a deleted poll or vote link, `static/meet-gone.html` rendered
   with a 404 status —, `sendErr`, `sendInternal`, `saveError`), the
-  shared form size consts and `validateTextFields`, and
+  shared form size consts and `validateTextFields` (the title is
+  required — the first case rejects an empty one), and
   `parseEndDate`/`endOf`.
 - `answers.go` — the shared answer & lifecycle handlers for both link
   shapes: `answerData` (the type-erased submitted payload — per-slot /
@@ -315,6 +320,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   calendar labels), `meetFormHandler` (create), `meetFormEditHandler`
   (admin link only, prefilled, keeps both links), `extraTimezone`, and
   `meetFormPostHandler` (create or update-in-place on a `meetingkey`;
+  rejects a submission with no selected dates — at least one slot is
+  required, mirrored by the picker's client-side submit gate;
   the update prunes the final marks of removed slots and wipes them
   on a single-signup flip).
 - `meet-page.go` — the meeting page: the table cell types
@@ -450,7 +457,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `static/meet-gone.html` — the 404 page for a deleted poll or vote,
   `static/vote-form.html` — the vote create/edit form (incl. the
   `Voting type:` radio group and the hide-totals checkbox),
-  `static/vote.html`; layout:
+  `static/vote.html`; the required form fields' group headings (the
+  title label, the meeting form's select-dates legend, the vote form's
+  options legend, the answers tables' Name column header while the form
+  row is live) carry a red `*` (`.req`, an `aria-hidden` sibling span of
+  the `data-i18n` span so the locale swap keeps it); layout:
   `static/layouts/home.html`, partials in `static/partials/` — incl.
   `answers-table.html` (the poll's) and `vote-answers-table.html` (the
   shared answers-table markup the live vote form and the closed
@@ -475,7 +486,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   warning — the re-open's turns amber (`.reopen-warning`) while final
   marks are set), rendered only in the admin view),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
-  widget (locale-aware labels via `locale.js`), `poll.js` — the poll
+  widget (locale-aware labels via `locale.js`; keeps the form's submit
+  button disabled until at least one date is selected and flashes the
+  `date-hint` — a `p.must-hint` under the date picker, new `form.dateHint`
+  key — when the greyed submit is clicked, the vote page's must-answer
+  pattern; the submit `:disabled` rule covers `input[type=submit]` too,
+  whose `pointer-events: none` lets the click land on the form for the
+  hit-test), `poll.js` — the poll
   page's answer-table toggling + single-slot grey-out, `page.js` — the
   shared page behaviour both page types have in common (the
   answers-table width measurement, the sticky-header row offsets —

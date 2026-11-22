@@ -59,6 +59,7 @@ form.singleSignupWipes: "Achtung: Dies löscht alle bereits abgegebenen Antworte
 form.endDate: "Endet am:"
 form.timezone: "Zeitzone:"
 form.selectDates: "Daten auswählen"
+form.dateHint: "Wähle mindestens ein Datum aus."
 form.calPrev: "Vorheriger Monat"
 form.calNext: "Nächster Monat"
 form.clearDates: "Alle Daten löschen"

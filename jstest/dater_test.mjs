@@ -68,6 +68,7 @@ function formFixture({ slots = "", tzOptions = ["America/New_York", "Europe/Berl
 	<button type="button" id="cal-next">›</button>
 	<table class="cal-grid" id="cal-grid"></table>
 	<div class="chips" id="date-chips"></div>
+	<p class="must-hint" id="date-hint">Select at least one date.</p>
 	<button type="button" id="clear-dates">clear</button>
 	<input type="time" id="time-input">
 	<button type="button" id="add-time">all</button>
@@ -226,6 +227,41 @@ test("clear-times keeps the dates; clear-dates clears everything", async (t) => 
 	assert.equal(doc(w).querySelectorAll("#date-chips .chip").length, 0);
 	assert.equal(doc(w).querySelectorAll("#date-times .date-times-row").length, 0);
 	assert.equal(preview(w).textContent, "No dates selected");
+});
+
+test("the submit button is disabled until a date is selected", async (t) => {
+	const d = nextMonthDay(10);
+	const w = await page({});
+	const submit = doc(w).querySelector('#form input[type="submit"]');
+	assert.ok(submit.disabled); // no dates yet
+	// the view starts on the current month: step to the next one first
+	click(w, doc(w).getElementById("cal-next"));
+	click(w, dayBtn(w, d));
+	assert.ok(!submit.disabled); // one date selected
+	click(w, doc(w).getElementById("clear-dates"));
+	assert.ok(submit.disabled); // cleared back to empty
+});
+
+test("the date hint is visible while empty and flashes on a disabled-submit click", async (t) => {
+	const d = nextMonthDay(10);
+	const w = await page({});
+	const submit = doc(w).querySelector('#form input[type="submit"]');
+	const hint = doc(w).getElementById("date-hint");
+	assert.ok(submit.disabled);
+	assert.ok(!hint.hidden); // no dates: the hint is visible
+	// a disabled control swallows real clicks; the form handler hit-tests
+	// the coordinates against the button's rect (zero-sized in jsdom, so
+	// 0,0 lands inside it)
+	submit.dispatchEvent(new w.MouseEvent("click",
+		{ bubbles: true, clientX: 0, clientY: 0 }));
+	assert.ok(hint.classList.contains("err"));
+	hint.dispatchEvent(new w.Event("animationend"));
+	assert.ok(!hint.classList.contains("err"));
+	// picking a date re-enables the submit and hides the hint
+	click(w, doc(w).getElementById("cal-next"));
+	click(w, dayBtn(w, d));
+	assert.ok(!submit.disabled);
+	assert.ok(hint.hidden);
 });
 
 test("the submit serializes the slots", async (t) => {

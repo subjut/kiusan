@@ -25,7 +25,7 @@
 		<table class="answers-table vote-table{{if eq .VoteType "freetext"}} vote-freetext{{end}}">
 		<thead>
 		<tr>
-			<th scope="col" class="th-name" data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</th>
+			<th scope="col" class="th-name"><span data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</span>{{if or $.FormNew $.FormID}}<span class="req" aria-hidden="true">*</span>{{end}}</th>
 			{{range $c := .Choices}}
 			<th scope="col" class="th-choice{{if final $.Final $c.ID}} final final-top{{end}}">{{ $c.Text }}</th>
 			{{end}}

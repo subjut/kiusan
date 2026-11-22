@@ -75,6 +75,7 @@ form.singleSignupWipes: "Warning: activating this deletes all answers already gi
 form.endDate: "Poll ends:"
 form.timezone: "Timezone:"
 form.selectDates: "Select date(s)"
+form.dateHint: "Select at least one date."
 form.calPrev: "Previous month"
 form.calNext: "Next month"
 form.clearDates: "Clear all dates"

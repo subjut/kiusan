@@ -6,8 +6,8 @@
 		{{if .MeetForm.MeetingKey}}<input type="hidden" name="meetingkey" value="{{.MeetForm.MeetingKey}}">{{end}}
 		<h2 data-i18n="{{.MeetForm.FormTitleKey}}">{{.T .MeetForm.FormTitleKey}}</h2>
 		<div class="form-field">
-			<label for="title" data-i18n="form.title">{{.T "form.title"}}</label>
-			<input type="text" id="title" name="title" value="{{.MeetForm.Title}}" maxlength="100">
+			<label for="title"><span data-i18n="form.title">{{.T "form.title"}}</span><span class="req" aria-hidden="true">*</span></label>
+			<input type="text" id="title" name="title" value="{{.MeetForm.Title}}" maxlength="100" required>
 			<span class="char-count" id="title-count"></span>
 		</div>
 		<div class="form-field">
@@ -46,7 +46,7 @@
 		</div>
 
 		<fieldset class="dates-picker">
-			<legend data-i18n="form.selectDates">{{.T "form.selectDates"}}</legend>
+			<legend><span data-i18n="form.selectDates">{{.T "form.selectDates"}}</span><span class="req" aria-hidden="true">*</span></legend>
 			<div class="cal-nav">
 				<button type="button" id="cal-prev" aria-label="{{.MeetForm.CalPrev}}">‹</button>
 				<span class="cal-title" id="cal-title"></span>
@@ -56,6 +56,7 @@
 			<div class="chips" id="date-chips"></div>
 			<button type="button" class="clear-btn" id="clear-dates" data-i18n="form.clearDates">{{.T "form.clearDates"}}</button>
 		</fieldset>
+		<p class="must-hint" id="date-hint" data-i18n="form.dateHint">{{.T "form.dateHint"}}</p>
 
 		<fieldset class="times-picker">
 			<legend data-i18n="form.timesLegend">{{.T "form.timesLegend"}}</legend>
