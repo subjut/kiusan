@@ -89,25 +89,43 @@ if (delForm) {
 	});
 }
 
-// Deleting the poll or vote is the site's most destructive action: the
-// button opens the inline warning (a role=alert, so screen readers
-// announce it) and its confirm button submits the form. The confirm
-// button is the only submit path, so a plain browser (no JS) never
-// reaches it — delete stays an explicit two-step confirmation.
-var pollDel = document.getElementById("poll-del-form");
-var warning = document.querySelector(".delete-warning");
-if (pollDel && warning) {
-	var delBtn = pollDel.querySelector(".delete-poll-btn");
+// Two-step confirmation: the trigger button opens the inline warning
+// (a role=alert, so screen readers announce it) and its confirm button
+// submits the form. The confirm button is the only submit path, so a
+// plain browser (no JS) never reaches it — the action stays an explicit
+// two-step confirmation. Delete-poll uses it (the site's most
+// destructive action), and re-open does while final marks are set
+// (re-opening deletes them).
+function wireTwoStep(form, trigger, warning, cancel) {
 	var confirmBtn = warning.querySelector('button[type="submit"]');
-	var cancelBtn = warning.querySelector(".delete-cancel");
-	delBtn.addEventListener("click", function () {
+	trigger.addEventListener("click", function () {
 		warning.hidden = false;
 		confirmBtn.focus();
 	});
-	cancelBtn.addEventListener("click", function () {
+	cancel.addEventListener("click", function () {
 		warning.hidden = true;
-		delBtn.focus();
+		trigger.focus();
 	});
+}
+var pollDel = document.getElementById("poll-del-form");
+var delWarn = document.querySelector(".delete-warning");
+if (pollDel && delWarn) {
+	wireTwoStep(
+		pollDel,
+		pollDel.querySelector(".delete-poll-btn"),
+		delWarn,
+		delWarn.querySelector(".delete-cancel")
+	);
+}
+var pollReopen = document.getElementById("poll-reopen-form");
+var reopenWarn = document.querySelector(".reopen-warning");
+if (pollReopen && reopenWarn) {
+	wireTwoStep(
+		pollReopen,
+		pollReopen.querySelector(".reopen-poll-btn"),
+		reopenWarn,
+		reopenWarn.querySelector(".reopen-cancel")
+	);
 }
 
 // Clicking a link box selects the whole URL for copying.

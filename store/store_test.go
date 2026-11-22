@@ -158,6 +158,7 @@ func TestUpdateCAS(t *testing.T) {
 
 	m.Title = "updated"
 	m.Expires = time.Date(2027, 1, 1, 23, 59, 59, 0, time.UTC)
+	m.FinalSlots = database.TimeSlice{m.Dates[0]}
 	if err := s.Update(m); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
@@ -168,7 +169,8 @@ func TestUpdateCAS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Title != "updated" || got.Generation != 1 || !got.Expires.Equal(m.Expires) {
+	if got.Title != "updated" || got.Generation != 1 || !got.Expires.Equal(m.Expires) ||
+		len(got.FinalSlots) != 1 || !got.FinalSlots[0].Equal(m.Dates[0]) {
 		t.Fatalf("Update not stored: %+v", got)
 	}
 
@@ -227,6 +229,7 @@ func TestVoteLifecycle(t *testing.T) {
 	got.Title = "edited"
 	got.HideTotals = false
 	got.VoteType = database.VoteTypeYes
+	got.FinalChoices = database.StringSlice{"c1"}
 	if err := s.UpdateVote(got); err != nil {
 		t.Fatalf("UpdateVote: %v", err)
 	}
@@ -238,8 +241,8 @@ func TestVoteLifecycle(t *testing.T) {
 		t.Fatalf("GetVote: %v", err)
 	}
 	if got2.Title != "edited" || got2.HideTotals || got2.VoteType != database.VoteTypeYes ||
-		got2.Generation != 1 {
-		t.Fatalf("UpdateVote not stored (all mutable columns, incl. hide_totals, must be carried): %+v", got2)
+		got2.Generation != 1 || len(got2.FinalChoices) != 1 || got2.FinalChoices[0] != "c1" {
+		t.Fatalf("UpdateVote not stored (all mutable columns, incl. final_choices, must be carried): %+v", got2)
 	}
 
 	// The CAS conflict.

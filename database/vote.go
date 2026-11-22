@@ -65,6 +65,41 @@ func (c *ChoiceList) Scan(value any) error {
 	}
 }
 
+// StringSlice holds a list of plain strings. It persists as a JSON
+// document in a single TEXT column (via GormDataType/Value/Scan) like
+// TimeSlice, so the schema stays portable across every backend.
+type StringSlice []string
+
+// GormDataType tells GORM to use a plain text column.
+func (StringSlice) GormDataType() string { return "text" }
+
+// Value implements driver.Valuer; GORM calls this before storing.
+func (s StringSlice) Value() (driver.Value, error) {
+	if s == nil {
+		return "[]", nil
+	}
+	b, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
+}
+
+// Scan implements sql.Scanner; GORM calls this when reading.
+func (s *StringSlice) Scan(value any) error {
+	switch v := value.(type) {
+	case nil:
+		*s = nil
+		return nil
+	case []byte:
+		return json.Unmarshal(v, s)
+	case string:
+		return json.Unmarshal([]byte(v), s)
+	default:
+		return fmt.Errorf("database: cannot scan %T into StringSlice", value)
+	}
+}
+
 // VoteAnswer is one respondent's answer to a vote. In mark mode, Marks
 // maps choice ID to "y", "m", or "n" ("m" only in a yes-maybe-no vote).
 // In free-text mode, Notes maps choice ID to the voter's text. Only one
@@ -152,10 +187,15 @@ type Vote struct {
 	// ClosedAt stamps the moment the vote was closed; the close handler
 	// sets it and the re-open handler clears it. Rows closed before this
 	// column existed carry nil — FinishedAt then falls back to Expires.
-	ClosedAt *time.Time     `gorm:"default:null"`
-	Choices  ChoiceList     `gorm:"not null"`
-	Expires  time.Time      `gorm:"not null"`
-	Answers  VoteAnswerList `gorm:"not null;default:'[]'"`
+	ClosedAt *time.Time `gorm:"default:null"`
+	Choices  ChoiceList `gorm:"not null"`
+	// FinalChoices are the stable option IDs the admin marked final on a
+	// closed vote — the options the decision landed on, highlighted as
+	// columns on both links. The re-open handler clears them; editing
+	// prunes the ones whose options no longer exist.
+	FinalChoices StringSlice    `gorm:"not null;default:'[]'"`
+	Expires      time.Time      `gorm:"not null"`
+	Answers      VoteAnswerList `gorm:"not null;default:'[]'"`
 	// Generation advances with every store-level write; it is the
 	// compare-and-set stamp of VoteStore.UpdateVote.
 	Generation int `gorm:"not null;default:0"`

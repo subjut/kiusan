@@ -80,17 +80,25 @@ type answerPage struct {
 	DeletesKey string
 	// ClosedAt/ClosedAtKey: the closure moment (a datetime) shown on the
 	// closed notice; empty while the poll never was closed.
-	ClosedAt          string
-	ClosedAtKey       string
-	Ended             bool
-	Closed            bool
-	IsAdmin           bool
-	UserLink          string
-	AdminLink         string
-	EditLink          string
-	CloseAction       string
-	ReopenAction      string
-	DeletePollAction  string
+	ClosedAt         string
+	ClosedAtKey      string
+	Ended            bool
+	Closed           bool
+	IsAdmin          bool
+	UserLink         string
+	AdminLink        string
+	EditLink         string
+	CloseAction      string
+	ReopenAction     string
+	DeletePollAction string
+	// FinalAction posts the final-mark toggle (the admin link's
+	// capability URL); Final/HasFinal carry the marked slots/options
+	// (the highlight's cells) and the re-open warning's existence;
+	// ReopenWarnKey the warning's localized text key (meet/vote).
+	FinalAction       string
+	Final             []string
+	HasFinal          bool
+	ReopenWarnKey     string
 	SelfLink          string
 	FormNew           bool
 	FormID            string
@@ -135,6 +143,10 @@ type totalsRow struct {
 	Sym2    string
 	Values  []int
 	Max     int
+	// Last: set on the totals row that ends the table (the one directly
+	// above the footer row) — it carries the final column's frame bottom
+	// edge (a class, not :has(), so it works in every browser).
+	Last bool
 }
 
 // rowMax is the row's largest value (zero when every value is zero, so

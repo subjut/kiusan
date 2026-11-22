@@ -25,6 +25,7 @@ type voteCol struct {
 	PressY   []string
 	PressM   []string
 	PressN   []string
+	Last     bool // set on the last voter row (the table's last content row when the totals are hidden)
 }
 
 // votePage is the vote page's page data (the mode, the type and the
@@ -44,9 +45,11 @@ type votePage struct {
 	// (a free-text vote, the hide-totals option, or the user page of a
 	// vote with hidden respondents).
 	Totals []totalsRow
-	// TotalsColspan spans the gap row above the totals block (name
-	// column + one cell per choice).
-	TotalsColspan int
+	// HasFooter: whether the table's borderless footer row renders (the
+	// closed admin view's toggle buttons, or the final options' "Final!"
+	// labels on both links) — the row above it carries the final frame's
+	// bottom edge.
+	HasFooter bool
 }
 
 // voteHandler renders the vote page for a user or admin link: the same
@@ -178,6 +181,9 @@ func voteHandler(c fiber.Ctx) error {
 			Marks: marks, Notes: notes, Syms: syms, Csls: csls, Fcls: fcls,
 			PressY: py, PressM: pm, PressN: pn})
 	}
+	if len(cols) > 0 {
+		cols[len(cols)-1].Last = true
+	}
 
 	// The form row renders as the table's last row (next to the save/
 	// cancel bar below the answers): the edited voter's row is skipped in
@@ -227,6 +233,7 @@ func voteHandler(c fiber.Ctx) error {
 			totals = append(totals, totalsRow{NameKey: "totals.no", Name: translator.MustLocalize(c, "totals.no"),
 				Cls: "tot-r", Mark: "r", Sym: "✗", Values: no, Max: rowMax(no)})
 		}
+		totals[len(totals)-1].Last = true
 	}
 
 	csrf := ""
@@ -261,6 +268,10 @@ func voteHandler(c fiber.Ctx) error {
 		closedAt = v.ClosedAt.UTC().Format("2 Jan 2006 15:04")
 		closedAtKey = slotKey(*v.ClosedAt)
 	}
+	// The final marks' option IDs: the columns both links highlight (the
+	// admin view adds the header's toggle buttons).
+	finalIDs := make([]string, 0, len(v.FinalChoices))
+	finalIDs = append(finalIDs, v.FinalChoices...)
 
 	return renderPage(c, "vote", "pagetitle.meet", v.Title, &pageData{
 		Vote: &votePage{
@@ -286,6 +297,10 @@ func voteHandler(c fiber.Ctx) error {
 				CloseAction:      "/vote/" + v.AdminKey + "/close",
 				ReopenAction:     "/vote/" + v.AdminKey + "/reopen",
 				DeletePollAction: "/vote/" + v.AdminKey + "/delete",
+				FinalAction:      "/vote/" + v.AdminKey + "/final",
+				Final:            finalIDs,
+				HasFinal:         len(v.FinalChoices) > 0,
+				ReopenWarnKey:    "vote.reopenWarn",
 				SelfLink:         "/vote/" + viewKey,
 				FormNew:          formNew,
 				FormID:           formID,
@@ -310,15 +325,15 @@ func voteHandler(c fiber.Ctx) error {
 				SubmitAnswerKey:   submitKey,
 				SubmitAnswerLabel: translator.MustLocalize(c, submitKey),
 			},
-			Single:        v.SingleChoice,
-			MustAnswer:    v.MustAnswer,
-			Choices:       v.Choices,
-			ModeKey:       modeKey,
-			VoteType:      v.VoteType,
-			VoteCols:      cols,
-			VoteFormCol:   formCol,
-			Totals:        totals,
-			TotalsColspan: 1 + len(v.Choices),
+			Single:      v.SingleChoice,
+			MustAnswer:  v.MustAnswer,
+			Choices:     v.Choices,
+			ModeKey:     modeKey,
+			VoteType:    v.VoteType,
+			VoteCols:    cols,
+			VoteFormCol: formCol,
+			Totals:      totals,
+			HasFooter:   (isAdmin && closed) || len(v.FinalChoices) > 0,
 		},
 	})
 }

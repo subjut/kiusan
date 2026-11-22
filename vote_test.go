@@ -1315,3 +1315,100 @@ func TestVoteEditVoteTypeFlip(t *testing.T) {
 		t.Errorf("marks survived the flip to freetext: %v", edited.Answers[0].Marks)
 	}
 }
+
+// A closed vote's final marks: the option column the decision landed on,
+// highlighted on both links, toggled through the admin's capability
+// endpoint, and cleared by re-opening.
+func TestVoteFinalChoices(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	userKey, adminKey := createVote(t, app, nil)
+	choices := voteChoices(t, userKey)
+
+	post := func(path, form string) *http.Response {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		return r
+	}
+	get := func(path string) string {
+		t.Helper()
+		r, err := app.Test(httptest.NewRequest(http.MethodGet, path, nil))
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		return string(b)
+	}
+	status := func(r *http.Response, want int) {
+		t.Helper()
+		if r.StatusCode != want {
+			t.Fatalf("status %d, want %d", r.StatusCode, want)
+		}
+	}
+
+	// A running vote refuses final marks (and so does a user key).
+	status(post("/vote/"+userKey+"/final", "choice="+choices[0].ID), http.StatusNotFound)
+	status(post("/vote/"+adminKey+"/final", "choice="+choices[0].ID), http.StatusBadRequest)
+
+	// Close the vote, then mark the first option final.
+	status(post("/vote/"+adminKey+"/close", ""), http.StatusSeeOther)
+	status(post("/vote/"+adminKey+"/final", "choice="+choices[0].ID), http.StatusSeeOther)
+	v, _ := db.GetVote(userKey)
+	if len(v.FinalChoices) != 1 || v.FinalChoices[0] != choices[0].ID {
+		t.Fatalf("final choice not stored: %+v", v.FinalChoices)
+	}
+
+	// The admin page: the footer row (the "Choose final option(s):" label
+	// in the name column, one pressed and one unpressed toggle button),
+	// the highlighted header, and the two-step re-open warning (a final
+	// is set).
+	bAdm := get("/vote/" + adminKey)
+	for _, want := range []string{
+		`data-i18n="vote.finalChoose"`,
+		`class="th-choice final final-top"`,
+		`class="final-btn" form="final-form" name="choice" value="` + choices[0].ID + `" aria-pressed="true"`,
+		`class="final-btn" form="final-form" name="choice" value="` + choices[1].ID + `" aria-pressed="false"`,
+		`class="final-footer-row"`,
+		`id="final-form"`,
+		`class="btn-secondary reopen-poll-btn"`,
+		`class="reopen-warning"`,
+	} {
+		if !strings.Contains(bAdm, want) {
+			t.Fatalf("admin final view missing %q", want)
+		}
+	}
+	// The user link: the highlight (header + the "Final!" label in the
+	// footer row) without the toggle buttons or the warning.
+	bUser := get("/vote/" + userKey)
+	if !strings.Contains(bUser, `class="th-choice final final-top"`) {
+		t.Fatalf("user view missing the final highlight")
+	}
+	if !strings.Contains(bUser, `class="final-footer-row"`) || !strings.Contains(bUser, `class="final-mark-text"`) {
+		t.Fatalf("user view missing the Final! label")
+	}
+	for _, absent := range []string{`final-btn`, `final-form`, `reopen-warning`} {
+		if strings.Contains(bUser, absent) {
+			t.Fatalf("user view must not carry %q", absent)
+		}
+	}
+
+	// Toggling the option again clears it.
+	status(post("/vote/"+adminKey+"/final", "choice="+choices[0].ID), http.StatusSeeOther)
+	v, _ = db.GetVote(userKey)
+	if len(v.FinalChoices) != 0 {
+		t.Fatalf("toggling must clear the final choice: %+v", v.FinalChoices)
+	}
+
+	// Set it again and re-open: the final marks go with the closure.
+	status(post("/vote/"+adminKey+"/final", "choice="+choices[0].ID), http.StatusSeeOther)
+	status(post("/vote/"+adminKey+"/reopen", ""), http.StatusSeeOther)
+	v, _ = db.GetVote(userKey)
+	if v.Closed || len(v.FinalChoices) != 0 {
+		t.Fatalf("re-open must clear the final marks: closed=%v finals=%+v", v.Closed, v.FinalChoices)
+	}
+}

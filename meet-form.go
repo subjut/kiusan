@@ -208,7 +208,10 @@ func meetFormPostHandler(c fiber.Ctx) error {
 			// single-slot answers stay valid there.) m carries the stored
 			// poll — its old mode — while form the submission.
 			if form.SingleSignup && !m.SingleSignup {
+				// Enabling single-signup also voids the final marks: one
+				// slot per answer leaves no decision to highlight.
 				m.Answers = nil
+				m.FinalSlots = nil
 			}
 			m.Title = form.Title
 			m.Description = form.Description
@@ -219,6 +222,7 @@ func meetFormPostHandler(c fiber.Ctx) error {
 			m.Dates = form.Dates
 			m.Expires = form.Expires
 			pruneAnswers(m)
+			pruneFinalSlots(m)
 		})
 		if err != nil {
 			return saveError(c, err)

@@ -150,6 +150,49 @@ func pruneAnswers(m *database.Meeting) {
 	}
 }
 
+// toggleFinalSlot toggles one slot (by its slotKey) in the poll's final
+// list: it must be one of the poll's candidate slots, and is added when
+// absent, removed when present.
+func toggleFinalSlot(dates, finals database.TimeSlice, id string) database.TimeSlice {
+	for _, d := range dates {
+		if slotKey(d) != id {
+			continue
+		}
+		for _, f := range finals {
+			if slotKey(f) == id {
+				out := make(database.TimeSlice, 0, len(finals)-1)
+				for _, g := range finals {
+					if slotKey(g) != id {
+						out = append(out, g)
+					}
+				}
+				return out
+			}
+		}
+		return append(finals, d)
+	}
+	return finals
+}
+
+// pruneFinalSlots drops final marks of slots the meeting no longer offers,
+// called when the poll is edited.
+func pruneFinalSlots(m *database.Meeting) {
+	if len(m.FinalSlots) == 0 {
+		return
+	}
+	instant := make(map[string]struct{}, len(m.Dates))
+	for _, d := range m.Dates {
+		instant[slotKey(d)] = struct{}{}
+	}
+	out := make(database.TimeSlice, 0, len(m.FinalSlots))
+	for _, f := range m.FinalSlots {
+		if _, ok := instant[slotKey(f)]; ok {
+			out = append(out, f)
+		}
+	}
+	m.FinalSlots = out
+}
+
 // validName trims and bounds the respondent name.
 func validName(raw string) (string, string) {
 	name := strings.TrimSpace(raw)

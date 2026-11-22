@@ -129,6 +129,28 @@ func TestChoiceListCodec(t *testing.T) {
 	}
 }
 
+func TestStringSliceCodec(t *testing.T) {
+	in := StringSlice{"c1", "c2"}
+	val, err := in.Value()
+	if err != nil {
+		t.Fatalf("Value: %v", err)
+	}
+	var out StringSlice
+	if err := out.Scan(val); err != nil {
+		t.Fatalf("Scan(Value): %v", err)
+	}
+	if !reflect.DeepEqual(out, in) {
+		t.Fatalf("round trip: %+v, want %+v", out, in)
+	}
+	var nilList StringSlice
+	if err := nilList.Scan(nil); err != nil || nilList != nil {
+		t.Fatalf("Scan(nil): err %v, out %v — want nil", err, nilList)
+	}
+	if err := nilList.Scan([]byte(`[1,2]`)); err == nil {
+		t.Fatalf("Scan(wrong element type): expected an error")
+	}
+}
+
 func TestVoteAnswerListCodec(t *testing.T) {
 	in := VoteAnswerList{
 		{

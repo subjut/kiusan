@@ -49,7 +49,12 @@ vote.noChoices: "This poll has no options."
 vote.modeYes: "Yes-only poll"
 vote.modeYesNo: "Yes/No poll"
 vote.modeYesMaybeNo: "Yes/Maybe/No poll"
+vote.finalChoose: "Choose final option(s):"
+vote.reopenWarn: "Re-opening the poll removes the final selections."
 vote.modeFreeText: "Free-text poll"
+# The final columns' label row: the rotated word below a final column
+# (both page types share it, like the totals rows).
+final.mark: "Final!"
 # The answers table' totals rows: the "Total" prefix of the label cell
 # and the mark's word (the label symbol's title tooltip).
 totals.total: "Total"
@@ -88,6 +93,9 @@ meet.copyTitle: "Copy link"
 meet.editPoll: "Edit poll"
 meet.closePoll: "Close poll"
 meet.reopenPoll: "Re-open poll"
+meet.reopenWarn: "Re-opening the poll deletes the final slot marks."
+meet.reopenConfirm: "Yes, re-open the poll"
+meet.finalChoose: "Choose final slot(s):"
 meet.deletePoll: "Delete poll"
 meet.deleteWarn: "This permanently deletes the poll and all answers. This cannot be undone."
 meet.deleteConfirm: "Yes, delete the poll"

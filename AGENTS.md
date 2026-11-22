@@ -26,13 +26,18 @@ Feature state (see `static/index.html`):
   token, poll expiry, the prefilled poll edit that keeps both links,
   and the admin-side poll lifecycle (close / re-open / delete, with a
   dedicated 404 page for deleted links). The answers table ends with
-  The answers table ends with
   the per-slot totals rows (`Yes`, plus `Yes + Maybe`) with the row's
   highest cells styled like the mark cells (green tint + text), the
   rows labelled a localized `Total` prefix + the mark's symbol (e.g.
   `Total ✓`, `Total ✓ (✓)`) — no totals on a single-signup poll, and
   none on the user page while respondents are hidden (the admin page
-  keeps them).
+  keeps them). A closed poll's admin may mark one or more slot columns
+  final (`Meeting.FinalSlots`) — the slot the meeting landed on —
+  framed + labelled in both links' answers tables, with the admin's
+  check-only toggle buttons in the table's footer row (see Gotchas →
+  Final marks); re-opening with
+  finals set warns and clears them, and single-signup polls carry no
+  final marks.
 - "Vote on Something" — implemented end to end: the create/edit form
   (`/vote-form`; title, contact email, description, up to 20 options
   with stable IDs, the four exclusive voting types — `yes/no` (the
@@ -47,13 +52,16 @@ Feature state (see `static/index.html`):
   404 page for deleted links), the per-vote identity cookie with CSRF
 token, and the per-choice totals rows per voting type (`Yes` always,
   `Yes + Maybe` + `Maybe` in yes/maybe/no, `No` in yes/no and
-  yes/maybe/no; none for free text) with the row's highest cells
-  with the row's highest cells styled like the mark cells (green /
-  amber / red tint + text), the rows labelled `Total` + the mark's
-  symbol — the admin page keeps them while respondents are hidden or
-  the vote form's hide-totals option is on. The block is set off from
+  yes-maybe/no; none for free text) with the row's highest cells
+  styled like the mark cells (green / amber / red tint + text), the
+  rows labelled `Total` + the mark's symbol — the admin page keeps
+  them while respondents are hidden or the vote form's hide-totals
+  option is on. The block is set off from
   the answer rows by a borderless gap row (the vote's totals carry no
-  combined yes + maybe row).
+  combined yes + maybe row). A closed vote's admin may likewise mark
+  one or more option columns final (`Vote.FinalChoices`, keyed by the
+  options' stable IDs) — same footer-toggle/frame/warning mechanic on
+  every voting type, free text and single-choice included.
 
 ## Commands
 
@@ -110,7 +118,6 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   UTC offset in parentheses on the entity-decoded body), form validation
   (bad/malformed dates and times, invalid timezones, encoding), and the
   random URL key contract; `poll_test.go` covers the answer
-  `poll_test.go` covers the answer
   lifecycle on the two-link model (identity cookie + CSRF, answering,
   visibility / hide-users, single-slot enforcement, the totals rows
   (placement below the form row, the max-cell highlight, the
@@ -118,7 +125,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   answer management, poll edit with stable links and mark pruning,
   expiry and prolongation, the admin poll lifecycle (close / re-open /
   delete, incl. the dedicated 404 page for deleted links), the
-  clickjacking headers, and the urlencoded-only POST gate;
+  final-slot marking (the closed-poll toggle, the user-key /
+  unknown-slot / open-poll / single-signup gates, the re-open
+  clearing, and `TestMeetFinalSlotsPrunedOnEdit` for the edit-time
+  pruning + the single-signup wipe), the clickjacking headers, and the
+  urlencoded-only POST gate;
   `vote_test.go` covers the vote form (render, create, the vote-type
   and field validation incl. the mode-checkbox combinations, the
   pre-checked edit form), the vote page per voting type (render, the
@@ -131,7 +142,9 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   and hide-totals admin visibility, the hide-totals option stored +
   edit-preserved), and the edit semantics (stable option IDs,
   text-change / delete / reorder answer handling, the vote-type flip's
-  mark/note pruning); `i18n_test.go` covers the locale resolution
+  mark/note pruning, the final-option marking
+  (`TestVoteFinalChoices`: the closed-poll toggle, the gates, the
+  re-open clearing)); `i18n_test.go` covers the locale resolution
   order (cookie → `Accept-Language` → English) and base-tag matching,
   the dropdown's selected state + `data-implicit` (cookie / header /
   default), the `/i18n/boot` + `/i18n/:lang` contract (merged dicts, the
@@ -165,13 +178,14 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   kind → sqlite + the default data file, missing DSN, unknown kind;
   `Create`'s key minting, the two-link resolution, the field round
   trip, `Delete`; the CAS `Update` / `UpdateVote` — success bumps
-  `Generation`, a stale stamp returns `store.ErrConflict`; plus
-  AutoMigrate's idempotency on re-open, the `PurgeFinished`/`PurgeFinishedVote`
-  retention sweep (the per-state matrix, legacy nil-stamp fallback),
-  and `Maintenance`), `database/database_test.go`
-  the JSON-in-TEXT codec contract of the four list types (`TimeSlice`,
-  `AnswerList`, `ChoiceList`, `VoteAnswerList`: round trips, nil →
-  `[]`, malformed / mistyped `Scan` → error) plus the
+  `Generation`, a stale stamp returns `store.ErrConflict`, the
+  `final_slots` / `final_choices` fields round-trip through the maps;
+  plus AutoMigrate's idempotency on re-open, the `PurgeFinished` /
+  `PurgeFinishedVote` retention sweep (the per-state matrix, legacy
+  nil-stamp fallback), and `Maintenance`), `database/database_test.go`
+  the JSON-in-TEXT codec contract of the five list types (`TimeSlice`,
+  `StringSlice`, `AnswerList`, `ChoiceList`, `VoteAnswerList`: round
+  trips, nil → `[]`, malformed / mistyped `Scan` → error) plus the
   `FinishedAt`/`DeletionDate` retention helpers (the earlier-of rule,
   the legacy nil-stamp fallback, calendar-month arithmetic), and `helpers_test.go`
   table-driven unit tests for the pure helpers (`rowMax`, `slotKey`,
@@ -179,12 +193,14 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `isFormPost`, `validVoteMark`, `assignChoiceIDs`, `pruneVoteAnswers`,
   `zoneLabel`, `offsetLabel` / `zoneOptionLabel` (the dropdown labels),
   `collectMarks` / `collectVoteAnswers` through a live form ctx via
-  `probeForm`). The suites run on GORM-sqlite; each test chdirs into
+  `probeForm`, `toggleFinalSlot` / `pruneFinalSlots`,
+  `toggleFinalChoice` / `pruneFinalChoices`). The suites run on
+  GORM-sqlite; each test chdirs into
   `t.TempDir()` and opens a throwaway store, so the dev data files are
-  never touched. Coverage: main ~85%, store ~76%, database ~75%.
+  never touched. Coverage: main ~86%, store ~70%, database ~77%.
 - CI: `.github/workflows/tests.yml` (push to main + PRs): `go build
   ./...`, `go vet ./...`, `go test -race` with an 80% total-coverage
-  floor (currently ~84%) — the coverage run is scoped to the app
+  floor (currently ~83%) — the coverage run is scoped to the app
   packages (`go list ./... | grep -v '/tools/'`): the dev-only
   `tools/testdb` seed tool has no tests of its own, and a 0% package in
   the combined profile would drag the module total below the floor — and
@@ -233,12 +249,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   page/form routes: `GET/POST /meet-form`, `GET /meet-form/edit/+`
   (admin key only), `GET/POST /vote-form`, `GET /vote-form/edit/+`,
   `GET /meet/+` + `POST /meet/+/answer|answer/edit|answer/delete` +
-  the admin lifecycle `POST /meet/+/close|reopen|delete` (the
+  the admin lifecycle `POST /meet/+/close|reopen|delete|final` (the
   answer/lifecycle routes register the shared `pollOps` builders —
-  `meetOps.postAnswer()`, `voteOps.postAnswer()`, …), the same triple
+  `meetOps.postAnswer()`, `meetOps.setFinal()`, …), the same routes
   for `/vote/+`, and the 404 fallthrough), and `newApp`
-  (template engine, the `zoneOption` template func (the precomputed
-  option labels), the request logger whose
+  (template engine, the `zoneOption` + `final` template funcs (the
+  precomputed option labels; the final-mark membership test for the
+  highlighted cells), the request logger whose
   `Skip` covers every capability URL so link keys never reach the log).
 - `config.go` — the runtime configuration: `Config` + `loadConfig`
   (every key resolves env `KIUSAN_*` > `$KIUSAN_DATA_DIR/kiusan.yaml` >
@@ -265,13 +282,15 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   description, hide-users, end date — embedded by `meetingForm` and
   `voteForm`), `answerPage` (the data shared by the meeting and vote
   pages — header meta, the admin links section, the answer form row,
-  the table's aria strings — embedded by `meetingPage` and `votePage`
-  and received by the shared partials, which call its `T` method as
-  `{{.T "key"}}`), `themeClass`, `absURL` (the public
+  the table's aria strings, the final-marks state (`FinalAction`,
+  `Final`, `HasFinal`, `ReopenWarnKey`) — embedded by `meetingPage`
+  and `votePage` and received by the shared partials, which call its
+  `T` method as `{{.T "key"}}`), `themeClass`, `absURL` (the public
   origin for the copyable link boxes), `pressAttr`, the shared
   `totalsRow` type (mark label + tooltip word, color/st classes, the
-  row's glyphs, per-column values, max) + `rowMax` (the answers
-  tables' summary rows),
+  row's glyphs, per-column values, max, `Last` on the row that ends the
+  table — the one the handlers flag `pre-footer` above the footer)
+  + `rowMax` (the answers tables' summary rows),
   `homeHandler`, the
   small response helpers (`notFoundHandler`, `linkGone` — the 404 page
   for a deleted poll or vote link, `static/meet-gone.html` rendered
@@ -283,23 +302,29 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   per-choice marks + the free-text notes), `pollOps[T]` (the
   type-specific surface of one answers table — `resolve` (user key
   first, then admin key), `exists`, `keyOf`, `cookie`, `ended` /
-  `closed` / `setClosed`, `hasAns`, `collect`, `upsert` / `remove`,
-  `save`, `purge`), the six generic handlers (`answerPost`,
-  `answerEditPost`, `answerDeletePost`, `closePollPost`,
-  `reopenPollPost`, `deletePollPost`) and the builder methods on
-  `*pollOps[T]` (`postAnswer()` etc., each returning a `fiber.Handler`
-  so the routes read `meetOps.postAnswer()`), and the package vars
-  `meetOps` / `voteOps`.
+  `closed` / `setClosed` (the re-open clears the final marks), `hasAns`,
+  `collect`, `upsert` / `remove`, `save`, `purge`, and `finalAllowed` /
+  `finalOK` / `toggleFinal` (the final-marks surface)), the seven
+  generic handlers (`answerPost`, `answerEditPost`, `answerDeletePost`,
+  `closePollPost`, `reopenPollPost`, `deletePollPost`, `setFinalPost`)
+  and the builder methods on `*pollOps[T]` (`postAnswer()`,
+  `setFinal()`, …, each returning a `fiber.Handler` so the routes read
+  `meetOps.postAnswer()`), and the package vars `meetOps` / `voteOps`.
 - `meet-form.go` — the meeting form: the `meetingForm` page struct
   (embeds `formBase`; the timezone list, the prefill fields, the
   calendar labels), `meetFormHandler` (create), `meetFormEditHandler`
   (admin link only, prefilled, keeps both links), `extraTimezone`, and
-  `meetFormPostHandler` (create or update-in-place on a `meetingkey`).
+  `meetFormPostHandler` (create or update-in-place on a `meetingkey`;
+  the update prunes the final marks of removed slots and wipes them
+  on a single-signup flip).
 - `meet-page.go` — the meeting page: the table cell types
-  (`formSlot`, `timeCell`, `headerYear`, `headerDate`, `respCol`), the
-  `meetingPage` struct (embeds `answerPage`; the poll's zone, the slot
-  grid, the respondent columns, the edit `FormCol`, the per-slot
-  `Totals` rows), and
+  (`formSlot` (Key + the slot's date label in the poll's zone, the
+  closed admin view's final toggle's tooltip), `timeCell`,
+  `headerYear`, `headerDate`, `respCol`), the `meetingPage` struct
+  (embeds `answerPage`; the poll's zone, the slot grid, the
+  respondent columns, the edit `FormCol`, the per-slot `Totals` rows,
+  `HasFooter` — whether the borderless footer row renders, so the
+  handler can flag the row above it `pre-footer`), and
   `meetingHandler` (user key → respondent view, admin key → admin
   view). The answer & lifecycle endpoints are the shared generics in
   `answers.go`.
@@ -308,11 +333,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   checkbox, the vote type),
   `voteFormHandler` (create), `voteFormEditHandler` (admin link only,
   prefilled), `voteFormPostHandler` (create or update-in-place on a
-  `votekey`).
+  `votekey`; the update prunes the final marks of removed options).
 - `vote-page.go` — the vote page: the `voteCol` cell type, the
   `votePage` struct (embeds `answerPage`; the mode, the choices, the
-  vote columns, the edit `VoteFormCol`, the per-choice `Totals` rows),
-  and `voteHandler`. The answer
+  vote columns, the edit `VoteFormCol`, the per-choice `Totals` rows,
+  `HasFooter` — whether the borderless footer row renders, so the
+  handler can flag the row above it `pre-footer`), and `voteHandler`.
+  The answer
   & lifecycle endpoints are the shared generics in `answers.go`.
 - `poll.go` — the poll plumbing shared by the handlers: the
   per-identity cookie pair shared with the vote's (name-based
@@ -325,9 +352,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `config.go`), `slotKey` (the slot's absolute
   UTC instant, seconds stripped), `resolveMeeting` (user key first,
   then admin key — the `pollOps` adapter's resolver), the
-  answer-list operations (find/upsert/remove/prune), the generic
-  `saveEntity` CAS round trip (fresh read, mutate, compare-and-set
-  `Update`, retry on conflict), `loadMeeting`, the thin
+  answer-list operations (find/upsert/remove/prune), the
+  final-marks helpers `toggleFinalSlot` / `pruneFinalSlots`, the
+  generic `saveEntity` CAS round trip (fresh read, mutate,
+  compare-and-set `Update`, retry on conflict), `loadMeeting`, the thin
   `saveMeeting` wrapper around it, and `collectMarks`.
 - `vote.go` — the vote plumbing, mirroring the poll's: `voteCookieName`
   and `voteEnded`, `validVoteMark` (the marks a type accepts:
@@ -340,9 +368,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   pruned, a deleted row drops its ID, reordering carries them),
   `pruneVoteAnswers` (drops marks/notes for removed options and the
   map the vote's type no longer uses, plus the `m` marks of a yes/no
-  vote), `resolveVote` (the vote's `pollOps` resolver), `loadVote`, and
-  the thin `saveVote` wrapper around `poll.go`'s generic `saveEntity`
-  (compare-and-set `UpdateVote`, retry on conflict).
+  vote), the final-marks helpers `toggleFinalChoice` /
+  `pruneFinalChoices`, `resolveVote` (the vote's `pollOps` resolver),
+  `loadVote`, and the thin `saveVote` wrapper around `poll.go`'s
+  generic `saveEntity` (compare-and-set `UpdateVote`, retry on
+  conflict).
 - `i18n.go` — the interface-localization plumbing: the `translator`
   (`gofiber/contrib/v3/i18n` over `go-i18n/v2` with a YAML
   `EmbedLoader` on the `locales/` directory), the `langHandler` hook
@@ -367,8 +397,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   always-set `Expires`, `Closed` (a closed poll stops accepting
   answers, independent of `Expires`) + `ClosedAt` (the closure moment —
   set by the close handler, cleared by re-open, nil on legacy rows),
-  `SingleSignup` (at most one slot per answer), `Answers`, and the CAS
-  stamp `Generation`), plus the retention helpers `FinishedAt()` (the
+  `SingleSignup` (at most one slot per answer), `FinalSlots` (the
+  slots the admin marked final on a closed poll — a `TimeSlice`;
+  see Gotchas → Final marks), `Answers`, and the CAS stamp
+  `Generation`), plus the retention helpers `FinishedAt()` (the
   earlier of closure and end date, nil-stamp fallback to `Expires`) and
   `DeletionDate(months)` (`FinishedAt` + calendar months);
   `Answer`/`AnswerList` (submitted answers, marks keyed by `slotKey`;
@@ -380,12 +412,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `yes-maybe-no`, and `freetext`; mutually exclusive with
   `SingleChoice`), and `HideTotals` (keeps the totals rows off the
   user page — the admin page keeps them)), `Choice`/`ChoiceList` (the
-  options with their
-  stable IDs), and `VoteAnswer`/`VoteAnswerList` (answers whose `Marks`
-  and `Notes` maps are keyed by choice ID, exactly one of them
+  options with their stable IDs), `StringSlice` (the plain-string
+  JSON-in-TEXT list behind `Vote.FinalChoices` — the option IDs the
+  admin marked final), and `VoteAnswer`/`VoteAnswerList` (answers whose
+  `Marks` and `Notes` maps are keyed by choice ID, exactly one of them
   populated per vote type), same JSON-in-TEXT treatment. No handles
   or globals here. `database_test.go` pins the codec contract of the
-  four list types (see Commands → Tests).
+  five list types (see Commands → Tests).
 - `store/` — `store.Store` (`store.go`, embedding `MeetingStore` +
   `VoteStore`) and its GORM-backed implementation `gorm.go` (sqlite —
   the default — plus mysql/mariadb/postgres; the DSN arrives assembled
@@ -396,10 +429,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (collision-checked against both key columns, retry-capped);
   `Get`/`GetAdmin` resolve the two links; `Update` is a compare-and-set
   on `Generation` (`ErrConflict` when stale) and honors a changed admin
-  key; the user key never changes. `VoteStore` (`vote.go`) carries the
-  `VoteStore` (`vote.go`) carries the
-  vote mirror — `CreateVote`, `GetVote`/`GetVoteAdmin`, and
-  `UpdateVote`, the same compare-and-set. `PurgeFinished` /
+  key; the user key never changes (the CAS maps carry the final fields
+  `final_slots` / `final_choices` alongside). `VoteStore` (`vote.go`)
+  carries the vote mirror — `CreateVote`, `GetVote`/`GetVoteAdmin`,
+  and `UpdateVote`, the same compare-and-set. `PurgeFinished` /
   `PurgeFinishedVote` delete the finished rows whose `DeletionDate`
   (earlier of closure and end date, + months) has passed — candidate
   query `closed OR expires <= now` in SQL, the min/+months check per
@@ -422,21 +455,35 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `answers-table.html` (the poll's) and `vote-answers-table.html` (the
   shared answers-table markup the live vote form and the closed
   vote's read-only matrix both render; both end with the totals block
-  — a borderless `tr.totals-gap` spacer row plus the `tr.totals-row`
-  summary rows — below the form row), and `links.html` — the admin
-  links section (copyable link boxes + copy buttons, the edit link,
-  the close/re-open/delete actions with the inline two-step warning),
-  rendered only in the admin view),
+  — a `tr.totals-gap` spacer row (per-column cells: the side edge
+  borders + its own bottom border, the grid line that sets the totals
+  block off — every horizontal line in the table is the row above's
+  border-bottom, so the totals cells carry no `border-top`, and the
+  final column's frame edges/tint run through it — the final cells'
+  `border-right` is a transparent spacer there, so the frame lines up
+  without a visible line) plus the `tr.totals-row` summary rows —
+  below the form row; the final columns
+  carry the `final` tint + the 2px accent frame on both links and the
+  table ends with the borderless `final-footer-row` — the rotated
+  `Final!` label below each final column in the user view, a
+  check-only toggle button (`.final-btn`) per column in the closed
+  admin view, the "Choose final slot(s):" / "Choose final option(s):"
+  label in the name cell (the buttons post to the empty `#final-form`
+  rendered below the table in the page templates) —), and `links.html` — the
+  admin links section (copyable link boxes + copy buttons, the edit
+  link, the close/re-open/delete actions with the inline two-step
+  warning — the re-open's turns amber (`.reopen-warning`) while final
+  marks are set), rendered only in the admin view),
   plus `static/css/`, `static/js/` (the `dater.js` calendar/chip picker
   widget (locale-aware labels via `locale.js`), `poll.js` — the poll
-  	`poll.js` — the poll
   page's answer-table toggling + single-slot grey-out, `page.js` — the
   shared page behaviour both page types have in common (the
   answers-table width measurement, the sticky-header row offsets —
   see Gotchas → Sticky table header —, the answer-delete confirmations,
-  the two-step delete-poll/vote warning, the copy-box selection + copy
-  buttons + link-box sizing; loaded ahead of `poll.js`/`vote.js` and
-  providing their `t()`/`fill()` globals), `chooser.js` — the vote
+  the two-step delete-poll/vote + re-open warnings (the shared
+  `wireTwoStep()` helper), the copy-box selection + copy buttons +
+  link-box sizing; loaded ahead of `poll.js`/`vote.js` and providing
+  their `t()`/`fill()` globals), `chooser.js` — the vote
   form's option rows (add/remove, reindex) and the mode interlock
   (single-choice greys out yes/no + yes/maybe/no and must-answer,
   must-answer greys out yes and single-choice; a selection on a greyed
@@ -468,7 +515,16 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   a warm dark theme that re-targets the same tokens — see Gotchas →
   Theme), a single teal accent, semantic green/amber/red answer marks
   (dark glyph on light tint in light mode, light glyph on dark tint in
-  dark mode), organized as `@layer theme, base, components`, with a
+  dark mode), the final-mark columns' accent tint + 2px accent frame
+  (`.final`, the corners following `--radius-card` where the frame
+  touches the table's right edge), the cell-drawn table box — border,
+  corners, and surface fill on the cells (the scroll box is a bare
+  scroller, so the frame ends where the content does) — and the
+  borderless footer row (`.final-footer-row`) sitting on the page
+  background outside it, plus the check-only final toggles
+  (`.final-btn`), the shrink-to-fit notice and
+  warning boxes (`.closed` / `.ended` / the two-step warnings),
+  organized as `@layer theme, base, components`, with a
   global `:focus-visible` ring, `prefers-reduced-motion` and
   `forced-colors` support, and 44px calendar-day targets. Templates
   carry the a11y structure: `lang="en"`, a skip link, one `h1`
@@ -810,6 +866,66 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   endpoints. Delete purges the row — with every answer and its stored
   identity — and expires the requesting browser's identity cookie in
   the redirect to `/`.
+- **Final marks (closed polls)**: on a *closed* poll the admin marks
+  where the decision landed — one or more slot columns (meeting) /
+  option columns (vote) — and both links frame them: the `final`
+  cells (header + body + totals) get the accent tint + a 2px accent
+  frame (inset shadows — left/right on every final cell, top on the
+  column's single final header cell (`final-top`: the date cell for a
+  single-slot column, the time cell otherwise; the choice cell for the
+  vote), bottom on the last content row — the `pre-footer` class the
+  handlers flag on the row above the footer (a class, not `:has()`, so
+  it works in every browser); the frame's right bar sits 1px inside the
+  final cells' normal `border-right` — the grid line the final column
+  keeps like every other column — and in the borderless gap row only,
+  that line is a transparent spacer of the same width
+  (`tr.totals-gap td.final:not(:last-child)`), so the bar lines up top
+  to bottom without a visible line). The table *box itself* is
+  cell-drawn — the
+  `.table-scroll` div is a bare scroller (no border/fill/radius, no
+  `has-footer` class any more): the surface fill sits on the cells
+  (the header's `--bg`, the row hover, the mark tints, and the footer
+  row's `--bg` all paint over it), the edges are cell borders (top on
+  the first header row — the sticky pin keeps it in view while
+  scrolling —, left on the name column, right on every cell's
+  border-right, bottom on the last row's border-bottom), and the card
+  radius sits on the four corner cells (the `totals-gap` keeps its
+  left/right edge borders so the side lines run through it, its bottom
+  border is the grid line above the totals block). That is what lets
+  the borderless footer row sit outside the box on the page background
+  with nothing flanking it. The frame's corners
+  follow `--radius-card` where they meet the table's right edge
+  (`th.final-top:last-child` + the corner-cell rules). Trade-off: while
+  a long table scrolls past the port's bottom, no bottom edge line is
+  visible until the table's end (the port is bare — a port-pinned line
+  would need the old div border). The table ends with a borderless
+  `final-footer-row`: the rotated `Final!`
+  label (reads bottom-up, no box) below each final column in the user
+  view, and — in the closed admin view alone — a check-only toggle
+  button (`.final-btn`, icon-only, aligned with its column) in every
+  slot/option cell, the localized "Choose final slot(s):" / "Choose
+  final option(s):" label in the name cell (wrapping, `white-space`
+  normal overrides the name column's `nowrap`, width-capped so the
+  max-content table never stretches the column); each button
+  posts its own `slot` / `choice` value to the empty `#final-form` the
+  page templates render below the table (the HTML5 `form` attribute —
+  it works without JS). Storage:
+  `Meeting.FinalSlots` (the slots' `TimeSlice` instants) and
+  `Vote.FinalChoices` (the options' stable IDs, a `StringSlice`), both
+  JSON-in-TEXT like the other lists. Toggling goes through
+  `POST /meet/+/final` / `POST /vote/+/final` (capability URLs, admin
+  key only, no CSRF — like close/reopen/delete): a user key 404s, an
+  open poll 400s, and a single-signup meeting 400s (the feature is off
+  for that shape entirely). Re-opening always clears the marks — the
+  decision is invalidated — and the re-open button turns into the
+  amber two-step warning (`.reopen-warning`, the shared
+  `wireTwoStep()` helper in `page.js`) while any are set. Edits prune:
+  a removed slot/option takes its mark with it (`pruneFinalSlots` /
+  `pruneFinalChoices` in both form handlers), and flipping a meeting
+  to single-signup wipes the marks with the answers. Single-choice
+  *votes* do keep the feature (a picked option can be final). The
+  frame/label is render-only: it touches no totals, answers, or
+  lifecycle state.
 - **Deleted-poll 404**: a link key that resolves to no poll or vote
   renders `static/meet-gone.html` with status 404 (`linkGone`), for
   `GET /meet/+`, `GET /vote/+`, and the two form edit routes (`GET
@@ -839,8 +955,13 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   html/template escapes the `+` in `Yes + Maybe` as `&#43;` in the
   attribute). The totals are the table's *last* rows — below the
   form row, which then sits second-to-last — set off from the answer
-  rows by the borderless `tr.totals-gap` spacer (border-collapsed
-  tables can't take row margins). Counts cover stored answers only (the form row's
+  rows by the `tr.totals-gap` spacer's bottom border (border-collapsed
+  tables can't take row margins; per-column cells so the final frame
+  runs through it). As everywhere else in the table, every horizontal
+  grid line is the row above's border-bottom — the totals cells carry
+  no border-top of their own (a top border there would double the
+  line between two totals rows), and the final column's totals cells
+  keep the normal grid lines like every other column. Counts cover stored answers only (the form row's
   in-flight state is not part of it). Visibility: always on the admin
   page; on the user page they are hidden by a single-signup meeting,
   by `Vote.HideTotals` (the vote form's hide-totals option), or by

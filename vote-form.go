@@ -179,6 +179,7 @@ func voteFormPostHandler(c fiber.Ctx) error {
 				vote.Answers = nil
 			}
 			pruneVoteAnswers(vote)
+			pruneFinalChoices(vote)
 		})
 		if err != nil {
 			return saveError(c, err)

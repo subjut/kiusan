@@ -120,6 +120,11 @@ type Meeting struct {
 	// column existed carry nil — FinishedAt then falls back to Expires.
 	ClosedAt *time.Time `gorm:"default:null"`
 	Dates    TimeSlice  `gorm:"not null"`
+	// FinalSlots are the slots the admin marked final on a closed poll —
+	// the slots the meeting landed on, highlighted as columns on both
+	// links. The re-open handler clears them; editing prunes the ones
+	// whose slots no longer exist (and a single-signup flip wipes them).
+	FinalSlots TimeSlice `gorm:"not null;default:'[]'"`
 	// TimeZone is the IANA zone (e.g. "Europe/Berlin") the meeting's
 	// dates and times are authored in; slots are absolute instants,
 	// rendered in this zone. Empty renders as UTC (the fallback a

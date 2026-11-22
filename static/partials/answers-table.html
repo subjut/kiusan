@@ -19,10 +19,10 @@
 			{{range .HeaderYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
 		</tr>
 		<tr>
-			{{range .Header}}<th scope="colgroup" class="th-date" colspan="{{.Span}}" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
+			{{range .Header}}<th scope="colgroup" class="th-date{{if and (eq .Span 1) (final $.Final .Slot)}} final final-top{{end}}" colspan="{{.Span}}" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
 		</tr>
 		<tr>
-			{{range .Header}}{{range .Times}}<th scope="col" class="th-time" data-slot="{{.Slot}}">{{.Text}}</th>{{end}}{{end}}
+			{{range $hd := .Header}}{{range .Times}}<th scope="col" class="th-time{{if and .Slot (final $.Final .Slot)}} final{{if ne $hd.Span 1}} final-top{{end}}{{end}}" data-slot="{{.Slot}}">{{.Text}}</th>{{end}}{{end}}
 		</tr>
 		{{else}}
 		<tr>
@@ -30,7 +30,7 @@
 			{{range .HeaderYears}}<th scope="colgroup" class="th-year" colspan="{{.Span}}" data-slot="{{.Slot}}">{{.Label}}</th>{{end}}
 		</tr>
 		<tr>
-			{{range .Header}}<th scope="col" class="th-date" colspan="{{.Span}}" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
+			{{range .Header}}<th scope="col" class="th-date{{if final $.Final .Slot}} final final-top{{end}}" colspan="{{.Span}}" data-slot="{{.Slot}}" data-lines="{{.Lines}}" title="{{.Title}}">{{.Label}}</th>{{end}}
 		</tr>
 		{{end}}
 		</thead>
@@ -40,7 +40,7 @@
 		{{/* the edited row renders as the table's last row (next to the
 		     save/cancel bar below the answers); skipped in place */}}
 		{{else}}
-		<tr{{if $col.IsOwn}} class="own"{{end}}>
+		<tr{{if or $col.IsOwn (and $col.Last (not $.Totals) $.HasFooter)}} class="{{if $col.IsOwn}}own {{end}}{{if and $col.Last (not $.Totals) $.HasFooter}}pre-footer{{end}}"{{end}}>
 			<td>
 				{{if and (or $.IsAdmin $col.IsOwn) (not $.Ended) (not $.Closed)}}
 				<a class="icon-btn" href="{{$.SelfLink}}?edit={{$col.ID}}" title="{{$.EditAnswer}}" aria-label="{{$.EditAnswer}}" data-i18n-title="meet.editAnswer" data-i18n-aria="meet.editAnswer">
@@ -53,7 +53,7 @@
 				{{$col.Name}}{{if $col.IsOwn}} <span data-i18n="meet.you">{{$.T "meet.you"}}</span>{{end}}
 			</td>
 			{{range $j, $sym := $col.Syms}}
-			<td class="cell st-{{index $col.Csls $j}}">{{.}}</td>
+			<td class="cell st-{{index $col.Csls $j}}{{if final $.Final (index $.Slots $j).Key}} final{{end}}">{{.}}</td>
 			{{end}}
 		</tr>
 		{{end}}
@@ -64,7 +64,7 @@
 				<input type="text" id="name" name="name" aria-label="{{.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" placeholder="{{.NamePh}}" data-i18n-ph="meet.namePh" required>
 			</td>
 			{{range $.Slots}}
-			<td class="cell form-cell" data-slot="{{.Key}}" data-status="">
+			<td class="cell form-cell{{if final $.Final .Key}} final{{end}}" data-slot="{{.Key}}" data-status="">
 				<input type="hidden" name="a{{.Key}}" value="">
 				<div class="mark-stack">
 					<button type="button" class="mark mark-g" aria-pressed="false">&#10003;</button>
@@ -79,7 +79,7 @@
 				<input type="text" id="name" name="name" aria-label="{{$.NameAria}}" data-i18n-aria="meet.nameAria" maxlength="50" value="{{$.FormName}}" required>
 			</td>
 			{{range $j, $s := $.Slots}}
-			<td class="cell form-cell {{index $.FormCol.Fcls $j}}" data-slot="{{$s.Key}}" data-status="{{index $.FormCol.Marks $j}}">
+			<td class="cell form-cell {{index $.FormCol.Fcls $j}}{{if final $.Final $s.Key}} final{{end}}" data-slot="{{$s.Key}}" data-status="{{index $.FormCol.Marks $j}}">
 				<input type="hidden" name="a{{$s.Key}}" value="{{index $.FormCol.Marks $j}}">
 				<div class="mark-stack">
 					<button type="button" class="mark mark-g" aria-pressed="{{index $.FormCol.PressG $j}}">&#10003;</button>
@@ -90,20 +90,59 @@
 		</tr>
 		{{end}}
 		{{if $.Totals}}
-		{{/* the borderless gap row sets the totals block off from the
-		     answers (border-collapsed tables can't take row margins) */}}
+
+		{{/* the gap row sets the totals block off from the answers
+
+	     (border-collapsed tables can't take row margins); its bottom
+
+	     border is the grid line above the totals block, and the final
+
+	     column's cells keep the frame's edges + tint through it */}}
+
 		<tr class="totals-gap" aria-hidden="true">
-			<td colspan="{{$.TotalsColspan}}"></td>
+
+			<td></td>
+
+			{{range $.Slots}}
+
+			<td{{if final $.Final .Key}} class="final"{{end}}></td>
+
+			{{end}}
+
 		</tr>
+
 		{{end}}
 		{{range $row := $.Totals}}
-		<tr class="totals-row {{$row.Cls}}">
+		<tr class="totals-row {{$row.Cls}}{{if and $row.Last $.HasFooter}} pre-footer{{end}}">
 			<td>
 				<span data-i18n="totals.total">{{$.T "totals.total"}}</span>
 				<span class="totals-sym" title="{{$row.Name}}" data-i18n-title="{{$row.NameKey}}">{{$row.Sym}}{{if $row.Sym2}} <b class="totals-sym2">{{$row.Sym2}}</b>{{end}}</span>
 			</td>
 			{{range $j, $s := $.Slots}}
-			<td class="totals-cell{{if and (gt $row.Max 0) (eq (index $row.Values $j) $row.Max)}} st-{{$row.Mark}} totals-hot{{end}}">{{index $row.Values $j}}</td>
+			<td class="totals-cell{{if and (gt $row.Max 0) (eq (index $row.Values $j) $row.Max)}} st-{{$row.Mark}} totals-hot{{end}}{{if final $.Final $s.Key}} final{{end}}">{{index $row.Values $j}}</td>
+			{{end}}
+		</tr>
+		{{end}}
+		{{if or (and $.IsAdmin $.Closed (not $.Single)) $.HasFinal}}
+		{{/* the footer row: the table's last row, borderless — a table row,
+		    so it stays aligned with its column and scrolls with the table.
+		    The user view carries the rotated "Final!" label under each
+		    final column (no box); the closed admin view (not single-signup)
+		    carries the check-only toggle buttons in the same cells — they
+		    post to the empty #final-form the page renders — and the
+		    "Choose final slot(s):" label in the name column (wrapping) */}}
+		<tr class="final-footer-row">
+			<td class="final-footer-name">{{if and $.IsAdmin $.Closed (not $.Single)}}<span class="final-footer-label" data-i18n="meet.finalChoose">{{$.T "meet.finalChoose"}}</span>{{end}}</td>
+			{{range $s := $.Slots}}
+			<td class="final-footer-cell">
+				{{if and $.IsAdmin $.Closed (not $.Single)}}
+				<button type="submit" class="final-btn" form="final-form" name="slot" value="{{$s.Key}}" aria-pressed="{{final $.Final $s.Key}}" aria-label="{{$s.Label}}" title="{{$s.Label}}">
+					<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+				</button>
+				{{else}}
+				{{if final $.Final $s.Key}}<span class="final-mark-text" data-i18n="final.mark">{{$.T "final.mark"}}</span>{{end}}
+				{{end}}
+			</td>
 			{{end}}
 		</tr>
 		{{end}}

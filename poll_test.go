@@ -662,7 +662,78 @@ func runPollSuite(t *testing.T) {
 	contains(bRo, `Re-open poll`)
 	contains(bRo, `action="/meet/`+adminA+`/reopen"`)
 	absent(bRo, `action="/meet/`+adminA+`/close"`)
-	// Re-opening (admin key only) lets the answers flow again.
+
+	// ---- final slots: the closed poll's decision, marked by the admin ----
+	// (poll A was edited down to one slot earlier — use the slot it
+	// offers now; an open poll refusing the mark is covered by the vote
+	// suite.)
+	sA := slotKey(gotA.Dates[0])
+	// A user key can never mark finals, and a missing/unknown slot is
+	// rejected.
+	status(p.post("/meet/"+mA.Key+"/final", "slot="+sA, ""), http.StatusNotFound)
+	status(p.post("/meet/"+adminA+"/final", "", ""), http.StatusBadRequest)
+	status(p.post("/meet/"+adminA+"/final", "slot=2020-01-01T00:00Z07:00", ""), http.StatusNotFound)
+	status(p.post("/meet/"+adminA+"/final", "slot="+sA, ""), http.StatusSeeOther)
+	gotA, _ = db.Get(mA.Key)
+	if len(gotA.FinalSlots) != 1 || slotKey(gotA.FinalSlots[0]) != sA {
+		t.Fatalf("final slot not stored: %+v", gotA.FinalSlots)
+	}
+	// The admin page carries the footer row (the "Choose final slot(s):"
+	// label in the name column, the one slot's toggle button pressed),
+	// the highlighted header (both the date and time cells of the single
+	// slot column) — and, while a final is set, the two-step re-open
+	// warning instead of a plain submit.
+	bFinAdm := p.body(p.get("/meet/"+adminA, ""))
+	for _, want := range []string{
+		`data-i18n="meet.finalChoose"`,
+		`class="th-time final" data-slot="` + sA + `"`,
+		`class="final-btn" form="final-form" name="slot" value="` + sA + `" aria-pressed="true"`,
+		`class="final-footer-row"`,
+		`id="final-form"`,
+		`class="btn-secondary reopen-poll-btn"`,
+		`class="reopen-warning"`,
+	} {
+		if !strings.Contains(bFinAdm, want) {
+			t.Fatalf("admin final view missing %q", want)
+		}
+	}
+	// The user link sees the highlight (header, body cells tinted the
+	// respondent's mark class, the "Final!" label in the footer row)
+	// without the toggle buttons or the warning.
+	bFinUser := p.body(p.get("/meet/"+mA.Key, ""))
+	contains(bFinUser, `class="th-time final" data-slot="`+sA+`"`)
+	contains(bFinUser, `class="final-footer-row"`)
+	contains(bFinUser, `class="final-mark-text"`)
+	if bobAns := findAnswer(gotA.Answers, bob); bobAns != nil {
+		cls := map[string]string{"g": "g", "y": "y"}[bobAns.Marks[sA]]
+		if cls == "" {
+			cls = "r"
+		}
+		contains(bFinUser, `cell st-`+cls+` final`)
+	}
+	for _, gone := range []string{`final-btn`, `final-form`, `reopen-warning`} {
+		absent(bFinUser, gone)
+	}
+	// Toggling the same slot off clears it — then set it again, so the
+	// re-open below has a final mark to clear.
+	status(p.post("/meet/"+adminA+"/final", "slot="+sA, ""), http.StatusSeeOther)
+	gotA, _ = db.Get(mA.Key)
+	if len(gotA.FinalSlots) != 0 {
+		t.Fatalf("toggling must clear the final slot: %+v", gotA.FinalSlots)
+	}
+	status(p.post("/meet/"+adminA+"/final", "slot="+sA, ""), http.StatusSeeOther)
+
+	// A single-signup poll gets no final feature at all.
+	_, adminS := p.createPoll("title=Poll+F&email=poll%40example.com&description=F&timezone=Europe/Berlin&enddate=" + endA + "&single-signup=true&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
+	status(p.post("/meet/"+adminS+"/close", "", ""), http.StatusSeeOther)
+	bSAdm := p.body(p.get("/meet/"+adminS, ""))
+	for _, gone := range []string{`final-btn`, `final-form`, `final-footer-row`} {
+		absent(bSAdm, gone)
+	}
+	status(p.post("/meet/"+adminS+"/final", "slot="+s1, ""), http.StatusBadRequest)
+
+	// Re-opening (admin key only) lets the answers flow again — and clears
+	// the final marks.
 	status(p.post("/meet/"+mA.Key+"/reopen", "", ""), http.StatusNotFound)
 	status(p.post("/meet/"+adminA+"/reopen", "", ""), http.StatusSeeOther)
 	gotA, _ = db.Get(mA.Key)
@@ -671,6 +742,9 @@ func runPollSuite(t *testing.T) {
 	}
 	if gotA.ClosedAt != nil {
 		t.Fatalf("re-opening must clear the closure stamp: %+v", gotA)
+	}
+	if len(gotA.FinalSlots) != 0 {
+		t.Fatalf("re-opening must clear the final marks: %+v", gotA.FinalSlots)
 	}
 	slotA := slotKey(gotA.Dates[0])
 	status(p.post("/meet/"+mA.Key+"/answer",
@@ -805,5 +879,56 @@ func TestMeetEditSingleSignupWipesAnswers(t *testing.T) {
 	kept, _ := db.Get(m.Key)
 	if len(kept.Answers) != 1 {
 		t.Fatalf("re-save with single-signup already on must keep answers: %+v", kept.Answers)
+	}
+}
+
+// A closed poll's final marks are pruned when the poll is edited: a slot
+// that disappears takes its final mark with it, and enabling
+// single-signup wipes the final marks along with the answers.
+func TestMeetFinalSlotsPrunedOnEdit(t *testing.T) {
+	withStore(t, store.BackendSQLite, "meetings.db")
+	app := newTestApp(t)
+	p := newPollClient(t, app)
+	berlin := mustZone(t, "Europe/Berlin")
+	s1 := slotKey(time.Date(2026, 11, 1, 10, 0, 0, 0, berlin))
+	s2 := slotKey(time.Date(2026, 11, 1, 14, 0, 0, 0, berlin))
+	endS, _ := testEndDate(berlin)
+
+	m, admin := p.createPoll("title=Poll+P&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate=" + endS + "&slot0=2026-11-01T10:00&slot1=2026-11-01T14:00")
+	// Close the poll and mark both slots final.
+	if r := p.post("/meet/"+admin+"/close", "", ""); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("close: expected 303, got %d", r.StatusCode)
+	}
+	for _, s := range []string{s1, s2} {
+		if r := p.post("/meet/"+admin+"/final", "slot="+s, ""); r.StatusCode != http.StatusSeeOther {
+			t.Fatalf("final %s: expected 303, got %d", s, r.StatusCode)
+		}
+	}
+	before, err := db.Get(m.Key)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	if len(before.FinalSlots) != 2 {
+		t.Fatalf("finals not stored: %+v", before.FinalSlots)
+	}
+
+	// Editing down to a single slot keeps only that slot's final mark.
+	if r := p.post("/meet-form", "meetingkey="+admin+
+		"&title=Poll+P&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate="+endS+"&slot0=2026-11-01T14:00", ""); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("edit: expected 303, got %d", r.StatusCode)
+	}
+	after, _ := db.Get(m.Key)
+	if len(after.FinalSlots) != 1 || slotKey(after.FinalSlots[0]) != s2 {
+		t.Fatalf("edit must prune the removed slot's final mark: %+v", after.FinalSlots)
+	}
+
+	// Enabling single-signup wipes the final marks along with the answers.
+	if r := p.post("/meet-form", "meetingkey="+admin+
+		"&title=Poll+P&email=poll%40example.com&description=Pick+a+time&timezone=Europe/Berlin&enddate="+endS+"&single-signup=true&slot0=2026-11-01T14:00", ""); r.StatusCode != http.StatusSeeOther {
+		t.Fatalf("edit single-signup: expected 303, got %d", r.StatusCode)
+	}
+	single, _ := db.Get(m.Key)
+	if len(single.FinalSlots) != 0 {
+		t.Fatalf("single-signup must wipe the final marks: %+v", single.FinalSlots)
 	}
 }

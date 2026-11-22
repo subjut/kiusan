@@ -110,7 +110,7 @@ func TestI18nResolution(t *testing.T) {
 	b = i18nBody(t, i18nGet(t, app, "/meet/"+adminKey, "kiusan-locale=de", ""))
 	for _, want := range []string{
 		`lang="de"`, "Teilnehmerlink (diesen teilen):",
-		"Adminlink (diesen für dich behalten):", "Abstimmung bearbeiten",
+		"Adminlink (diesen für dich behalten):", "Umfrage bearbeiten",
 	} {
 		if !strings.Contains(b, want) {
 			t.Fatalf("admin page (de) missing %q", want)
@@ -118,7 +118,7 @@ func TestI18nResolution(t *testing.T) {
 	}
 	b = i18nBody(t, i18nGet(t, app, "/meet-form/edit/"+adminKey, "kiusan-locale=de", ""))
 	for _, want := range []string{
-		`lang="de"`, "Abstimmung bearbeiten", `>Titel:<`,
+		`lang="de"`, "Umfrage bearbeiten", `>Titel:<`,
 		`<title data-i18n-prefix="pagetitle.formEdit" data-suffix="I18n Poll">kiusan | Bearbeiten: I18n Poll</title>`,
 	} {
 		if !strings.Contains(b, want) {

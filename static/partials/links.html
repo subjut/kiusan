@@ -22,8 +22,14 @@
 		</form>
 		{{end}}
 		{{if .Closed}}
-		<form method="POST" action="{{.ReopenAction}}" class="inline-form">
+		<form method="POST" action="{{.ReopenAction}}" id="poll-reopen-form" class="inline-form">
+			{{if .HasFinal}}
+			{{/* final marks are set: re-opening deletes them, so the button
+			    opens the two-step warning instead of submitting directly */}}
+			<button type="button" class="btn-secondary reopen-poll-btn" data-i18n="meet.reopenPoll">{{.T "meet.reopenPoll"}}</button>
+			{{else}}
 			<button type="submit" class="btn-secondary" data-i18n="meet.reopenPoll">{{.T "meet.reopenPoll"}}</button>
+			{{end}}
 		</form>
 		{{end}}
 		<form method="POST" action="{{.DeletePollAction}}" id="poll-del-form" class="inline-form">
@@ -37,5 +43,14 @@
 			<button type="button" class="btn-secondary delete-cancel" data-i18n="meet.cancel">{{.T "meet.cancel"}}</button>
 		</div>
 	</div>
+	{{if and .Closed .HasFinal}}
+	<div class="reopen-warning" role="alert" hidden>
+		<p data-i18n="{{.ReopenWarnKey}}">{{.T .ReopenWarnKey}}</p>
+		<div class="form-actions">
+			<button type="submit" form="poll-reopen-form" class="btn-secondary" data-i18n="meet.reopenConfirm">{{.T "meet.reopenConfirm"}}</button>
+			<button type="button" class="btn-secondary reopen-cancel" data-i18n="meet.cancel">{{.T "meet.cancel"}}</button>
+		</div>
+	</div>
+	{{end}}
 </section>
 {{end}}

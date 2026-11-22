@@ -241,6 +241,42 @@ func pruneVoteAnswers(v *database.Vote) {
 	}
 }
 
+// toggleFinalChoice toggles one option (by its stable ID) in the vote's
+// final list: added when absent, removed when present.
+func toggleFinalChoice(finals database.StringSlice, id string) database.StringSlice {
+	for _, f := range finals {
+		if f == id {
+			out := make(database.StringSlice, 0, len(finals)-1)
+			for _, g := range finals {
+				if g != id {
+					out = append(out, g)
+				}
+			}
+			return out
+		}
+	}
+	return append(finals, id)
+}
+
+// pruneFinalChoices drops final marks of options the vote no longer
+// offers, called when the vote is edited.
+func pruneFinalChoices(v *database.Vote) {
+	if len(v.FinalChoices) == 0 {
+		return
+	}
+	valid := make(map[string]struct{}, len(v.Choices))
+	for i := range v.Choices {
+		valid[v.Choices[i].ID] = struct{}{}
+	}
+	out := make(database.StringSlice, 0, len(v.FinalChoices))
+	for _, f := range v.FinalChoices {
+		if _, ok := valid[f]; ok {
+			out = append(out, f)
+		}
+	}
+	v.FinalChoices = out
+}
+
 // resolveVote finds the vote behind a link key and reports which view the
 // key matched: the user key renders the respondent page, the admin key
 // the admin page. A missing key yields a nil vote, not an error.

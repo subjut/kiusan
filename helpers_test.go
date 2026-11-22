@@ -506,3 +506,88 @@ func TestZoneOptionLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestToggleFinalSlot(t *testing.T) {
+	berlin := mustZone(t, "Europe/Berlin")
+	d1 := time.Date(2026, 11, 1, 10, 0, 0, 0, berlin)
+	d2 := time.Date(2026, 11, 1, 14, 0, 0, 0, berlin)
+	dates := database.TimeSlice{d1, d2}
+
+	// Adding a slot appends it.
+	out := toggleFinalSlot(dates, nil, slotKey(d1))
+	if len(out) != 1 || slotKey(out[0]) != slotKey(d1) {
+		t.Fatalf("toggleFinalSlot add: %+v, want [%v]", out, slotKey(d1))
+	}
+	// Adding a second keeps both.
+	out = toggleFinalSlot(dates, out, slotKey(d2))
+	if len(out) != 2 {
+		t.Fatalf("toggleFinalSlot add second: %+v, want 2", out)
+	}
+	// Toggling an existing slot removes it.
+	out = toggleFinalSlot(dates, out, slotKey(d1))
+	if len(out) != 1 || slotKey(out[0]) != slotKey(d2) {
+		t.Fatalf("toggleFinalSlot remove: %+v, want [%v]", out, slotKey(d2))
+	}
+	// A slot the poll doesn't offer is a no-op.
+	if got := toggleFinalSlot(dates, out, "2020-01-01T00:00Z"); len(got) != 1 {
+		t.Fatalf("toggleFinalSlot unknown slot must not add: %+v", got)
+	}
+}
+
+func TestToggleFinalChoice(t *testing.T) {
+	// Add, add-second, remove, unknown-id no-op.
+	out := toggleFinalChoice(nil, "c1")
+	if len(out) != 1 || out[0] != "c1" {
+		t.Fatalf("toggleFinalChoice add: %+v, want [c1]", out)
+	}
+	out = toggleFinalChoice(out, "c2")
+	if len(out) != 2 {
+		t.Fatalf("toggleFinalChoice add second: %+v, want 2", out)
+	}
+	out = toggleFinalChoice(out, "c1")
+	if len(out) != 1 || out[0] != "c2" {
+		t.Fatalf("toggleFinalChoice remove: %+v, want [c2]", out)
+	}
+	// The helper trusts its caller (the handler checks the id against the
+	// vote's options), so any id is appended.
+	out = toggleFinalChoice(out, "c3")
+	if len(out) != 2 || out[1] != "c3" {
+		t.Fatalf("toggleFinalChoice append: %+v, want c3 last", out)
+	}
+}
+
+func TestPruneFinalSlots(t *testing.T) {
+	berlin := mustZone(t, "Europe/Berlin")
+	d1 := time.Date(2026, 11, 1, 10, 0, 0, 0, berlin)
+	d2 := time.Date(2026, 11, 2, 10, 0, 0, 0, berlin)
+	m := &database.Meeting{
+		Dates:      database.TimeSlice{d1},
+		FinalSlots: database.TimeSlice{d1, d2},
+	}
+	pruneFinalSlots(m)
+	if len(m.FinalSlots) != 1 || slotKey(m.FinalSlots[0]) != slotKey(d1) {
+		t.Fatalf("pruneFinalSlots: %+v, want only the surviving slot", m.FinalSlots)
+	}
+	// An empty list stays empty.
+	m2 := &database.Meeting{Dates: database.TimeSlice{d1}}
+	pruneFinalSlots(m2)
+	if m2.FinalSlots != nil {
+		t.Fatalf("pruneFinalSlots empty: %+v, want nil", m2.FinalSlots)
+	}
+}
+
+func TestPruneFinalChoices(t *testing.T) {
+	v := &database.Vote{
+		Choices:      database.ChoiceList{{ID: "c1"}, {ID: "c2"}},
+		FinalChoices: database.StringSlice{"c1", "c3"},
+	}
+	pruneFinalChoices(v)
+	if len(v.FinalChoices) != 1 || v.FinalChoices[0] != "c1" {
+		t.Fatalf("pruneFinalChoices: %+v, want only the surviving option", v.FinalChoices)
+	}
+	v2 := &database.Vote{Choices: database.ChoiceList{{ID: "c1"}}}
+	pruneFinalChoices(v2)
+	if v2.FinalChoices != nil {
+		t.Fatalf("pruneFinalChoices empty: %+v, want nil", v2.FinalChoices)
+	}
+}

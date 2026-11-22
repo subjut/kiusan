@@ -19,8 +19,18 @@
 	{{/* A closed poll keeps the answers table visible on both links, as a
 	    static matrix — no form row, no edit/delete icons (the partial
 	    renders them only while the poll is open). An ended poll keeps
-	    the old behavior: the notice only, no table. */}}
+	    the old behavior: the notice only, no table. The admin of a
+	    closed multi-slot poll may mark the final slot(s) — the columns
+	    both links frame, the admin view with check-only toggle buttons
+	    in the table's footer row and both with the rotated "Final!" label; the buttons
+	    post to the empty #final-form below (the .../final endpoint reads
+	    the slot field). */}}
 	{{template "partials/answers-table" .Meet}}
+	{{if and .Meet.IsAdmin (not .Meet.Single)}}
+	{{/* the empty target form of the table footer's toggle buttons —
+	    the check-only buttons post to it via the form attribute */}}
+	<form id="final-form" method="POST" action="{{.Meet.FinalAction}}"></form>
+	{{end}}
 	{{else if not .Meet.Ended}}
 	<form method="POST" action="{{.Meet.FormAction}}" id="answer-form" data-single="{{if .Meet.Single}}true{{else}}false{{end}}">
 		{{if .Meet.AnswerCSRF}}<input type="hidden" name="csrftoken" value="{{.Meet.CSRFToken}}">{{end}}

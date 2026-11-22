@@ -14,10 +14,12 @@ import (
 // ---- meeting page ----
 
 // The answers table's column slot: the slot's absolute instant as the
-// form row's field name, plus the red button's pressed state (a slot the
-// form target has not marked is red on submit).
+// form row's field name, and its date label in the poll's zone (the
+// closed admin view's footer-row toggle button's tooltip — a midnight
+// slot is date-only, a timed one date + time).
 type formSlot struct {
-	Key string
+	Key   string
+	Label string
 }
 
 // The table header's cells: a year row (each year cell spanning that
@@ -60,6 +62,7 @@ type respCol struct {
 	Fcls     []string // per slot: st-g | st-y | "" (form cells: unmarked stays neutral)
 	PressG   []string
 	PressY   []string
+	Last     bool // set on the last respondent row (the table's last content row when the totals are hidden)
 }
 
 // meetingPage is the meeting page's page data (the timezone, the table
@@ -80,9 +83,11 @@ type meetingPage struct {
 	// are hidden for this view (a single-signup poll, or the user page of
 	// a poll with hidden respondents).
 	Totals []totalsRow
-	// TotalsColspan spans the gap row above the totals block (name
-	// column + one cell per slot).
-	TotalsColspan int
+	// HasFooter: whether the table's borderless footer row renders (the
+	// closed admin view's toggle buttons, or the final columns' "Final!"
+	// labels on both links) — the row above it carries the final frame's
+	// bottom edge.
+	HasFooter bool
 }
 
 // meetingHandler renders the poll page for a user or admin link: the same
@@ -170,6 +175,12 @@ func meetingHandler(c fiber.Ctx) error {
 		closedAt = m.ClosedAt.In(loc).Format("2 Jan 2006 15:04")
 		closedAtKey = slotKey(*m.ClosedAt)
 	}
+	// The final marks' slot keys: the columns both links highlight (the
+	// admin view adds the header's toggle buttons).
+	finalKeys := make([]string, 0, len(m.FinalSlots))
+	for _, d := range m.FinalSlots {
+		finalKeys = append(finalKeys, slotKey(d))
+	}
 
 	// Display order: chronological. Storage order follows the form's chip
 	// order, which can be out of order, and marks are keyed by the slot's
@@ -190,7 +201,12 @@ func meetingHandler(c fiber.Ctx) error {
 	}
 	slots := make([]formSlot, 0, len(dates))
 	for _, d := range dates {
-		slots = append(slots, formSlot{Key: slotKey(d)})
+		dl := d.In(loc)
+		label := dl.Format("2 Jan 2006")
+		if dl.Hour() != 0 || dl.Minute() != 0 {
+			label = dl.Format("2 Jan 2006 15:04")
+		}
+		slots = append(slots, formSlot{Key: slotKey(d), Label: label})
 	}
 
 	// Header rows: a year row (each year cell spanning that year's date
@@ -281,6 +297,9 @@ func meetingHandler(c fiber.Ctx) error {
 		cols = append(cols, respCol{ID: shown[i].ID, Name: shown[i].Name, IsOwn: shown[i].ID == identity,
 			Marks: marks, Syms: syms, Csls: csls, Fcls: fcls, PressG: pg, PressY: py})
 	}
+	if len(cols) > 0 {
+		cols[len(cols)-1].Last = true
+	}
 
 	// The form row renders as the table's last row (next to the save/
 	// cancel bar below the answers): the edited respondent's row is
@@ -325,6 +344,7 @@ func meetingHandler(c fiber.Ctx) error {
 			{NameKey: "totals.yes_maybe", Name: translator.MustLocalize(c, "totals.yes_maybe"),
 				Cls: "tot-g", Mark: "g", Sym: "✓", Sym2: "(✓)", Values: both, Max: rowMax(both)},
 		}
+		totals[len(totals)-1].Last = true
 	}
 
 	// The page's forms post through the same link the page is viewed on, so
@@ -362,6 +382,10 @@ func meetingHandler(c fiber.Ctx) error {
 				CloseAction:      "/meet/" + m.AdminKey + "/close",
 				ReopenAction:     "/meet/" + m.AdminKey + "/reopen",
 				DeletePollAction: "/meet/" + m.AdminKey + "/delete",
+				FinalAction:      "/meet/" + m.AdminKey + "/final",
+				Final:            finalKeys,
+				HasFinal:         len(m.FinalSlots) > 0,
+				ReopenWarnKey:    "meet.reopenWarn",
 				SelfLink:         "/meet/" + viewKey,
 				FormNew:          formNew,
 				FormID:           formID,
@@ -386,17 +410,17 @@ func meetingHandler(c fiber.Ctx) error {
 				SubmitAnswerKey:   submitKey,
 				SubmitAnswerLabel: translator.MustLocalize(c, submitKey),
 			},
-			Tz:            tz,
-			TzName:        tzName,
-			Single:        m.SingleSignup,
-			Slots:         slots,
-			Header:        header,
-			HeaderYears:   headerYears,
-			HasTime:       hasTime,
-			Cols:          cols,
-			FormCol:       formCol,
-			Totals:        totals,
-			TotalsColspan: 1 + len(slots),
+			Tz:          tz,
+			TzName:      tzName,
+			Single:      m.SingleSignup,
+			Slots:       slots,
+			Header:      header,
+			HeaderYears: headerYears,
+			HasTime:     hasTime,
+			Cols:        cols,
+			FormCol:     formCol,
+			Totals:      totals,
+			HasFooter:   (isAdmin && closed && !m.SingleSignup) || len(m.FinalSlots) > 0,
 		},
 	})
 }

@@ -18,9 +18,19 @@
 	{{if .Vote.Closed}}
 	{{/* A closed vote keeps the answers table visible on both links, as a
 	    static matrix — no form row, no edit/delete icons (the partial
-	    renders them only while the vote is open). An ended vote keeps the
-	    old behavior: the notice only, no table. */}}
+	    renders them only while the vote is open). An ended vote keeps
+	    the old behavior: the notice only, no table. The admin may mark
+	    the final option(s) — the columns both links frame, the admin
+	    view with check-only toggle buttons in the table's footer row and
+	    both with the rotated "Final!" label; the buttons post to the
+	    empty #final-form below (the .../final endpoint reads the choice
+	    field). */}}
 	{{template "partials/vote-answers-table" .Vote}}
+	{{if .Vote.IsAdmin}}
+	{{/* the empty target form of the table footer's toggle buttons —
+	    the check-only buttons post to it via the form attribute */}}
+	<form id="final-form" method="POST" action="{{.Vote.FinalAction}}"></form>
+	{{end}}
 	{{else if not .Vote.Ended}}
 	<form method="POST" action="{{.Vote.FormAction}}" id="answer-form" data-single="{{if .Vote.Single}}true{{else}}false{{end}}" data-must="{{if .Vote.MustAnswer}}true{{else}}false{{end}}" data-type="{{.Vote.VoteType}}">
 		{{if .Vote.AnswerCSRF}}<input type="hidden" name="csrftoken" value="{{.Vote.CSRFToken}}">{{end}}

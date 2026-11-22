@@ -211,10 +211,12 @@ func initRoutes(app *fiber.App, staticDir string) {
 	app.Post("/vote/+/answer/edit", answerLimit, voteOps.editAnswer())
 	app.Post("/vote/+/answer/delete", answerLimit, voteOps.deleteAnswer())
 
-	// Vote lifecycle, admin link only.
+	// Vote lifecycle, admin link only; the final-mark toggle needs a
+	// closed vote.
 	app.Post("/vote/+/close", voteOps.closePoll())
 	app.Post("/vote/+/reopen", voteOps.reopenPoll())
 	app.Post("/vote/+/delete", voteOps.deletePoll())
+	app.Post("/vote/+/final", voteOps.setFinal())
 
 	// Meeting page routes; the gobbler takes either link key of the poll.
 	app.Get("/meet/+", meetingHandler)
@@ -223,10 +225,12 @@ func initRoutes(app *fiber.App, staticDir string) {
 	app.Post("/meet/+/answer/delete", answerLimit, meetOps.deleteAnswer())
 
 	// Poll lifecycle, admin link only: close and re-open stop and restore
-	// answering, delete purges the poll and both of its links.
+	// answering, delete purges the poll and both of its links, and the
+	// final-mark toggle needs a closed poll.
 	app.Post("/meet/+/close", meetOps.closePoll())
 	app.Post("/meet/+/reopen", meetOps.reopenPoll())
 	app.Post("/meet/+/delete", meetOps.deletePoll())
+	app.Post("/meet/+/final", meetOps.setFinal())
 
 	// 404 Handler
 	app.Use(notFoundHandler)
@@ -249,6 +253,18 @@ func newApp(staticDir string) *fiber.App {
 			return l
 		}
 		return zoneOptionLabel(z)
+	})
+
+	// final reports whether one of the poll's/vote's final marks (slot
+	// instants / option IDs) names the given id — the highlight's cell
+	// class and the header buttons' pressed state.
+	engine.AddFunc("final", func(list []string, id string) bool {
+		for _, v := range list {
+			if v == id {
+				return true
+			}
+		}
+		return false
 	})
 
 	// Template reload and parse logging are development conveniences, off by

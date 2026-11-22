@@ -51,6 +51,14 @@ type pollOps[T any] struct {
 	upsert  func(e T, id, name string, d answerData, now time.Time)
 	remove  func(e T, id string)
 
+	// finalAllowed reports whether the entity may carry final marks at
+	// all (a single-signup meeting may not); finalOK whether the id
+	// (the slot's absolute instant / the option's stable ID) targets one
+	// of its slots/options; toggleFinal toggles that mark.
+	finalAllowed func(e T) bool
+	finalOK      func(e T, id string) bool
+	toggleFinal  func(e T, id string)
+
 	// save is the compare-and-set round trip; purge deletes the row.
 	save  func(key string, byAdmin bool, mutate func(T)) (T, error)
 	purge func(e T) error
@@ -80,6 +88,10 @@ func (o *pollOps[T]) reopenPoll() fiber.Handler {
 
 func (o *pollOps[T]) deletePoll() fiber.Handler {
 	return func(c fiber.Ctx) error { return deletePollPost(o, c) }
+}
+
+func (o *pollOps[T]) setFinal() fiber.Handler {
+	return func(c fiber.Ctx) error { return setFinalPost(o, c) }
 }
 
 // answerPost stores or updates the answer of the respondent behind the
@@ -253,6 +265,51 @@ func reopenPollPost[T any](o *pollOps[T], c fiber.Ctx) error {
 	return c.Redirect().To(o.base + "/" + key)
 }
 
+// setFinalPost toggles the final mark of one slot (meeting) or option
+// (vote) of a closed poll (admin link only): the admin marks where the
+// decision landed, and both links highlight that column. It requires a
+// closed poll — a running one has not landed anywhere yet — and the
+// entity's type to allow final marks at all.
+func setFinalPost[T any](o *pollOps[T], c fiber.Ctx) error {
+	if !isFormPost(c) {
+		return c.Status(415).SendString("Unsupported content type")
+	}
+	key := c.Params("+")
+	e, isAdmin, err := o.resolve(key)
+	if err != nil {
+		return sendInternal(c, err)
+	}
+	// The route exists for both link shapes; only the admin link may use
+	// it, so a user key looks up like a missing link.
+	if !o.exists(e) || !isAdmin {
+		return notFoundHandler(c)
+	}
+	if !o.closed(e) {
+		return c.Status(400).SendString("Only a closed poll can mark final slots")
+	}
+	if !o.finalAllowed(e) {
+		return c.Status(400).SendString("This poll does not support final slots")
+	}
+	// The meeting's form field is "slot", the vote's is "choice" — a
+	// submission carries at most one of them.
+	id := strings.TrimSpace(c.FormValue("slot"))
+	if id == "" {
+		id = strings.TrimSpace(c.FormValue("choice"))
+	}
+	if id == "" {
+		return c.Status(400).SendString("Missing slot")
+	}
+	if !o.finalOK(e, id) {
+		return notFoundHandler(c)
+	}
+	if _, err := o.save(key, true, func(e T) {
+		o.toggleFinal(e, id)
+	}); err != nil {
+		return saveError(c, err)
+	}
+	return c.Redirect().To(o.base + "/" + key)
+}
+
 // deletePollPost purges the poll or vote (admin link only): its row with
 // every answer, and with it each respondent's stored identity. The
 // browser-side identity cookie is dropped in the redirect, where it goes
@@ -292,7 +349,10 @@ var meetOps = &pollOps[*database.Meeting]{
 			now := time.Now()
 			m.ClosedAt = &now
 		} else {
+			// Re-opening invalidates the decision: the final marks
+			// go with the closure.
 			m.ClosedAt = nil
+			m.FinalSlots = nil
 		}
 	},
 	hasAns: func(m *database.Meeting, id string) bool {
@@ -310,6 +370,18 @@ var meetOps = &pollOps[*database.Meeting]{
 	},
 	remove: func(m *database.Meeting, id string) {
 		m.Answers, _ = removeAnswer(m.Answers, id)
+	},
+	finalAllowed: func(m *database.Meeting) bool { return !m.SingleSignup },
+	finalOK: func(m *database.Meeting, id string) bool {
+		for _, d := range m.Dates {
+			if slotKey(d) == id {
+				return true
+			}
+		}
+		return false
+	},
+	toggleFinal: func(m *database.Meeting, id string) {
+		m.FinalSlots = toggleFinalSlot(m.Dates, m.FinalSlots, id)
 	},
 	save:  saveMeeting,
 	purge: func(m *database.Meeting) error { return db.Delete(m.Key) },
@@ -331,7 +403,10 @@ var voteOps = &pollOps[*database.Vote]{
 			now := time.Now()
 			v.ClosedAt = &now
 		} else {
+			// Re-opening invalidates the decision: the final marks
+			// go with the closure.
 			v.ClosedAt = nil
+			v.FinalChoices = nil
 		}
 	},
 	hasAns: func(v *database.Vote, id string) bool {
@@ -349,6 +424,18 @@ var voteOps = &pollOps[*database.Vote]{
 	},
 	remove: func(v *database.Vote, id string) {
 		v.Answers, _ = removeVoteAnswer(v.Answers, id)
+	},
+	finalAllowed: func(v *database.Vote) bool { return true },
+	finalOK: func(v *database.Vote, id string) bool {
+		for _, ch := range v.Choices {
+			if ch.ID == id {
+				return true
+			}
+		}
+		return false
+	},
+	toggleFinal: func(v *database.Vote, id string) {
+		v.FinalChoices = toggleFinalChoice(v.FinalChoices, id)
 	},
 	save:  saveVote,
 	purge: func(v *database.Vote) error { return db.DeleteVote(v.Key) },
