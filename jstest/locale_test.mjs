@@ -222,3 +222,149 @@ test("a failed dictionary fetch leaves the page as-is", async (t) => {
 	assert.equal(q(w, "[data-i18n=k1]").textContent, "Create");
 	assert.equal(w.document.documentElement.lang, "en");
 });
+
+// Restore-mode models for the pageshow reconciliation: window.I18N is
+// seeded the way /i18n/boot seeds it (a page always has it; it carries
+// the locale the body currently reflects, and the cookie the dropdown
+// writes).
+const enDict = {
+	lang: "en",
+	t: {
+		k1: "Create",
+		ph1: "Your name",
+		t1: "Copy",
+		a1: "Copy",
+		m1: "A meeting poll",
+		p1: "Create:",
+	},
+};
+
+// A back/forward-cache hit: the parked document as-is, scripts not
+// re-executing — body and window.I18N alike are from before the switch.
+function restoreFromBfcache(w) {
+	const ev = new w.Event("pageshow");
+	ev.persisted = true;
+	w.dispatchEvent(ev);
+}
+
+test("a bfcache restore re-applies a locale changed on a later page", async (t) => {
+	const urls = [];
+	const w = boot(dictFixture(), {
+		lang: "en-US",
+		i18n: enDict, // the parked dictionary: the page was showing English
+		fetch: (u) => {
+			urls.push(u);
+			return Promise.resolve({ ok: true, json: () => Promise.resolve(deDict) });
+		},
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Create"); // the parked page is English
+	w.document.cookie = "kiusan-locale=de; path=/"; // set elsewhere (on page B's dropdown)
+	let changes = 0;
+	w.Locale.onChange(() => changes++);
+	restoreFromBfcache(w);
+	await tick();
+
+	assert.deepEqual(urls, ["/i18n/de"]);
+	assert.equal(w.I18N, deDict);
+	assert.equal(w.document.getElementById("locale").value, "de");
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Erstellen");
+	assert.equal(w.document.documentElement.lang, "de");
+	// The date values followed the switch, and the widgets were told.
+	assert.equal(q(w, '.th-date[data-lines="1"]').textContent, "7 Nov Sa");
+	assert.equal(changes, 1);
+});
+
+test("a bfcache restore without a locale change never re-fetches", async (t) => {
+	const urls = [];
+	const w = boot(dictFixture(), {
+		lang: "en-US",
+		cookies: { "kiusan-locale": "en" },
+		i18n: enDict,
+		fetch: (u) => {
+			urls.push(u);
+			return Promise.resolve({ ok: true, json: () => Promise.resolve(deDict) });
+		},
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	restoreFromBfcache(w);
+	await tick();
+
+	assert.deepEqual(urls, []);
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Create");
+	assert.equal(w.document.documentElement.lang, "en");
+	assert.equal(w.document.getElementById("locale").value, "en");
+});
+
+test("a fresh load's pageshow (current dictionary, up-to-date body) never re-fetches", async (t) => {
+	// The re-apply arm is an idempotent no-op on a fresh render — server
+	// and client resolved the same cookie, so body and dictionary agree.
+	const urls = [];
+	const w = boot(dictFixture(), {
+		lang: "en-US",
+		i18n: enDict,
+		fetch: (u) => {
+			urls.push(u);
+			return Promise.resolve({ ok: true, json: () => Promise.resolve(deDict) });
+		},
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	w.dispatchEvent(new w.Event("pageshow")); // persisted stays false
+	await tick();
+	assert.deepEqual(urls, []);
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Create");
+	assert.equal(w.document.getElementById("locale").value, "en");
+});
+
+// The home-page case: the first page of a session is the bfcache entry
+// most likely to be evicted, so it comes back through a re-parse. The
+// scripts re-run — /i18n/boot (no-cache) re-fetches, so window.I18N is
+// already the current dictionary, and the dropdown re-syncs to the
+// cookie — while the body's data-i18n strings are still the stale
+// first-render ones. The current dictionary must be re-applied, with no
+// fetch.
+test("a re-parsed restore re-applies the current dictionary to the stale body", async (t) => {
+	const urls = [];
+	const w = boot(dictFixture(), {
+		lang: "en-US",
+		cookies: { "kiusan-locale": "de" },
+		i18n: deDict, // boot re-fetched it for the current cookie
+		fetch: (u) => {
+			urls.push(u);
+			return Promise.resolve({ ok: true, json: () => Promise.resolve(deDict) });
+		},
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Create"); // the stale body is English
+	w.dispatchEvent(new w.Event("pageshow")); // persisted stays false
+	await tick();
+
+	assert.deepEqual(urls, []);
+	assert.equal(w.document.getElementById("locale").value, "de");
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Erstellen");
+	assert.equal(w.document.documentElement.lang, "de");
+});
+
+test("a failed dictionary fetch on a restore leaves the page as-is", async (t) => {
+	const w = boot(dictFixture(), {
+		lang: "en-US",
+		i18n: enDict, // parked in English...
+		fetch: () => Promise.resolve({ ok: false, status: 404 }),
+		head: LOCALE_SELECT,
+		headerScripts: ["locale.js"],
+	});
+	await settled(w);
+	w.document.cookie = "kiusan-locale=de; path=/"; // ...but the cookie changed
+	restoreFromBfcache(w);
+	await tick();
+	assert.equal(q(w, "[data-i18n=k1]").textContent, "Create");
+	assert.equal(w.document.documentElement.lang, "en");
+});

@@ -222,12 +222,27 @@
 	}
 
 	var sel = document.getElementById("locale");
-	if (sel) {
-		// The select shows the effective UI language: the explicit cookie
-		// pin (a shipped tag), else the browser language matched onto a
-		// shipped option (English while it is unshipped). The server
-		// already rendered its resolution as selected — this re-confirms
-		// it and covers a navigator/header divergence.
+
+	// An effective locale onto the dropdown's shipped tags (base-tag
+	// matching, English the default) — the same resolution the server
+	// applies to the request's tag (matchLang), so a dictionary's lang
+	// can be compared with the effective locale.
+	function tagOf(loc) {
+		var base = loc.split("-")[0];
+		if (sel) {
+			for (var i = 0; i < sel.options.length; i++) {
+				if (sel.options[i].value === base) return base;
+			}
+		}
+		return "en";
+	}
+
+	// The select shows the effective UI language: the explicit cookie
+	// pin (a shipped tag), else the browser language matched onto a
+	// shipped option (English while it is unshipped). The server
+	// already rendered its resolution as selected — this re-confirms
+	// it and covers a navigator/header divergence.
+	function syncSelect() {
 		var c = cookieValue();
 		if (c && valid(c) && sel.querySelector('option[value="' + c + '"]')) {
 			sel.value = c;
@@ -243,6 +258,10 @@
 			}
 			sel.value = v;
 		}
+	}
+
+	if (sel) {
+		syncSelect();
 		sel.addEventListener("change", function () {
 			// A pick that deviates from the server's implicit language
 			// (data-implicit: Accept-Language resolved onto a shipped
@@ -268,6 +287,55 @@
 				});
 		});
 	}
+
+	// A page the browser brings back on a back/forward navigation can
+	// disagree with the current locale in two distinct ways:
+	//
+	// - A back/forward-cache hit restores the parked document as-is:
+	//   body and window.I18N alike are from before the switch, and the
+	//   scripts never re-executed. The current dictionary has to be
+	//   fetched (the cookie wins) and applied.
+	//
+	// - A re-parse (a cached document comes back through a path where the
+	//   page is re-parsed) re-runs /i18n/boot — it carries no-cache — so
+	//   window.I18N is already the current dictionary, and the dropdown
+	//   re-syncs to the cookie, while the body's data-i18n strings are
+	//   still the stale first-render ones. The current dictionary has to
+	//   be re-applied to the body (no fetch).
+	//
+	// Both converge on one invariant: on every pageshow, the DOM matches
+	// the current effective locale. While window.I18N is already that
+	// locale's dictionary (its lang compared onto the shipped tags, as
+	// the server resolves it), re-applying it does the job — an idempotent
+	// no-op on a fresh render (server and client resolve the same cookie);
+	// while it is stale (a parked hit), fetch the current one first. The
+	// dropdown is re-synced in both arms, so control and content agree.
+	window.addEventListener("pageshow", function () {
+		var fresh = resolve();
+		var d = window.I18N;
+		if (d && d.t && d.lang === tagOf(fresh)) {
+			applyDict(d);
+			if (sel) syncSelect();
+			applyLocale();
+		} else {
+			fetch("/i18n/" + encodeURIComponent(fresh))
+				.then(function (r) {
+					if (!r.ok) throw new Error("status " + r.status);
+					return r.json();
+				})
+				.then(function (dd) {
+					window.I18N = dd;
+					applyDict(dd);
+					if (sel) syncSelect();
+					applyLocale();
+				})
+				.catch(function () {
+					// Dictionary unreachable: a reload gets the
+					// server-rendered language for the current cookie.
+					location.reload();
+				});
+		}
+	});
 
 	// The script sits in the site header, which parses before the page
 	// body: defer the first reformat until the document is complete.

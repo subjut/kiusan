@@ -235,7 +235,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   the `data-i18n-prefix` suffix keep, the select's effective-language
   sync, the dropdown fetch, the pin/un-pin cookie policy (pin on
   deviation from the implicit, delete on return to it), the
-  failed-fetch no-op).
+  back/forward-restore reconciliation (the stale-dictionary fetch on a
+  bfcache hit, the current-dictionary re-apply on a re-parsed stale
+  body, the fresh-load no-fetch, the failed-fetch no-ops (in-place and
+  on a restore)).
 
 ## Layout
 
@@ -513,7 +516,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (`partials/locale-select.html` — the selected option is always the
   effective UI language, the select's `data-implicit` attribute
   carries the cookie-less `Accept-Language` language; see Gotchas →
-  Interface localization for the pin/un-pin policy); loaded from
+  Interface localization for the pin/un-pin policy), plus the
+  back/forward-restore reconciliation (on `pageshow`: the DOM is
+  converged onto the current locale — `window.I18N` re-applied in place
+  while it is the current dictionary, fetched first while it is stale,
+  the dropdown re-synced in both arms); loaded from
   `partials/header.html`,
   so it runs on every page, and `theme.js` — the light/dark toggle
   (`partials/theme-toggle.html`, a ghost button with a fixed
@@ -724,7 +731,27 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `navigator.language`; the cookie is written by the site-header Display
   dropdown (`partials/locale-select.html`) only while a pick deviates
   from the device default and deleted while it returns to it (the full
-  pin/un-pin policy is under Interface localization below). `locale.js` loads from
+  pin/un-pin policy is under Interface localization below). A page the
+  browser brings back on a back/forward navigation keeps the strings of
+  its first render while the cookie may have been set since — via a
+  back/forward-cache hit (the parked document as-is, no request, scripts
+  not re-executing) or via a cached HTML that re-parses (scripts re-run
+  and re-sync the dropdown to the cookie, the content stays the stale
+  render): on every `pageshow`, `locale.js` converges the DOM onto the
+  current locale — while `window.I18N` is already the effective locale's
+  dictionary (its `lang` compared onto the shipped tags, as the server
+  resolves them), it is re-applied in place (an idempotent no-op on a
+  fresh render, the fix for the re-parsing path, where boot has
+  re-fetched a current dictionary over a stale body — the observed
+  home-page case: the session's first page is the bfcache entry most
+  likely to be evicted, so it comes back re-parsed), while it is stale
+  (the parked bfcache document) it is fetched first — the same
+  dictionary swap, the dropdown re-synced in both arms, falling back to
+  a reload while the dictionary is unreachable. Gating on `e.persisted`
+  (bfcache-only) misses the re-parsing path; a locale-drift gate misses
+  it too (a re-parse resolves the current cookie at parse time, so the
+  drift is body-vs-dictionary, not in the locale variable).
+  `locale.js` loads from
   the header (before the page body), so its initial reformat waits for
   `DOMContentLoaded`. Every value is formatted with the poll's zone —
   the page container's `data-tz` (IANA name, `UTC` when the poll has
