@@ -4,6 +4,10 @@ kiusan
 meetings.db
 # js test deps
 jstest/node_modules
+# e2e deps + Playwright artifacts
+e2e/node_modules
+e2e/test-results
+e2e/playwright-report
 # coverage artifact (CI uploads it as a job artifact)
 coverage.out
 # server config file

@@ -1,5 +1,5 @@
 <span class="locale-pick">
-<label for="locale">{{.T "nav.language"}}:</label>
+<label for="locale"><span data-i18n="nav.language">{{.T "nav.language"}}</span>:</label>
 <select id="locale" data-implicit="{{.LocaleImplicit}}">
 {{range .LocaleOptions}}<option value="{{.Tag}}"{{if eq .Tag $.LocaleChosen}} selected{{end}}>{{.Name}}</option>
 {{end}}

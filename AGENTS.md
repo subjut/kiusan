@@ -239,6 +239,16 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   bfcache hit, the current-dictionary re-apply on a re-parsed stale
   body, the fresh-load no-fetch, the failed-fetch no-ops (in-place and
   on a restore)).
+- E2E tests: `npm --prefix e2e install && npm --prefix e2e test` (a
+  standalone Playwright package in `e2e/` — the Chromium browser comes
+  from the devcontainer's image, `npx --prefix e2e playwright install
+  chromium` once on a bare host) — `playwright.config.mjs` starts the
+  real server itself (`go run .` on `:8080`, a throwaway
+  `KIUSAN_DATA_DIR`, so the dev data files are never touched) and pins
+  the locale contract in a real browser: the in-place dropdown switch
+  (no navigation, the cookie pin, the un-pin back to the implicit
+  language) and the back/forward-restore behavior the jsdom suite fakes
+  with a synthetic pageshow.
 
 ## Layout
 
@@ -589,6 +599,20 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (`locale_test.mjs`, `dater_test.mjs`, `poll_test.mjs`,
   `vote_test.mjs`), whose fixtures mirror the `static/` template
   markup. `node_modules/` is gitignored.
+- `e2e/` — the standalone Playwright package for the real-browser e2e
+  tests (see Commands → E2E tests): `package.json` (the single dev
+  dependency is `@playwright/test`), `playwright.config.mjs` (one
+  worker, the `webServer` hook that starts the real server on `:8080`
+  with a throwaway `KIUSAN_DATA_DIR`), and `locale.spec.mjs` (the
+  locale contract in a real Chromium: the in-place dropdown switch, the
+  cookie pin/un-pin, the back/forward restore of a page whose locale
+  changed on a later page).
+- `.devcontainer/` — the development container: a `Dockerfile` on the
+  official Go image adding Node LTS 24 (the jsdom + Playwright suites),
+  the sqlite3 CLI, golangci-lint v2, and Playwright + Chromium (the
+  browsers in the shared `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`);
+  `devcontainer.json` builds it (port 8080 forwarded, a fixed dev
+  `KIUSAN_SECRET`); `README.md` documents the three test suites.
 - `Dockerfile` + `.dockerignore` — the deployment image: a two-stage Alpine
   build (`golang:1.27-alpine` → `alpine:3.24`, minor tags — patch updates
   to the base flow in on each rebuild automatically), the static

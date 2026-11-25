@@ -1,11 +1,7 @@
 {
   "name": "kiusan",
-  "image": "mcr.microsoft.com/devcontainers/go",
-  "features": {
-    // installs nodejs into container
-    "ghcr.io/devcontainers/features/node:2": {
-      "version": "latest"
-    }
+  "build": {
+    "dockerfile": "Dockerfile"
   },
   "forwardPorts": [8080],
   "portsAttributes": {
