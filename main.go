@@ -219,6 +219,9 @@ func initRoutes(app *fiber.App, staticDir string) {
 	app.Post("/vote/+/final", voteOps.setFinal())
 
 	// Meeting page routes; the gobbler takes either link key of the poll.
+	// The .ics download registers ahead of the page gobbler (the more
+	// specific pattern first).
+	app.Get("/meet/+/ics", meetIcsHandler)
 	app.Get("/meet/+", meetingHandler)
 	app.Post("/meet/+/answer", answerLimit, meetOps.postAnswer())
 	app.Post("/meet/+/answer/edit", answerLimit, meetOps.editAnswer())

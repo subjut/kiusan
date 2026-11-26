@@ -932,3 +932,152 @@ func TestMeetFinalSlotsPrunedOnEdit(t *testing.T) {
 		t.Fatalf("single-signup must wipe the final marks: %+v", single.FinalSlots)
 	}
 }
+
+// TestMeetICS drives the .ics download through both link shapes: a
+// single-signup poll offers the viewer's own marked slot (identity cookie
+// read, not minted), a closed regular poll offers its final slots to
+// everyone, and re-opening clears them again.
+func TestMeetICS(t *testing.T) {
+	withStore(t, store.BackendSQLite, "meetings.db")
+	app := newTestApp(t)
+	p := newPollClient(t, app)
+	berlin := mustZone(t, "Europe/Berlin")
+	end, _ := testEndDate(berlin)
+
+	status := func(r *http.Response, code int) {
+		p.t.Helper()
+		if r.StatusCode != code {
+			p.t.Fatalf("expected %d, got %d", code, r.StatusCode)
+		}
+	}
+
+	// ---- single-signup: the viewer's own slot ----
+	s0 := slotKey(time.Date(2027, 1, 1, 8, 0, 0, 0, berlin))
+	s1 := slotKey(time.Date(2027, 1, 2, 9, 30, 0, 0, berlin))
+	m, admin := p.createPoll("title=1on1&email=poll%40example.com&description=Pair+time&timezone=Europe/Berlin&enddate=" + end + "&single-signup=true&slot0=2027-01-01T08:00&slot1=2027-01-02T09:30")
+	cookie := cookieName(m)
+
+	// No stored answer: no download, and the page advertises none.
+	if r := p.get("/meet/"+m.Key+"/ics", ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("no cookie: expected 404, got %d", r.StatusCode)
+	}
+	r := p.get("/meet/"+m.Key, "")
+	status(r, http.StatusOK)
+	tok := p.cookie(r, cookie)
+	if strings.Contains(p.body(r), `data-i18n="meet.icsDownload"`) {
+		t.Fatalf("the page must not offer a download before an answer exists")
+	}
+
+	// Answer through the user link, then download with that identity.
+	status(p.post("/meet/"+m.Key+"/answer", "name=Ana&csrftoken="+csrfToken(tok)+"&a"+s0+"=g", cookie+"="+tok), http.StatusSeeOther)
+	r = p.get("/meet/"+m.Key+"/ics", cookie+"="+tok)
+	status(r, http.StatusOK)
+	if ct := r.Header.Get("Content-Type"); ct != "text/calendar; charset=utf-8" {
+		t.Fatalf("content type: %q", ct)
+	}
+	if cd := r.Header.Get("Content-Disposition"); cd != `attachment; filename="1on1.ics"` {
+		t.Fatalf("disposition: %q", cd)
+	}
+	b := p.body(r)
+	for _, want := range []string{
+		"BEGIN:VCALENDAR",
+		"SUMMARY:1on1",
+		"DESCRIPTION:Pair time",
+		"DTSTART;TZID=Europe/Berlin:20270101T080000",
+		"DTEND;TZID=Europe/Berlin:20270101T080000",
+		"UID:kiusan/" + m.Key + "/" + s0,
+	} {
+		if !strings.Contains(b, want) {
+			t.Fatalf("ics missing %q:\n%s", want, b)
+		}
+	}
+	if n := strings.Count(b, "BEGIN:VEVENT"); n != 1 {
+		t.Fatalf("expected exactly one event, got %d:\n%s", n, b)
+	}
+	if p.hasCookie(r, cookie) {
+		t.Fatalf("the download must not mint an identity cookie")
+	}
+
+	// Both links now carry the download (each on its own link).
+	for _, key := range []string{m.Key, admin} {
+		pr := p.get("/meet/"+key, cookie+"="+tok)
+		status(pr, http.StatusOK)
+		body := p.body(pr)
+		for _, want := range []string{
+			`data-i18n="meet.icsDownload"`,
+			"href=\"/meet/" + key + "/ics\"",
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("the %s page misses %q", key, want)
+			}
+		}
+	}
+
+	// A stranger identity owns no slot.
+	if r := p.get("/meet/"+m.Key+"/ics", cookie+"=someone-else"); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("a stranger identity: expected 404, got %d", r.StatusCode)
+	}
+
+	// The organizer answers through the admin link and gets their own slot.
+	ar := p.get("/meet/"+admin, "")
+	status(ar, http.StatusOK)
+	atok := p.cookie(ar, cookie)
+	status(p.post("/meet/"+admin+"/answer", "name=Bob&csrftoken="+csrfToken(atok)+"&a"+s1+"=g", cookie+"="+atok), http.StatusSeeOther)
+	if r := p.get("/meet/"+admin+"/ics", cookie+"="+atok); r.StatusCode != http.StatusOK {
+		t.Fatalf("admin ics: expected 200, got %d", r.StatusCode)
+	} else if ab := p.body(r); !strings.Contains(ab, "DTSTART;TZID=Europe/Berlin:20270102T093000") {
+		t.Fatalf("the admin's ics must carry their own slot:\n%s", ab)
+	}
+
+	// ---- regular: the final slots, public while closed ----
+	m2, admin2 := p.createPoll("title=ICS+sync&email=poll%40example.com&description=&timezone=Europe/Berlin&enddate=" + end + "&slot0=2027-02-01T10:00&slot1=2027-02-02&slot2=2027-02-03T14:30")
+	sA := slotKey(time.Date(2027, 2, 1, 10, 0, 0, 0, berlin))
+	sB := slotKey(time.Date(2027, 2, 2, 0, 0, 0, 0, berlin))
+
+	// Open: no finals, no download.
+	if r := p.get("/meet/"+m2.Key+"/ics", ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("open regular poll: expected 404, got %d", r.StatusCode)
+	}
+	status(p.post("/meet/"+admin2+"/close", "", ""), http.StatusSeeOther)
+	for _, s := range []string{sA, sB} {
+		status(p.post("/meet/"+admin2+"/final", "slot="+s, ""), http.StatusSeeOther)
+	}
+
+	// The finals are public: no cookie needed, and both links download them
+	// (a date-only final renders as a zero-length all-day event).
+	for _, key := range []string{m2.Key, admin2} {
+		r = p.get("/meet/"+key+"/ics", "")
+		status(r, http.StatusOK)
+		if cd := r.Header.Get("Content-Disposition"); cd != `attachment; filename="ICS-sync.ics"` {
+			t.Fatalf("disposition: %q", cd)
+		}
+		b := p.body(r)
+		if n := strings.Count(b, "BEGIN:VEVENT"); n != 2 {
+			t.Fatalf("expected the two final slots as events, got %d:\n%s", n, b)
+		}
+		for _, want := range []string{
+			"SUMMARY:ICS sync",
+			"DTSTART;TZID=Europe/Berlin:20270201T100000",
+			"DTSTART;VALUE=DATE:20270202",
+			"DTEND;VALUE=DATE:20270202",
+		} {
+			if !strings.Contains(b, want) {
+				t.Fatalf("ics missing %q:\n%s", want, b)
+			}
+		}
+		if i := strings.Index(b, "20270201T100000"); i < 0 || strings.Index(b, "20270202") < i {
+			t.Fatalf("the final slots must be chronological:\n%s", b)
+		}
+		// The page advertises the download on this link.
+		pb := p.body(p.get("/meet/"+key, ""))
+		if !strings.Contains(pb, "href=\"/meet/"+key+"/ics\"") {
+			t.Fatalf("the %s page misses the ics link", key)
+		}
+	}
+
+	// Re-opening clears the finals and with them the download.
+	status(p.post("/meet/"+admin2+"/reopen", "", ""), http.StatusSeeOther)
+	if r := p.get("/meet/"+m2.Key+"/ics", ""); r.StatusCode != http.StatusNotFound {
+		t.Fatalf("after re-open: expected 404, got %d", r.StatusCode)
+	}
+}

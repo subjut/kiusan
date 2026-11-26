@@ -37,7 +37,11 @@ Feature state (see `static/index.html`):
   check-only toggle buttons in the table's footer row (see Gotchas →
   Final marks); re-opening with
   finals set warns and clears them, and single-signup polls carry no
-  final marks.
+  final marks. Both meeting pages offer a `.ics` download where the
+  content rules carry a slot: a single-signup poll's viewer gets their
+  own marked slot (the identity cookie is read, not minted), a closed
+  regular poll's finals are public — zero-length events in the poll's
+  zone (midnight slots all-day), named from the title's slug.
 - "Vote on Something" — implemented end to end: the create/edit form
   (`/vote-form`; title, contact email, description, up to 20 options
   with stable IDs, the four exclusive voting types — `yes/no` (the
@@ -129,8 +133,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   final-slot marking (the closed-poll toggle, the user-key /
   unknown-slot / open-poll / single-signup gates, the re-open
   clearing, and `TestMeetFinalSlotsPrunedOnEdit` for the edit-time
-  pruning + the single-signup wipe), the clickjacking headers, and the
-  urlencoded-only POST gate;
+  pruning + the single-signup wipe), the clickjacking headers, the
+  urlencoded-only POST gate, and the .ics download (`TestMeetICS`:
+  the single-signup own-slot gate — the stranger / answerless
+  identities 404, the download-name headers, the closed regular poll's
+  public final slots (timed + all-day), the re-open clearing);
   `vote_test.go` covers the vote form (render, create, the vote-type
   and field validation incl. the mode-checkbox combinations, the
   pre-checked edit form), the vote page per voting type (render, the
@@ -195,7 +202,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `zoneLabel`, `offsetLabel` / `zoneOptionLabel` (the dropdown labels),
   `collectMarks` / `collectVoteAnswers` through a live form ctx via
   `probeForm`, `toggleFinalSlot` / `pruneFinalSlots`,
-  `toggleFinalChoice` / `pruneFinalChoices`). The suites run on
+  `toggleFinalChoice` / `pruneFinalChoices`); `ics_test.go` pins the
+  `.ics` builder + the download-name rules (the exact CRLF document on
+  a fixed instant, the UTC `Z` and the `VALUE=DATE` all-day shapes,
+  the chronological order + byte-stability, the 75-octet fold + the
+  text escaping, the filename slug table). The suites run on
   GORM-sqlite; each test chdirs into
   `t.TempDir()` and opens a throwaway store, so the dev data files are
   never touched. Coverage: main ~86%, store ~70%, database ~77%.
@@ -309,7 +320,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   four static-dir middlewares, the per-route rate limiters, and all
   page/form routes: `GET/POST /meet-form`, `GET /meet-form/edit/+`
   (admin key only), `GET/POST /vote-form`, `GET /vote-form/edit/+`,
-  `GET /meet/+` + `POST /meet/+/answer|answer/edit|answer/delete` +
+  `GET /meet/+` + `GET /meet/+/ics` (the .ics download, ahead of the
+  gobbler) + `POST /meet/+/answer|answer/edit|answer/delete` +
   the admin lifecycle `POST /meet/+/close|reopen|delete|final` (the
   answer/lifecycle routes register the shared `pollOps` builders —
   `meetOps.postAnswer()`, `meetOps.setFinal()`, …), the same routes
@@ -388,10 +400,14 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (embeds `answerPage`; the poll's zone, the slot grid, the
   respondent columns, the edit `FormCol`, the per-slot `Totals` rows,
   `HasFooter` — whether the borderless footer row renders, so the
-  handler can flag the row above it `pre-footer`), and
-  `meetingHandler` (user key → respondent view, admin key → admin
-  view). The answer & lifecycle endpoints are the shared generics in
-  `answers.go`.
+  handler can flag the row above it `pre-footer`, `IcsLink` — the
+  `.ics` download on this link, empty while the content rules carry no
+  slot), `meetingHandler` (user key → respondent view, admin key →
+  admin view), and `meetIcsHandler` (the `GET /meet/+/ics` download:
+  the viewer's own single-signup slot through the read-only identity
+  cookie, a regular poll's final slots — no downloadable slot, no
+  file: a plain 404). The answer & lifecycle endpoints are the shared
+  generics in `answers.go`.
 - `vote-form.go` — the vote form: the `voteForm` page struct (embeds
   `formBase`; the choices, the two mode checkboxes, the hide-totals
   checkbox, the vote type),
@@ -437,6 +453,16 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `loadVote`, and the thin `saveVote` wrapper around `poll.go`'s
   generic `saveEntity` (compare-and-set `UpdateVote`, retry on
   conflict).
+- `ics.go` — the meeting's `.ics` download (votes have none):
+  `buildMeetingICS` (one VEVENT per slot, chronologically; a timed
+  slot as a zero-length event — the non-UTC zone gets a manual `TZID=`
+  property on the wall-clock value, the library's `SetStartAt`
+  would normalize to a UTC `Z` — a midnight slot as a zero-length
+  all-day `VALUE=DATE` event; the UID is link key + slot instant, so a
+  re-download updates in place; CRLF + the 75-octet fold from the
+  pinned `github.com/arran4/golang-ical v0.3.8` — zero transitive
+  deps) and `icsFilename` (the title's letters/digits as a slug,
+  50-char cap, the `meeting.ics` fallback).
 - `i18n.go` — the interface-localization plumbing: the `translator`
   (`gofiber/contrib/v3/i18n` over `go-i18n/v2` with a YAML
   `EmbedLoader` on the `locales/` directory), the `langHandler` hook

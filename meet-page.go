@@ -88,6 +88,10 @@ type meetingPage struct {
 	// labels on both links) — the row above it carries the final frame's
 	// bottom edge.
 	HasFooter bool
+	// IcsLink: the .ics download on this link (the viewer's own single-
+	// slot choice, a closed poll's final slots), empty while the content
+	// rules carry no slot — no download, then, in either view.
+	IcsLink string
 }
 
 // meetingHandler renders the poll page for a user or admin link: the same
@@ -358,6 +362,14 @@ func meetingHandler(c fiber.Ctx) error {
 	if formID != "" {
 		submitKey = "meet.saveChanges"
 	}
+	// The .ics download on this link: the viewer's own single-slot choice
+	// (single-signup) or the poll's final slots (a closed regular poll),
+	// shown while the answers table shows (closed polls, open and
+	// not-ended ones).
+	var icsLink string
+	if (closed || !ended) && ((m.SingleSignup && own != nil) || len(m.FinalSlots) > 0) {
+		icsLink = "/meet/" + viewKey + "/ics"
+	}
 	return renderPage(c, "meet", "pagetitle.meet", m.Title, &pageData{
 		Meet: &meetingPage{
 			answerPage: answerPage{
@@ -421,6 +433,57 @@ func meetingHandler(c fiber.Ctx) error {
 			FormCol:     formCol,
 			Totals:      totals,
 			HasFooter:   (isAdmin && closed && !m.SingleSignup) || len(m.FinalSlots) > 0,
+			IcsLink:     icsLink,
 		},
 	})
+}
+
+// meetIcsHandler serves the poll's .ics download on either link: the
+// viewer's own single-slot choice (single-signup — at most one mark) or,
+// for a regular poll, its final slots. No downloadable slot, no file:
+// a 404. A plain 404, like the other capability-adjacent read and the
+// answer/lifecycle endpoints.
+func meetIcsHandler(c fiber.Ctx) error {
+	m, _, err := resolveMeeting(c.Params("+"))
+	if err != nil {
+		return sendInternal(c, err)
+	}
+	if m == nil {
+		return notFoundHandler(c)
+	}
+	var slots []time.Time
+	if m.SingleSignup {
+		// The viewer's own stored answer: the slot the meeting landed on
+		// for them. The identity cookie is read, not minted — a download
+		// creates no identity.
+		identity := c.Cookies(cookieName(m))
+		if identity == "" {
+			return notFoundHandler(c)
+		}
+		a := findAnswer(m.Answers, identity)
+		if a == nil {
+			return notFoundHandler(c)
+		}
+		for k, v := range a.Marks {
+			if v == "" {
+				continue
+			}
+			// slotKey is the mark key's format (the slot's absolute UTC
+			// instant, minutes).
+			s, perr := time.Parse("2006-01-02T15:04Z07:00", k)
+			if perr != nil {
+				continue
+			}
+			slots = append(slots, s)
+		}
+	} else {
+		slots = m.FinalSlots
+	}
+	if len(slots) == 0 {
+		return notFoundHandler(c)
+	}
+	body := buildMeetingICS(m, slots, time.Now())
+	c.Set("Content-Type", "text/calendar; charset=utf-8")
+	c.Set("Content-Disposition", "attachment; filename=\""+icsFilename(m.Title)+"\"")
+	return c.SendString(body)
 }

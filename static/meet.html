@@ -48,6 +48,9 @@
 		<input type="hidden" name="respondentid" value="">
 	</form>
 	{{end}}
+	{{if .Meet.IcsLink}}
+	<p class="ics-link"><a href="{{.Meet.IcsLink}}" data-i18n="meet.icsDownload">{{.T "meet.icsDownload"}}</a></p>
+	{{end}}
 	{{else}}
 	<p data-i18n="meet.noSlots">{{.T "meet.noSlots"}}</p>
 	{{end}}
