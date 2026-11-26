@@ -18,7 +18,6 @@ jobs:
       - name: Vet
         run: go vet ./...
       # SQLite-only for now: the in-process suites run on GORM-sqlite
-      # (throwaway :memory: and temp-dir files), no external services.
       - name: Test (race + coverage)
         run: |
           go test -race -coverprofile=coverage.out $(go list ./... | grep -v '/tools/')
@@ -56,10 +55,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      # The browser comes from the devcontainer's image; on a bare CI host
-      # install it (system deps via --with-deps).
       - name: Install Playwright + Chromium
-        run: npm --prefix e2e install && sudo npx --prefix e2e playwright install --with-deps chromium
+        run: npm --prefix e2e install && npx --prefix e2e playwright install --with-deps chromium
       # The suite starts its own server (seeded throwaway data dir) — see
       # e2e/playwright.config.mjs.
       - name: Run the E2E suite
