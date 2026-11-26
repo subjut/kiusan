@@ -5,6 +5,7 @@ This is a development container for Kiusan. It is built from the [`.devcontainer
 - **Node.js LTS** (24) — the jsdom suite (`jstest/`) and the Playwright e2e suite (`e2e/`); also `node --check` for the JavaScript files.
 - **sqlite3 CLI** — inspecting the data files (`meetings.db`, `test.db`).
 - **golangci-lint** — a deeper Go check than `go vet` (which is what CI runs): `golangci-lint run`.
+- **actionlint** — the GitHub Actions workflow lint (`.github/workflows/`): `actionlint`.
 - **Playwright + Chromium** — the browser for the e2e suite. The Chromium binary lives in `/ms-playwright` (the `PLAYWRIGHT_BROWSERS_PATH` set by the image) so the non-root container user finds it.
 
 ## Opening it

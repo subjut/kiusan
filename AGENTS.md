@@ -209,7 +209,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   every `static/js/*.js`, the jstest npm suite, and the e2e Playwright
   job (Playwright + Chromium installed with `--with-deps`, the suite
   starts its own seeded server — see E2E tests) — sqlite-only, no
-  external services.
+  external services; the workflow file is lintable locally with
+  `actionlint` (devcontainer) while CI has no such check.
 - JS tests: `npm --prefix jstest install && npm --prefix jstest test`
   (a standalone `node --test` package in `jstest/`) — the real
   `static/js/*` scripts are injected inline into jsdom in the browser's
@@ -667,7 +668,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   server).
 - `.devcontainer/` — the development container: a `Dockerfile` on the
   official Go image adding Node LTS 24 (the jsdom + Playwright suites),
-  the sqlite3 CLI, golangci-lint v2, and Playwright + Chromium (the
+  the sqlite3 CLI, golangci-lint v2, actionlint (the workflow lint), and
+  Playwright + Chromium (the
   browsers in the shared `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`; the
   root-run build step hands its tree — `GOPATH`, which is also Go's
   module cache — back to `vscode` via a `chown` in the same `RUN`, so
