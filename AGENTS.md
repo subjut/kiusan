@@ -206,7 +206,9 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `tools/testdb` seed tool has no tests of its own, and a 0% package in
   the combined profile would drag the module total below the floor — and
   the floor check prints a message when it fails, `node --check` on
-  every `static/js/*.js`, and the jstest npm suite — sqlite-only, no
+  every `static/js/*.js`, the jstest npm suite, and the e2e Playwright
+  job (Playwright + Chromium installed with `--with-deps`, the suite
+  starts its own seeded server — see E2E tests) — sqlite-only, no
   external services.
 - JS tests: `npm --prefix jstest install && npm --prefix jstest test`
   (a standalone `node --test` package in `jstest/`) — the real
@@ -243,12 +245,53 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   standalone Playwright package in `e2e/` — the Chromium browser comes
   from the devcontainer's image, `npx --prefix e2e playwright install
   chromium` once on a bare host) — `playwright.config.mjs` starts the
-  real server itself (`go run .` on `:8080`, a throwaway
-  `KIUSAN_DATA_DIR`, so the dev data files are never touched) and pins
-  the locale contract in a real browser: the in-place dropdown switch
-  (no navigation, the cookie pin, the un-pin back to the implicit
-  language) and the back/forward-restore behavior the jsdom suite fakes
-  with a synthetic pageshow.
+  real server itself on `:8080` with a throwaway `KIUSAN_DATA_DIR` (so
+  the dev data files are never touched): the `webServer` command first
+  seeds that data dir with `tools/testdb` (the same file as `./test.db`
+  for dev, so the specs can use the real size-capped tables) and
+  redirects its link list to `<dataDir>/seed.txt`, which the specs read
+  via `env.mjs`; `KIUSAN_DB_NAME=test.db`; `reuseExistingServer` is off
+  (the suite seeds + mutates that DB, so a reused server would sit on
+  the wrong data file). The specs pin what jsdom fakes: the locale
+  contract in a real browser (the in-place dropdown switch — no
+  navigation, the cookie pin, the un-pin back to the implicit language —
+  and the back/forward-restore the jsdom suite fakes with a synthetic
+  pageshow), the sticky table header with its real measured offsets (the
+  `--th-N` vars, the pinned `thead` after a real scroll of the
+  `.table-scroll` region, which scrolls both axes on the seeded 100×100
+  meeting), the create → answer → organizer-view golden paths for the
+  meeting and the vote (through the real form UIs — calendar + per-date
+  time row + submit gate, choice rows + the mode-checkbox interlock —,
+  a fresh-identity second context answering through the user link with
+  the shipped JS wiring, the matrix + totals + per-row management
+  picking the answer up), the theme (theme.js has no other coverage —
+  the live `prefers-color-scheme` follow while no cookie is set, the
+  toggle's pin + aria-label swap + the pin outliving system changes, the
+  server-rendered `theme-dark` class from the cookie on a plain
+  response), the admin-side poll/vote lifecycle end to end on the seeded
+  tables (the close → final-mark → accent frame on both links → two-step
+  re-open that clears the marks; the two-step delete → the dedicated 404
+  gone page for both dead links + the identity cookie expiring; a
+  single-choice vote keeps the final marks), the submit gates' real-
+  coord clicks on the disabled submits (CSS `pointer-events: none` lets
+  the click land on the form — the `err` hint flash appears and is
+  dropped on `animationend`, the URL never changes; the dater's gate
+  lifts and its hint hides once a day is picked, the vote's must-answer
+  gate lifts once the answer is complete), the date values against real
+  ICU in the poll's zone (the tz annotation's offset computed live in
+  the browser — DST-dependent, never hardcoded —, the time cell pinning
+  the zone, and the German re-format of the date labels after a locale
+  switch), the back/forward-restore convergence (headless Chromium does
+  not bfcache-park these pages, so the spec pins the converged outcome,
+  not the parking: the UI strings of a page whose locale was set on a
+  later page, the re-synced dropdown, the re-formatted date titles, and
+  the answer form live after restore), and the per-client create rate
+  limit (the 21st creation in a minute 429s — the spec spawns its own
+  server on `:8081` with its own data dir and kills the process group
+  in teardown, because the shared suite's server serves every spec from
+  one IP and its 20/min create budget can't be probed). CI runs it as
+  a job (Playwright + Chromium with `--with-deps`), and the suite stays
+  fast (a few seconds against the server, one worker, no sleeps).
 
 ## Layout
 
@@ -602,15 +645,33 @@ token, and the per-choice totals rows per voting type (`Yes` always,
 - `e2e/` — the standalone Playwright package for the real-browser e2e
   tests (see Commands → E2E tests): `package.json` (the single dev
   dependency is `@playwright/test`), `playwright.config.mjs` (one
-  worker, the `webServer` hook that starts the real server on `:8080`
-  with a throwaway `KIUSAN_DATA_DIR`), and `locale.spec.mjs` (the
-  locale contract in a real Chromium: the in-place dropdown switch, the
-  cookie pin/un-pin, the back/forward restore of a page whose locale
-  changed on a later page).
+  worker, the `webServer` hook whose command seeds the throwaway
+  `KIUSAN_DATA_DIR` with `tools/testdb` — the link list redirected to
+  `<dataDir>/seed.txt` — then starts the real server on `:8080` with it,
+  `KIUSAN_DB_NAME=test.db`, `reuseExistingServer` off), `env.mjs` (the
+  data-dir path + the seed link parser), and the specs: `locale.spec.mjs`
+  (the locale contract: the in-place dropdown switch, the cookie
+  pin/un-pin, the back/forward restore of a page whose locale changed on
+  a later page), `sticky.spec.mjs` (the sticky header's measured
+  `--th-N` offsets + real `.table-scroll` scrolling on the seeded
+  100×100 meeting), `meet-journey.spec.mjs` + `vote-journey.spec.mjs`
+  (the create → answer → organizer-view golden paths), `theme.spec.mjs`
+  (the system follow, the pin, the server-rendered class),
+  `clipboard.spec.mjs` (the copy buttons → `navigator.clipboard`),
+  `lifecycle.spec.mjs` (the admin-side close / final-mark / two-step
+  re-open + two-step delete on the seeded tables, both page types),
+  `submit-gate.spec.mjs` (the real-coord clicks on the disabled
+  submits), `dates.spec.mjs` (the real-ICU date values in the poll's
+  zone), `bfcache.spec.mjs` (the back/forward-restore convergence),
+  and `ratelimit.spec.mjs` (the 21st create → 429, on its own `:8081`
+  server).
 - `.devcontainer/` — the development container: a `Dockerfile` on the
   official Go image adding Node LTS 24 (the jsdom + Playwright suites),
   the sqlite3 CLI, golangci-lint v2, and Playwright + Chromium (the
-  browsers in the shared `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`);
+  browsers in the shared `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`; the
+  root-run build step hands its tree — `GOPATH`, which is also Go's
+  module cache — back to `vscode` via a `chown` in the same `RUN`, so
+  the non-root container user can write to the cache from day one);
   `devcontainer.json` builds it (port 8080 forwarded, a fixed dev
   `KIUSAN_SECRET`); `README.md` documents the three test suites.
 - `Dockerfile` + `.dockerignore` — the deployment image: a two-stage Alpine

@@ -45,3 +45,22 @@ jobs:
           for f in static/js/*.js; do node --check "$f"; done
       - name: Run the JS test suite
         run: npm --prefix jstest install && npm --prefix jstest test
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # The browser comes from the devcontainer's image; on a bare CI host
+      # install it (system deps via --with-deps).
+      - name: Install Playwright + Chromium
+        run: npm --prefix e2e install && sudo npx --prefix e2e playwright install --with-deps chromium
+      # The suite starts its own server (seeded throwaway data dir) — see
+      # e2e/playwright.config.mjs.
+      - name: Run the E2E suite
+        run: npm --prefix e2e test
