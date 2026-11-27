@@ -205,6 +205,14 @@ func initRoutes(app *fiber.App, staticDir string) {
 	app.Post("/vote-form", createLimit, voteFormPostHandler)
 	app.Get("/vote-form/edit/+", voteFormEditHandler)
 
+	// Vote image upload & serve. The thumb route registers ahead of the
+	// full one (the more specific pattern first, like /meet/+/ics); the
+	// upload rides the create rate limit (it is an unauthenticated write
+	// like the form submit it feeds).
+	app.Post("/vote-img", createLimit, voteImageUploadHandler)
+	app.Get("/vote-img/+/thumb", serveVoteImageThumb)
+	app.Get("/vote-img/+", serveVoteImageFull)
+
 	// Vote page routes; the gobbler takes either link key of the vote.
 	app.Get("/vote/+", voteHandler)
 	app.Post("/vote/+/answer", answerLimit, voteOps.postAnswer())
@@ -278,7 +286,11 @@ func newApp(staticDir string) *fiber.App {
 
 	// Create app
 	app := fiber.New(fiber.Config{
-		Views:       engine,
+		Views: engine,
+		// 50 MB hard ceiling on request bodies: the image upload route
+		// allows 20 files x 10 MB, so the default 4 MB limit would cut a
+		// legal upload short — everything beyond the ceiling is a 413.
+		BodyLimit:   50 << 20,
 		ReadTimeout: 10 * time.Second, // Don't keep cons alive for too long
 		IdleTimeout: 60 * time.Second, // Drop idle keep-alive connections
 	})
@@ -291,6 +303,7 @@ func newApp(staticDir string) *fiber.App {
 			p := c.Path()
 			return strings.HasPrefix(p, "/meet/") ||
 				strings.HasPrefix(p, "/vote/") ||
+				strings.HasPrefix(p, "/vote-img/") ||
 				strings.HasPrefix(p, "/meet-form/edit/") ||
 				strings.HasPrefix(p, "/vote-form/edit/")
 		},

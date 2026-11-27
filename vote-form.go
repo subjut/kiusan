@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -116,13 +117,16 @@ func voteFormPostHandler(c fiber.Ctx) error {
 		return sendErr(c, 400, "Invalid vote type")
 	}
 
-	// The option rows arrive as (choice0, choiceID0), (choice1,
-	// choiceID1), ... — on edit the ID is the one the form rendered, so a
-	// row whose text is unchanged keeps its ID (and its answers).
+	// The option rows arrive as (choiceN, choiceIMG N, choiceIDN): a row
+	// is present while it carries a label, an image, or both — the first
+	// row with neither ends the list. On edit the ID is the one the form
+	// rendered, so a row whose (label, image) pair is unchanged keeps its
+	// ID (and its answers).
 	rows := make([]choiceRow, 0, 4)
 	for i := 0; ; i++ {
 		text := strings.TrimSpace(c.FormValue("choice" + strconv.Itoa(i)))
-		if text == "" {
+		img := strings.TrimSpace(c.FormValue("choiceIMG" + strconv.Itoa(i)))
+		if text == "" && img == "" {
 			break
 		}
 		if len(rows) >= maxChoices {
@@ -133,11 +137,53 @@ func voteFormPostHandler(c fiber.Ctx) error {
 		}
 		rows = append(rows, choiceRow{
 			text:  text,
+			image: img,
 			oldID: strings.TrimSpace(c.FormValue("choiceID" + strconv.Itoa(i))),
 		})
 	}
 	if len(rows) == 0 {
 		return sendErr(c, 400, "At least one choice is required")
+	}
+
+	// An edit is recognized by its votekey; the old vote is loaded here
+	// (404 for a gone link, like the page edit routes) because the image
+	// ownership check below needs it.
+	editKey := strings.TrimSpace(c.FormValue("votekey"))
+	var old *database.Vote
+	if editKey != "" {
+		var err error
+		old, err = db.GetVoteAdmin(editKey)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return notFoundHandler(c)
+			}
+			return sendInternal(c, err)
+		}
+	}
+
+	// A row's image ID must be attachable: an image a *different* vote
+	// already names is owned — a hand-built form can't borrow it. On
+	// edit a row keeps this vote's own images; every mode accepts a
+	// fresh (never-attached) upload.
+	ownSet := make(map[string]struct{})
+	for _, imgID := range voteChoiceImageIDs(old) {
+		ownSet[imgID] = struct{}{}
+	}
+	if anyRowHasImage(rows) {
+		refs, err := db.ReferencedVoteImageIDs()
+		if err != nil {
+			return sendInternal(c, err)
+		}
+		for i := range rows {
+			if rows[i].image == "" {
+				continue
+			}
+			_, referenced := refs[rows[i].image]
+			_, own := ownSet[rows[i].image]
+			if referenced && !own {
+				return sendErr(c, 400, "Option image belongs to another vote")
+			}
+		}
 	}
 
 	endDate, msg := parseEndDate(c.FormValue("enddate"), time.Now())
@@ -146,14 +192,7 @@ func voteFormPostHandler(c fiber.Ctx) error {
 	}
 	v.Expires = endOf(endDate, time.UTC)
 
-	if editKey := strings.TrimSpace(c.FormValue("votekey")); editKey != "" {
-		old, err := db.GetVoteAdmin(editKey)
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return notFoundHandler(c)
-			}
-			return sendInternal(c, err)
-		}
+	if editKey != "" {
 		choices, err := assignChoiceIDs(old.Choices, rows)
 		if err != nil {
 			return sendInternal(c, err)
@@ -183,6 +222,14 @@ func voteFormPostHandler(c fiber.Ctx) error {
 		})
 		if err != nil {
 			return saveError(c, err)
+		}
+		// The images this edit dropped leave the store with the save
+		// (the janitor is the backstop for the abandoned-upload case, not
+		// for an intentional drop).
+		if dropped := diffImageIDs(old.Choices, v.Choices); len(dropped) > 0 {
+			if err := db.DeleteVoteImages(dropped); err != nil {
+				log.Printf("vote: dropping detached option images: %v", err)
+			}
 		}
 		return c.Redirect().To("/vote/" + saved.AdminKey)
 	}

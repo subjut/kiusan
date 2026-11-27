@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/subjut/kiusan/database"
+	"github.com/subjut/kiusan/store"
 )
 
 // postVoteForm submits a url-encoded body to /vote-form, like a browser does.
@@ -348,6 +350,9 @@ func editVote(t *testing.T, app *fiber.App, adminKey string, rows []choiceRow, e
 		if r.oldID != "" {
 			form.Set("choiceID"+strconv.Itoa(i), r.oldID)
 		}
+		if r.image != "" {
+			form.Set("choiceIMG"+strconv.Itoa(i), r.image)
+		}
 	}
 	resp, err := postVoteForm(t, app, form.Encode())
 	if err != nil {
@@ -380,8 +385,9 @@ func TestVotePageRender(t *testing.T) {
 	b, _ := io.ReadAll(r.Body)
 	body := string(b)
 	for _, want := range []string{
-		`class="th-choice">Option A`,
-		`class="th-choice">Option B`,
+		`class="th-choice">`,
+		"Option A",
+		"Option B",
 		`vote.modeYesNo`,
 		`class="legend"`,
 		`class="links"`,
@@ -1411,4 +1417,256 @@ func TestVoteFinalChoices(t *testing.T) {
 	if v.Closed || len(v.FinalChoices) != 0 {
 		t.Fatalf("re-open must clear the final marks: closed=%v finals=%+v", v.Closed, v.FinalChoices)
 	}
+}
+
+// uploadOneImage uploads one test image through the real route and
+// returns its stored ID (12 random letters) and the source dimensions.
+func uploadOneImage(t *testing.T, app *fiber.App, w, h int) string {
+	t.Helper()
+	r := postUpload(t, app, []uploadPart{{"pic.png", testPNG(w, h)}})
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("POST /vote-img: status %d", r.StatusCode)
+	}
+	res := uploadResults(t, r)
+	if len(res) != 1 || res[0].Err != "" || res[0].ID == "" {
+		t.Fatalf("upload must yield one stored image: %+v", res)
+	}
+	return res[0].ID
+}
+
+// createVoteWithImages posts the form the way the page submits it — an
+// image-only option (the image rides in choiceIMG, the label stays
+// empty) ahead of a plain text option — and returns the created vote's
+// keys.
+func createVoteWithImages(t *testing.T, app *fiber.App, imgID string) (string, string) {
+	t.Helper()
+	form := url.Values{
+		"title":    {"Picture Poll"},
+		"email":    {"pic@example.com"},
+		"votetype": {"yes-no"},
+		"enddate":  {futureEnd()},
+	}
+	form.Set("choiceIMG0", imgID)
+	form.Set("choice1", "Text option")
+	r, err := postVoteForm(t, app, form.Encode())
+	if err != nil {
+		t.Fatalf("POST /vote-form: %v", err)
+	}
+	if r.StatusCode != http.StatusSeeOther {
+		b, _ := io.ReadAll(r.Body)
+		t.Fatalf("POST /vote-form: status %d (%s), want redirect", r.StatusCode, b)
+	}
+	adminKey := strings.TrimPrefix(r.Header.Get("Location"), "/vote/")
+	v, err := db.GetVoteAdmin(adminKey)
+	if err != nil {
+		t.Fatalf("loading created vote: %v", err)
+	}
+	return v.Key, adminKey
+}
+
+// TestVoteFormCreateWithImage pins the label-optional rule: an option
+// with only an image is a valid row, the image ID is stored on the
+// choice, and a text-only option still sits next to it.
+func TestVoteFormCreateWithImage(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	imgID := uploadOneImage(t, app, 12, 8)
+
+	userKey, _ := createVoteWithImages(t, app, imgID)
+	v, err := db.GetVote(userKey)
+	if err != nil {
+		t.Fatalf("loading vote: %v", err)
+	}
+	if len(v.Choices) != 2 {
+		t.Fatalf("want 2 choices, got %d: %+v", len(v.Choices), v.Choices)
+	}
+	if v.Choices[0].Image != imgID || v.Choices[0].Text != "" {
+		t.Fatalf("image-only choice: text=%q image=%q, want (%q, \"\")", v.Choices[0].Text, v.Choices[0].Image, imgID)
+	}
+	if v.Choices[1].Text != "Text option" || v.Choices[1].Image != "" {
+		t.Fatalf("text choice: %+v, want (Text option, \"\")", v.Choices[1])
+	}
+	for i := range v.Choices {
+		if len(v.Choices[i].ID) != 12 {
+			t.Fatalf("choice %d ID %q must be minted (12 chars)", i, v.Choices[i].ID)
+		}
+	}
+}
+
+// TestVoteFormImageOwnership pins the tamper guard: an image a
+// *different* vote already names cannot be borrowed (a hand-built form
+// submits it), while this vote's own image stays attachable on edit.
+func TestVoteFormImageOwnership(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	imgID := uploadOneImage(t, app, 8, 8)
+	userKey, _ := createVoteWithImages(t, app, imgID)
+	v, _ := db.GetVote(userKey)
+
+	// A new vote borrowing the image: rejected.
+	form := url.Values{
+		"title":    {"Borrower"},
+		"email":    {"b@example.com"},
+		"votetype": {"yes-no"},
+		"enddate":  {futureEnd()},
+	}
+	form.Set("choiceIMG0", imgID)
+	r, err := postVoteForm(t, app, form.Encode())
+	if err != nil {
+		t.Fatalf("POST /vote-form: %v", err)
+	}
+	if r.StatusCode != http.StatusBadRequest {
+		t.Fatalf("borrowed image: status %d, want 400", r.StatusCode)
+	}
+
+	// The owner re-submitting its own image: accepted (the edit path with
+	// an unchanged (text, image) pair keeps the ID).
+	saved := editVote(t, app, v.AdminKey, []choiceRow{
+		{text: "", image: imgID, oldID: v.Choices[0].ID},
+		{text: "Text option", oldID: v.Choices[1].ID},
+	}, nil)
+	if saved.Choices[0].ID != v.Choices[0].ID || saved.Choices[0].Image != imgID {
+		t.Fatalf("the owner's unchanged image row must keep its ID: %+v", saved.Choices[0])
+	}
+}
+
+// TestVoteEditImage pins the (label, image) identity: swapping the image
+// mints a fresh option ID (the old option's answers are pruned) and the
+// detached image leaves the store; clearing an image from a labeled
+// option is the same swap.
+func TestVoteEditImage(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	img1 := uploadOneImage(t, app, 8, 8)
+	userKey, adminKey := createVoteWithImages(t, app, img1)
+	v, _ := db.GetVote(userKey)
+	imgChoice := v.Choices[0].ID
+	textChoice := v.Choices[1].ID
+
+	// A respondent marks the image option — the answer must survive the
+	// swap as an entry and lose the old option's mark.
+	answerVote(t, app, userKey, "Ada", map[string]string{"a" + imgChoice: "y"})
+
+	img2 := uploadOneImage(t, app, 6, 6)
+	saved := editVote(t, app, adminKey, []choiceRow{
+		{text: "", image: img2, oldID: imgChoice},
+		{text: "Text option", oldID: textChoice},
+	}, nil)
+	if len(saved.Choices) != 2 {
+		t.Fatalf("want 2 choices after the swap, got %d: %+v", len(saved.Choices), saved.Choices)
+	}
+	if saved.Choices[0].ID == imgChoice {
+		t.Fatalf("a swapped image must get a fresh option ID: %+v", saved.Choices[0])
+	}
+	if saved.Choices[0].Image != img2 {
+		t.Fatalf("swapped choice must carry the new image: %+v", saved.Choices[0])
+	}
+	if saved.Choices[1].ID != textChoice {
+		t.Fatalf("the unchanged text choice must keep its ID: %+v", saved.Choices[1])
+	}
+	if len(saved.Answers) != 1 || saved.Answers[0].Name != "Ada" {
+		t.Fatalf("the respondent's entry must survive the edit: %+v", saved.Answers)
+	}
+	if _, ok := saved.Answers[0].Marks[imgChoice]; ok {
+		t.Fatalf("the old option's mark must be pruned: %+v", saved.Answers[0].Marks)
+	}
+	if _, err := db.GetVoteImage(img1, database.VoteImageKindFull); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the detached image must leave the store: %v", err)
+	}
+
+	// Label the option, then clear its image: the pair changes again, so
+	// the ID moves once more and the second image is purged too.
+	saved = editVote(t, app, adminKey, []choiceRow{
+		{text: "Pic label", image: img2, oldID: saved.Choices[0].ID},
+		{text: "Text option", oldID: textChoice},
+	}, nil)
+	labeledID := saved.Choices[0].ID
+	saved = editVote(t, app, adminKey, []choiceRow{
+		{text: "Pic label", oldID: labeledID},
+		{text: "Text option", oldID: textChoice},
+	}, nil)
+	if saved.Choices[0].ID == labeledID {
+		t.Fatalf("clearing the image must mint a fresh option ID: %+v", saved.Choices[0])
+	}
+	if saved.Choices[0].Image != "" {
+		t.Fatalf("the cleared choice must carry no image: %+v", saved.Choices[0])
+	}
+	if _, err := db.GetVoteImage(img2, database.VoteImageKindThumb); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the second detached image must leave the store: %v", err)
+	}
+}
+
+// TestVotePageRenderWithImage pins the image option's column header on
+// the answer page: a labeled image option carries its label above the
+// thumbnail, a label-less one falls back to the localized alt text, both
+// carry the thumb + full URLs at 64px, and the lightbox the thumbnail
+// opens is on the page — with the table staying rectangular.
+func TestVotePageRenderWithImage(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	app := newTestApp(t)
+	imgID := uploadOneImage(t, app, 8, 8)
+	imgID2 := uploadOneImage(t, app, 6, 6)
+
+	// A labeled image option, a label-less one, and a text-only one.
+	form := url.Values{
+		"title":    {"Picture Poll"},
+		"email":    {"pic@example.com"},
+		"votetype": {"yes-no"},
+		"enddate":  {futureEnd()},
+	}
+	form.Set("choice0", "Pic")
+	form.Set("choiceIMG0", imgID)
+	form.Set("choiceIMG1", imgID2)
+	form.Set("choice2", "Text option")
+	r, err := postVoteForm(t, app, form.Encode())
+	if err != nil {
+		t.Fatalf("POST /vote-form: %v", err)
+	}
+	if r.StatusCode != http.StatusSeeOther {
+		b, _ := io.ReadAll(r.Body)
+		t.Fatalf("POST /vote-form: status %d (%s), want redirect", r.StatusCode, b)
+	}
+	adminKey := strings.TrimPrefix(r.Header.Get("Location"), "/vote/")
+	v, err := db.GetVoteAdmin(adminKey)
+	if err != nil {
+		t.Fatalf("loading vote: %v", err)
+	}
+
+	r, err = app.Test(httptest.NewRequest(http.MethodGet, "/vote/"+v.Key, nil))
+	if err != nil {
+		t.Fatalf("GET /vote: %v", err)
+	}
+	if r.StatusCode != http.StatusOK {
+		t.Fatalf("GET /vote: status %d", r.StatusCode)
+	}
+	b, _ := io.ReadAll(r.Body)
+	body := string(b)
+
+	for _, want := range []string{
+		`class="th-choice th-img"`,
+		`class="choice-head"`,
+		`class="choice-head-text">Pic</span>`,
+		`class="choice-thumb" data-src="/vote-img/` + imgID + `"`,
+		`<img src="/vote-img/` + imgID + `/thumb"`,
+		`class="choice-thumb" data-src="/vote-img/` + imgID2 + `"`,
+		`width="64" height="64"`,
+		`id="lightbox"`,
+		`class="lightbox-img"`,
+		`class="lightbox-close"`,
+		`src="/vote.js"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("GET /vote: missing %q in body", want)
+		}
+	}
+	// The labeled thumbnail carries its label as alt, the label-less one
+	// falls back to the localized alt text (the English catalog's "Option").
+	if !strings.Contains(body, `alt="Pic"`) {
+		t.Fatalf("GET /vote: the labeled thumbnail must carry its label as alt")
+	}
+	if !strings.Contains(body, `alt="Option"`) {
+		t.Fatalf("GET /vote: the label-less thumbnail must carry the fallback alt")
+	}
+	// The image headers must not break the table's rectangular shape.
+	tableShape(t, parsePage(t, body))
 }

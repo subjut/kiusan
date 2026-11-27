@@ -54,6 +54,17 @@
 	{{else}}
 	<p data-i18n="vote.noChoices">{{.T "vote.noChoices"}}</p>
 	{{end}}
+
+	{{/* the lightbox: an image option's full size over a greyed backdrop,
+	    opened from the table header's thumbnails (wired in vote.js).
+	    The close button and the prev/next arrows are positioned by JS
+	    around the largest image of the cycle — they never cover one. */}}
+	<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="{{.T "vote.lightbox"}}">
+		<img class="lightbox-img" alt="">
+		<button type="button" class="lightbox-prev" data-i18n-title="vote.lightboxPrev" title="{{.T "vote.lightboxPrev"}}" aria-label="{{.T "vote.lightboxPrev"}}">&#8249;</button>
+		<button type="button" class="lightbox-next" data-i18n-title="vote.lightboxNext" title="{{.T "vote.lightboxNext"}}" aria-label="{{.T "vote.lightboxNext"}}">&#8250;</button>
+		<button type="button" class="lightbox-close" data-i18n-title="vote.lightboxClose" title="{{.T "vote.lightboxClose"}}" aria-label="{{.T "vote.lightboxClose"}}">&times;</button>
+	</div>
 </div>
 <script src="/page.js"></script>
 <script src="/vote.js"></script>

@@ -20,10 +20,11 @@ const (
 // Choice is one option in a vote. ID is a stable identifier minted when
 // the option is created: answers are keyed by it, so reordering the
 // options never shifts a stored answer, and deleting one drops exactly
-// its answers. Editing an option's text counts as a new option (a fresh
-// ID), which prunes the old option's answers. Text is the choice's
-// label; Image is reserved for the future drag-and-drop upload (empty
-// for now).
+// its answers. Editing an option — changing its text *or* swapping its
+// image — counts as a new option (a fresh ID), which prunes the old
+// option's answers. Text is the choice's label (optional while the
+// row has an image); Image is the stored option image's random ID
+// (empty for a text-only row).
 type Choice struct {
 	ID    string `json:"id"`
 	Text  string `json:"text"`
@@ -98,6 +99,25 @@ func (s *StringSlice) Scan(value any) error {
 	default:
 		return fmt.Errorf("database: cannot scan %T into StringSlice", value)
 	}
+}
+
+// VoteImageKind selects one of the two stored sizes of an option image.
+// Both are re-encoded JPEGs produced by the upload pipeline (the original
+// bytes are discarded), so the column is a plain bytea — portable across
+// every backend.
+const (
+	VoteImageKindThumb = "thumb" // ~256px max: the answers-table column header
+	VoteImageKindFull  = "full"  // ~1024px max: the click-to-open lightbox
+)
+
+// VoteImage is one stored size of a vote option's image. The image is
+// keyed by a random ID — the value stored in Choice.Image — and by its
+// kind (thumb / full); PutVoteImage stores both sizes under one ID.
+type VoteImage struct {
+	ID      string `gorm:"primaryKey"`
+	Kind    string `gorm:"primaryKey"`
+	Data    []byte `gorm:"not null"`
+	Created time.Time
 }
 
 // VoteAnswer is one respondent's answer to a vote. In mark mode, Marks

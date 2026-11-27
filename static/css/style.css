@@ -72,6 +72,12 @@
 		--shadow: 0 1px 3px rgba(28, 25, 23, 0.06), 0 1px 2px rgba(28, 25, 23, 0.04);
 		--shadow-hover: 0 4px 12px rgba(28, 25, 23, 0.1);
 
+		/* lightbox controls — dark chip over the greyed backdrop
+		   (inverted to a light chip in the dark themes below) */
+		--lb-ctl-bg: rgba(30, 30, 34, 0.65);
+		--lb-ctl-bg-hover: rgba(30, 30, 34, 0.9);
+		--lb-ctl-text: #ffffff;
+
 		/* type */
 		--font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
 			Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -123,6 +129,11 @@
 		/* elevation (darker, more opaque on dark surfaces) */
 		--shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
 		--shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.55);
+
+		/* lightbox controls — light chip over the dark backdrop */
+		--lb-ctl-bg: rgba(245, 241, 234, 0.9);
+		--lb-ctl-bg-hover: #f5f1ea;
+		--lb-ctl-text: #1c1814;
 	}
 }
 
@@ -159,6 +170,11 @@
 	/* elevation (darker, more opaque on dark surfaces) */
 	--shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
 	--shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.55);
+
+	/* lightbox controls — light chip over the dark backdrop */
+	--lb-ctl-bg: rgba(245, 241, 234, 0.9);
+	--lb-ctl-bg-hover: #f5f1ea;
+	--lb-ctl-text: #1c1814;
 }
 }
 
@@ -1825,6 +1841,276 @@
 		color: var(--mark-red-text);
 		border-color: var(--mark-red-text);
 		background: var(--mark-red-bg);
+	}
+
+	/* ---- choice rows: image slot + reorder (vote form) ------------------
+	   row: [grip][64px slot][text input][up][down][x]. The slot is the
+	   per-row drop target and the upload button (click opens the file
+	   picker); a filled slot shows the server thumbnail (click = replace,
+	   the corner x removes the image). */
+	.choice-grip {
+		flex: none;
+		width: 24px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--text-2);
+		cursor: grab;
+		user-select: none;
+	}
+
+	/* the standard 3x3 dot-matrix grip, drawn in CSS (no font glyph) */
+	.choice-grip::before {
+		content: "";
+		width: 18px;
+		height: 24px;
+		background-image: radial-gradient(circle, currentColor 1.3px, transparent 1.5px);
+		background-size: 6px 8px;
+	}
+
+	.choice-row.dragging .choice-grip {
+		cursor: grabbing;
+	}
+
+	.choice-slot {
+		position: relative;
+		flex: none;
+		width: 64px;
+		height: 64px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px dashed var(--border);
+		border-radius: var(--radius-input);
+		background: none;
+		color: var(--text-2);
+		cursor: pointer;
+		overflow: hidden;
+	}
+
+	.choice-slot:hover {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+
+	.choice-slot.filled {
+		border-style: solid;
+		background: var(--surface);
+	}
+
+	.choice-img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+
+	/* the empty slot's photo placeholder: block-level, so it centers
+	   exactly (an inline span's text baseline sits the glyph up) */
+	.choice-slot-icon {
+		display: block;
+		line-height: 0;
+	}
+
+	/* the upload round-trip in flight: the slot dims and takes no clicks */
+	.choice-slot.uploading {
+		opacity: 0.5;
+		pointer-events: none;
+	}
+
+	/* the remove-image corner: visible over a filled slot only (hover /
+	   keyboard focus) */
+	.choice-slot-x {
+		position: absolute;
+		top: 0;
+		right: 0;
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: none;
+		border-bottom-left-radius: 8px;
+		background: rgba(20, 20, 25, 0.65);
+		color: #fff;
+		font-size: 0.75rem;
+		line-height: 1;
+		cursor: pointer;
+		visibility: hidden;
+	}
+
+	.choice-slot.filled:hover .choice-slot-x,
+	.choice-slot.filled:focus-within .choice-slot-x {
+		visibility: visible;
+	}
+
+	.choice-slot-x:hover {
+		background: rgba(20, 20, 25, 0.85);
+	}
+
+	/* the move buttons: the row's x metrics */
+	.choice-move {
+		border: 1px solid var(--border);
+		background: none;
+		border-radius: 8px;
+		min-width: 32px;
+		min-height: 32px;
+		font-size: 1rem;
+		line-height: 1;
+		color: var(--text-2);
+		cursor: pointer;
+		transition: background-color 0.12s ease, border-color 0.12s ease,
+			color 0.12s ease;
+	}
+
+	.choice-move:hover {
+		color: var(--accent);
+		border-color: var(--accent);
+		background: var(--accent-soft);
+	}
+
+	/* drag-reorder states: the row being dragged, and the accent line at
+	   the position it will land at */
+	.choice-row.dragging {
+		opacity: 0.5;
+	}
+
+	.choice-row.drop-before {
+		box-shadow: inset 0 2px 0 0 var(--accent);
+	}
+
+	.choice-row.drop-after {
+		box-shadow: inset 0 -2px 0 0 var(--accent);
+	}
+
+	/* the rows container is the multi-file drop zone */
+	#choice-rows.drop-target {
+		outline: 2px dashed var(--accent);
+		outline-offset: 2px;
+		border-radius: var(--radius-card);
+	}
+
+	/* the per-file upload rejections (the localized text is set in JS) */
+	.upload-err {
+		color: var(--mark-red-text);
+	}
+
+	/* ---- image options: the answers table's column header ----------------
+	   the label (while the option has one) above the 64px thumbnail; the
+	   column is sized to the image. Clicking the thumbnail opens the
+	   lightbox (the full size). */
+	.answers-table th.th-img {
+		min-width: 64px;
+	}
+
+	.answers-table .choice-head {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.answers-table .choice-head-text {
+		text-align: center;
+	}
+
+	.answers-table .choice-thumb {
+		padding: 0;
+		border: none;
+		background: none;
+		cursor: zoom-in;
+		line-height: 0;
+	}
+
+	.answers-table .choice-thumb img {
+		width: 64px;
+		height: 64px;
+		object-fit: cover;
+		border-radius: 8px;
+		display: block;
+	}
+
+	.answers-table .choice-thumb:hover img,
+	.answers-table .choice-thumb:focus-visible img {
+		outline: 2px solid var(--accent);
+		outline-offset: 1px;
+	}
+
+	/* ---- the lightbox -----------------------------------------------------
+	   an image option's full size over a greyed backdrop: the image at
+	   its native size while it fits the viewport, fitted (object-fit:
+	   contain) otherwise — always completely visible. The close button and
+	   the prev/next arrows are positioned by JS (vote.js) around the
+	   largest image of the cycle; the CSS positions are the no-JS
+	   fallback. */
+	.lightbox {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(30, 30, 34, 0.72);
+	}
+
+	.lightbox[hidden] {
+		display: none;
+	}
+
+	.lightbox-img {
+		max-width: 96vw;
+		max-height: 96vh;
+		width: auto;
+		height: auto;
+		object-fit: contain;
+		border-radius: var(--radius-card);
+		background: var(--surface);
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+	}
+
+	.lightbox-close {
+		position: absolute;
+		top: 0.75rem;
+		right: 0.75rem;
+		width: 44px;
+		height: 44px;
+		border: none;
+		border-radius: 50%;
+		background: var(--lb-ctl-bg);
+		color: var(--lb-ctl-text);
+		font-size: 1.5rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	/* the prev/next arrows: just outside the widest image's edges —
+	   positioned by vote.js so they hold the same place while cycling */
+	.lightbox-prev,
+	.lightbox-next {
+		position: absolute;
+		top: 50%;
+		width: 44px;
+		height: 44px;
+		border: none;
+		border-radius: 50%;
+		background: var(--lb-ctl-bg);
+		color: var(--lb-ctl-text);
+		font-size: 1.75rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.lightbox-prev {
+		left: 0.75rem;
+	}
+
+	.lightbox-next {
+		right: 0.75rem;
+	}
+
+	.lightbox-close:hover,
+	.lightbox-prev:hover,
+	.lightbox-next:hover {
+		background: var(--lb-ctl-bg-hover);
 	}
 }
 

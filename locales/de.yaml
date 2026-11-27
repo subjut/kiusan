@@ -115,3 +115,23 @@ page.copy: "Kopieren"
 page.copied: "Kopiert!"
 page.deleteWithName: "Antwort von {name} löschen?"
 page.deleteThis: "Diese Antwort löschen?"
+# Das Bildfeld der Optionszeilen (Abstimmungsformular): der Dateipicker,
+# das Eck-Entfernen, die Reihungs-Buttons und das Hinweisfeld der
+# Absende-Sperre (jede Zeile braucht Namen, Bild oder beides) + die
+# Upload-Fehler.
+form.uploadImage: "Bild hochladen"
+form.removeImage: "Bild entfernen"
+form.moveUp: "Option nach oben"
+form.moveDown: "Option nach unten"
+form.optionHint: "Jede Option braucht einen Namen, ein Bild oder beides."
+form.imagesFull: "Alle 20 Optionen haben bereits Bilder"
+form.fileTooLarge: "Bild zu groß (max. 10 MB)"
+form.fileType: "Kein unterstütztes Bildformat"
+form.uploadFailed: "Hochladen fehlgeschlagen — bitte erneut versuchen"
+# Die Spaltenkopfzeile einer Bild-Option (Alt-Text ohne Namen) und das
+# Lichtbild, das sie öffnet (Dialog-Beschriftung + Schließen/Vor/Zurück).
+vote.optionAlt: "Option"
+vote.lightbox: "Bild der Option"
+vote.lightboxClose: "Bild schließen"
+vote.lightboxPrev: "Vorheriges Bild"
+vote.lightboxNext: "Nächstes Bild"

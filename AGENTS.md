@@ -44,7 +44,9 @@ Feature state (see `static/index.html`):
   zone (midnight slots all-day), named from the title's slug.
 - "Vote on Something" — implemented end to end: the create/edit form
   (`/vote-form`; title, contact email, description, up to 20 options
-  with stable IDs, the four exclusive voting types — `yes/no` (the
+  with stable IDs — each option may also carry an image (see Gotchas →
+  Option images: the label is optional while the row has an image) —,
+  the four exclusive voting types — `yes/no` (the
   create default), `yes`, `yes/maybe/no`, and "voters may write a note
   per option" — the "pick only one option" and "must answer each
   option" checkboxes that grey out the voting types they are invalid
@@ -60,7 +62,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   styled like the mark cells (green / amber / red tint + text), the
   rows labelled `Total` + the mark's symbol — the admin page keeps
   them while respondents are hidden or the vote form's hide-totals
-  option is on. The block is set off from
+  option is on. An image option's column header renders the label above
+  a ~64px thumbnail; clicking the thumbnail opens the full image in a
+  lightbox (fit to the viewport, the greyed backdrop, Esc / × /
+  backdrop close, the ←/→ keys + the prev/next arrows cycling; the
+  controls are positioned by JS around the largest image of the cycle
+  so they never cover an image, the arrows hidden on a single-image
+  vote). The block is set off from
   the answer rows by a borderless gap row (the vote's totals carry no
   combined yes + maybe row). A closed vote's admin may likewise mark
   one or more option columns final (`Vote.FinalChoices`, keyed by the
@@ -206,13 +214,26 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `.ics` builder + the download-name rules (the exact CRLF document on
   a fixed instant, the UTC `Z` and the `VALUE=DATE` all-day shapes,
   the chronological order + byte-stability, the 75-octet fold + the
-  text escaping, the filename slug table). The suites run on
+  text escaping, the filename slug table); `image_test.go` pins the
+  option-image upload pipeline (`processUpload`: the shrink-only resize
+  into the 256 + 1024 stored sizes with no upscale of a smaller source,
+  the two rejection codes, the 20000px gate reading the header alone,
+  `flattenAlpha`'s transparent-over-white composite, `encodeJPEG`'s
+  byte contract) and `vote-img_test.go` the upload + serve routes
+  (the multipart round trip, the per-file result codes in order, the
+  oversize gate before decode, the file-count cap, the no-files 400, the
+  immutable jpeg serve, the 404 for an unknown ID); the `VoteImage` store
+  round trip (`PutVoteImage` / `GetVoteImage` both sizes, the one-entry-
+  per-ID info list, `ReferencedVoteImageIDs`, `DeleteVoteImages`, the
+  `DeleteVote` cascade) and the `PurgeFinishedVote` retention sweep are
+  pinned in `store/store_test.go`; `image.go` + the `janitor` image sweep
+  are covered by `image_test.go` + `janitor_test.go`. The suites run on
   GORM-sqlite; each test chdirs into
   `t.TempDir()` and opens a throwaway store, so the dev data files are
-  never touched. Coverage: main ~86%, store ~70%, database ~77%.
+  never touched. Coverage: main ~88%, store ~80%, database ~77%.
 - CI: `.github/workflows/tests.yml` (push to main + PRs): `go build
   ./...`, `go vet ./...`, `go test -race` with an 80% total-coverage
-  floor (currently ~83%) — the coverage run is scoped to the app
+  floor (currently ~86%) — the coverage run is scoped to the app
   packages (`go list ./... | grep -v '/tools/'`): the dev-only
   `tools/testdb` seed tool has no tests of its own, and a 0% package in
   the combined profile would drag the module total below the floor — and
@@ -235,15 +256,27 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   click flash, hidden after a pick), the seeded edit-mode prefill, the
   timezone prefill /
   edit-mode keep, the character counters, the single-signup wipe
-  warning, the locale-switch re-render), the poll answers-table
-  behaviour (the mark toggles, mark switching, the neutral unmarked
+  warning, the locale-switch re-render), the vote form's choice-row
+  picker (`chooser.js`: the submit gate = a label *or* an image per row
+  + the gate-hint flash, the image slot's fill/clear + the upload's
+  multi-file target planning with the live-`FileList` snapshot, the
+  row's add / remove / move / drag reorder (the landing line's
+  on-pickup show, the stay-put over the row gaps, the nearest-midpoint
+  flip) + the hidden-field reindex, the mode-checkbox interlock, the
+  character counters), the poll
+  answers-table behaviour (the mark toggles, mark switching, the neutral unmarked
   state, the submitted-rows-untouched invariant, the single-slot
   grey-out incl. the disabled-button guard, the edit-row prefill, the
   sticky-header activation (the `table-sticky` class + the measured
   `--th-*` offset vars)), the vote answers-table behaviour (the per-type toggles, the yes vote's
   missing no-button, single-choice yes-exclusivity, the free-text
   note gate, the must-answer submit gate incl. the disabled-submit
-  hint flash), and the locale display + dictionary swap (the
+  hint flash, the image lightbox (open on the thumbnail, close on the ×
+  / backdrop / Esc with the focus return, the ←/→ key cycle + wrap,
+  the prev/next button cycle, the controls' positioning around the
+  largest image of the cycle, the arrows' hidden state on a
+  single-image vote)), and
+  the locale display + dictionary swap (the
   cookie → browser resolution, the date-value contract per `data-*` key
   in the poll's zone, the UTC-offset annotation, the marker swaps,
   the `data-i18n-prefix` suffix keep, the select's effective-language
@@ -293,7 +326,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   ICU in the poll's zone (the tz annotation's offset computed live in
   the browser — DST-dependent, never hardcoded —, the time cell pinning
   the zone, and the German re-format of the date labels after a locale
-  switch), the back/forward-restore convergence (headless Chromium does
+  switch), the image-options journey on a real form (a hand-built PNG
+  through the file picker, the row's thumbnail + stored ID, the row
+  order becoming the column order, the header thumbnails, the lightbox
+  open/close, the single-image arrows' hidden state), the
+  back/forward-restore convergence (headless Chromium does
   not bfcache-park these pages, so the spec pins the converged outcome,
   not the parking: the UI strings of a page whose locale was set on a
   later page, the re-synced dropdown, the re-formatted date titles, and
@@ -320,6 +357,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   four static-dir middlewares, the per-route rate limiters, and all
   page/form routes: `GET/POST /meet-form`, `GET /meet-form/edit/+`
   (admin key only), `GET/POST /vote-form`, `GET /vote-form/edit/+`,
+  the vote image routes (`POST /vote-img` — the multipart upload, riding
+  the create rate limit —, `GET /vote-img/+/thumb` registered ahead of
+  the `GET /vote-img/+` full-image gobbler, the more-specific-first
+  pattern of `/meet/+/ics`),
   `GET /meet/+` + `GET /meet/+/ics` (the .ics download, ahead of the
   gobbler) + `POST /meet/+/answer|answer/edit|answer/delete` +
   the admin lifecycle `POST /meet/+/close|reopen|delete|final` (the
@@ -328,8 +369,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   for `/vote/+`, and the 404 fallthrough), and `newApp`
   (template engine, the `zoneOption` + `final` template funcs (the
   precomputed option labels; the final-mark membership test for the
-  highlighted cells), the request logger whose
-  `Skip` covers every capability URL so link keys never reach the log).
+  highlighted cells), a 50 MB `BodyLimit` (the default 4 MB would cut
+  the image upload's 20 × 10 MB short), the request logger whose
+  `Skip` covers every capability URL (incl. `/vote-img/`) so link keys
+  never reach the log).
 - `config.go` — the runtime configuration: `Config` + `loadConfig`
   (every key resolves env `KIUSAN_*` > `$KIUSAN_DATA_DIR/kiusan.yaml` >
   the built-in default; every start writes the effective values back to
@@ -413,7 +456,12 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   checkbox, the vote type),
   `voteFormHandler` (create), `voteFormEditHandler` (admin link only,
   prefilled), `voteFormPostHandler` (create or update-in-place on a
-  `votekey`; the update prunes the final marks of removed options).
+  `votekey`; the option rows arrive as `(choiceN, choiceIMG
+N, choiceIDN)` triples — a row is present while it carries a label,
+  an image, or both; a row's image ID must be this vote's own (on
+  edit) or a never-attached upload — another vote's image 400s —;
+  the update prunes the final marks of removed options and drops the
+  images the edit detached from the store).
 - `vote-page.go` — the vote page: the `voteCol` cell type, the
   `votePage` struct (embeds `answerPage`; the mode, the choices, the
   vote columns, the edit `VoteFormCol`, the per-choice `Totals` rows,
@@ -444,9 +492,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   mode reads `n<ID>`; must-answer rejects an unanswered option;
   single-choice allows at most one yes / one note), `assignChoiceIDs`
   (the options' stable IDs: an option keeps its ID only while its
-  text is unchanged — a changed text is a new option whose answers are
-  pruned, a deleted row drops its ID, reordering carries them),
-  `pruneVoteAnswers` (drops marks/notes for removed options and the
+  (label, image) pair is unchanged — a changed label *or* a swapped
+  image is a new option whose answers are pruned, a deleted row drops
+  its ID, reordering carries them; see Gotchas → Option images), the
+  image helpers `voteChoiceImageIDs` / `anyRowHasImage` /
+  `diffImageIDs` (the ownership guard's own-image set, the lookup
+  gate, the edit's detach list), `pruneVoteAnswers` (drops marks/notes
+  for removed options and the
   map the vote's type no longer uses, plus the `m` marks of a yes/no
   vote), the final-marks helpers `toggleFinalChoice` /
   `pruneFinalChoices`, `resolveVote` (the vote's `pollOps` resolver),
@@ -463,6 +515,39 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   pinned `github.com/arran4/golang-ical v0.3.8` — zero transitive
   deps) and `icsFilename` (the title's letters/digits as a slug,
   50-char cap, the `meeting.ics` fallback).
+- `image.go` — the option-image processing pipeline (votes only): the
+  two stored-size caps `imageThumbMax` (256) / `imageFullMax` (1024) +
+  the encode quality `imageJPEGQ` (80), and the
+  decode-protection cap `imageMaxSide` (20000). `processUpload`
+  (decodes an upload, reads the dimensions via a header-only
+  `image.DecodeConfig` first — a side beyond `imageMaxSide` is
+  rejected `too_big` *before* the full decode —, shrink-only resizes
+  into both stored sizes via `golang.org/x/image/draw` CatmullRom
+  (a source already at or below a target keeps its native size —
+  never upscaled), re-encodes both as JPEG; the rejection codes are
+  `not_image` / `too_big`), `flattenAlpha` (composites a
+  transparent-over-white base — a transparent PNG must not render
+  black in the opaque JPEG output), `encodeJPEG` (quality 80; the
+  encoder can't fail for the pipeline's formats, so the error is
+  dropped). The blank decoder imports (`image/png`, `image/gif`,
+  `golang.org/x/image/webp`) make the formats the form's file input
+  accepts all decodable.
+- `vote-img.go` — the image upload + serve routes: the upload limits
+  (`maxUploadBytes` = 10 MB per file — a phone photo is the largest
+  sensible source, everything above is discarded by the resize —,
+  `maxUploadFiles` = `maxChoices` = 20), `imageResult` (one file's
+  outcome: `id` + the source `w`/`h`, or the `err` code
+  `too_large` | `too_big` | `not_image` | `internal` — the form page
+  maps the codes onto localized messages), `voteImageUploadHandler`
+  (the multipart `files` field; every file is decoded, resized,
+  re-encoded, and stored under a fresh `store.RandomKey(12)` ID;
+  the per-file outcomes come back as a JSON array in file order), and
+  `sendVoteImage` (serves one stored size: the
+  immutable `Cache-Control`, the `Content-Type: image/jpeg` via
+  `c.Set` — `c.Type` would serve `application/octet-stream` —, 404
+  for an unknown ID) with the two route handlers
+  `serveVoteImageFull` / `serveVoteImageThumb` (see
+  Gotchas → Image upload caps & pipeline).
 - `i18n.go` — the interface-localization plumbing: the `translator`
   (`gofiber/contrib/v3/i18n` over `go-i18n/v2` with a YAML
   `EmbedLoader` on the `locales/` directory), the `langHandler` hook
@@ -477,7 +562,13 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `render.go`.
 - `janitor.go` — the database-maintenance loop (see Gotchas →
   Finished-poll retention): `purgeFinished` (one pass — `PurgeFinished`
-  + `PurgeFinishedVote` on the store, then `Maintenance` (compact while
+  + `PurgeFinishedVote` on the store, then the *unreferenced* option-
+  image sweep (`VoteImageInfos` + `ReferencedVoteImageIDs` — the
+  reference check runs in Go, the choices being a JSON document in a
+  TEXT column — + `DeleteVoteImages` for the images past
+  `voteImageRetention` = 7 days — the window for a half-filled form's
+  uploads, which stay unreferenced until the form submits), then
+  `Maintenance` (compact while
   the pass removed anything), errors logged not returned so one bad pass
   can't stop the loop) and `runJanitor` (the goroutine: one pass at
   start, then a `janitorInterval` = 24 h ticker; the interval is
@@ -502,11 +593,18 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `yes-maybe-no`, and `freetext`; mutually exclusive with
   `SingleChoice`), and `HideTotals` (keeps the totals rows off the
   user page — the admin page keeps them)), `Choice`/`ChoiceList` (the
-  options with their stable IDs), `StringSlice` (the plain-string
+  options with their stable IDs + the optional `Image` ID — the
+  stored option image's ID, empty for text-only rows; see Gotchas →
+  Option images), `StringSlice` (the plain-string
   JSON-in-TEXT list behind `Vote.FinalChoices` — the option IDs the
   admin marked final), and `VoteAnswer`/`VoteAnswerList` (answers whose
   `Marks` and `Notes` maps are keyed by choice ID, exactly one of them
-  populated per vote type), same JSON-in-TEXT treatment. No handles
+  populated per vote type), same JSON-in-TEXT treatment, plus
+  `VoteImage` (one stored size of an option image: the composite PK
+  `ID` + `Kind` — `VoteImageKindThumb` (~256px, the answers-table
+  header) / `VoteImageKindFull` (~1024px, the lightbox), both the
+  `processUpload`-produced re-encoded JPEGs — the `Data` bytes + the
+  upload timestamp; plain bytes in a column, no codec). No handles
   or globals here. `database_test.go` pins the codec contract of the
   five list types (see Commands → Tests).
 - `store/` — `store.Store` (`store.go`, embedding `MeetingStore` +
@@ -522,7 +620,12 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   key; the user key never changes (the CAS maps carry the final fields
   `final_slots` / `final_choices` alongside). `VoteStore` (`vote.go`)
   carries the vote mirror — `CreateVote`, `GetVote`/`GetVoteAdmin`,
-  and `UpdateVote`, the same compare-and-set. `PurgeFinished` /
+  `UpdateVote` (the same compare-and-set), `DeleteVote` (cascades to
+  the vote's option images), and the option-image surface
+  (`PutVoteImage` — both sizes under one ID —, `GetVoteImage` — one
+  size by kind —, `DeleteVoteImages`, `VoteImageInfos` +
+  `ReferencedVoteImageIDs` — the janitor's unreferenced sweep; see
+  Gotchas → Option images). `PurgeFinished` /
   `PurgeFinishedVote` delete the finished rows whose `DeletionDate`
   (earlier of closure and end date, + months) has passed — candidate
   query `closed OR expires <= now` in SQL, the min/+months check per
@@ -539,8 +642,15 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   (`static/index.html`, `static/meet-form.html`, `static/meet.html`,
   `static/meet-gone.html` — the 404 page for a deleted poll or vote,
   `static/vote-form.html` — the vote create/edit form (incl. the
-  `Voting type:` radio group and the hide-totals checkbox),
-  `static/vote.html`; the required form fields' group headings (the
+  `Voting type:` radio group, the hide-totals checkbox, and the
+  choice-row picker — each row a drag & drop / click-to-pick image
+  slot (the `chooser.js` target, a hidden `multiple` file input) beside
+  a label input + the add-option button —),
+  `static/vote.html` — the vote page (incl. the `#lightbox` dialog —
+  the image option's full size over the greyed backdrop + the close /
+  prev/next arrow buttons, all positioned by `vote.js` around the
+  largest image of the cycle); the required form fields' group
+  headings (the
   title label, the meeting form's select-dates legend, the vote form's
   options legend, the answers tables' Name column header while the form
   row is live) carry a red `*` (`.req`, an `aria-hidden` sibling span of
@@ -548,7 +658,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `static/layouts/home.html`, partials in `static/partials/` — incl.
   `answers-table.html` (the poll's) and `vote-answers-table.html` (the
   shared answers-table markup the live vote form and the closed
-  vote's read-only matrix both render; both end with the totals block
+  vote's read-only matrix both render; an image option's column header
+  (`th-img`) puts the label (while it has one) above a ~64px
+  `.choice-thumb` — the thumbnail button that opens the lightbox;
+  both end with the totals block
   — a `tr.totals-gap` spacer row (per-column cells: the side edge
   borders + its own bottom border, the grid line that sets the totals
   block off — every horizontal line in the table is the row above's
@@ -584,12 +697,33 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `wireTwoStep()` helper), the copy-box selection + copy buttons +
   link-box sizing; loaded ahead of `poll.js`/`vote.js` and providing
   their `t()`/`fill()` globals), `chooser.js` — the vote
-  form's option rows (add/remove, reindex) and the mode interlock
+  form's choice-row picker (each row an image slot + a label: the
+  image is uploaded to `POST /vote-img` the moment it is dropped/picked
+  — the row keeps the stored image's ID in a hidden `choiceIMGN`
+  field —; a multi-file drop fills the dropped row first, then the
+  next image-less rows, then new rows, never overwriting a filled one;
+  rows add / remove / move / drag-reorder (the landing line is
+  nearest-midpoint over the whole container, the rows' geometry measured
+  once on pickup + re-measured on scroll/resize so the per-event target
+  is pure math — it shows at the dragged row's own position on pickup,
+  stays put over the row's own slot + the gaps, and flips as soon as
+  the pointer crosses a midpoint — no dead zones, no delay —) + the
+  hidden fields reindex (`choiceN` /
+  `choiceIMGN` / `choiceIDN`); the submit gate = a label *or* an
+  image per row + the gate-hint flash) and the mode interlock
   (single-choice greys out yes/no + yes/maybe/no and must-answer,
   must-answer greys out yes and single-choice; a selection on a greyed
   radio moves to the mode's default type), `vote.js` — the vote
   page's answers-table behavior (the mark toggles per voting type, the
-  single-choice yes-exclusivity, the must-answer submit gate),
+  single-choice yes-exclusivity, the must-answer submit gate) + the
+  image lightbox (open on the thumbnail, close on the × / backdrop /
+  Esc with the focus return, the ←/→ keys + the prev/next arrow
+  buttons cycling, the controls positioned by `placeControls` around
+  the largest image of the cycle — anchored on the images' true
+  display sizes (the full images' natural sizes, learned on load — the
+  96vw/96vh box never upscales them) — so the arrows stay fixed while
+  cycling and nothing overlays an image, hidden on a single-image
+  vote),
   `locale.js` — browser-locale date display: rewrites the
   server-rendered date labels (kept as the no-JS fallback) in the
   the viewer's locale and owns the site-header Display dropdown
@@ -626,7 +760,18 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   scroller, so the frame ends where the content does) — and the
   borderless footer row (`.final-footer-row`) sitting on the page
   background outside it, plus the check-only final toggles
-  (`.final-btn`), the shrink-to-fit notice and
+  (`.final-btn`), the choice-row image slots (the 64px `.choice-slot`
+  and its `.filled` / `.uploading` / remove-corner states, the
+  CSS-drawn 3×3 dot-matrix `.choice-grip`, the empty slot's
+  `.choice-slot-icon` photo placeholder (block-level, so it centers
+  exactly), the table header's `.choice-thumb`) + the lightbox
+  (`.lightbox`: `object-fit: contain`, 96vw/vh box, greyed backdrop,
+  the `.lightbox-close` +
+  `.lightbox-prev` / `.lightbox-next` round controls on the `--lb-ctl-*`
+  tokens (a dark chip in light mode, a light chip in the dark themes) —
+  the CSS corner/side positions are no-JS fallbacks, the real positions
+  come from `vote.js`), the
+  shrink-to-fit notice and
   warning boxes (`.closed` / `.ended` / the two-step warnings),
   organized as `@layer theme, base, components`, with a
   global `:focus-visible` ring, `prefers-reduced-motion` and
@@ -665,9 +810,10 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   Commands → JS tests): `package.json` (the single dev dependency is
   jsdom), `harness.mjs` (the jsdom boot + load order: cookie / navigator
   / I18N seeds as head scripts ahead of the page scripts, the `settled`
-  / `tick` / `click` helpers), and the four `*_test.mjs` suites
+  / `tick` / `click` helpers), and the five `*_test.mjs` suites
   (`locale_test.mjs`, `dater_test.mjs`, `poll_test.mjs`,
-  `vote_test.mjs`), whose fixtures mirror the `static/` template
+  `vote_test.mjs`, `chooser_test.mjs`), whose fixtures mirror the
+  `static/` template
   markup. `node_modules/` is gitignored.
 - `e2e/` — the standalone Playwright package for the real-browser e2e
   tests (see Commands → E2E tests): `package.json` (the single dev
@@ -689,7 +835,11 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   re-open + two-step delete on the seeded tables, both page types),
   `submit-gate.spec.mjs` (the real-coord clicks on the disabled
   submits), `dates.spec.mjs` (the real-ICU date values in the poll's
-  zone), `bfcache.spec.mjs` (the back/forward-restore convergence),
+  zone), `image.spec.mjs` (the image-options journey on a real form —
+  a hand-built PNG through the file picker, the row's thumbnail +
+  stored ID, the row order becoming the column order, the header
+  thumbnails, the lightbox open/close), `bfcache.spec.mjs` (the
+  back/forward-restore convergence),
   and `ratelimit.spec.mjs` (the 21st create → 429, on its own `:8081`
   server).
 - `.devcontainer/` — the development container: a `Dockerfile` on the
@@ -743,6 +893,8 @@ token, and the per-choice totals rows per voting type (`Yes` always,
   `newTestApp` / `postForm` helpers + `futureEnd` / `testEndDate`),
   `htmltest_test.go` (the parser-based page assertions, see Commands →
   Tests), `helpers_test.go` (the pure-helper unit tests),
+  `image_test.go` + `vote-img_test.go` (the upload pipeline + the
+  upload/serve routes, see Commands → Tests),
   `janitor_test.go` (one `purgeFinished` pass: the due finished
   polls + votes are gone, the younger ones survive, the compaction
   loses no data) and the other suites live in the root package; `.github/workflows/tests.yml` is the CI
@@ -1000,8 +1152,8 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   routes carry per-client limits (20 creates / 30 answers per minute,
   consts in `main.go`) on top of the per-poll size caps; the request
   logger's `Skip` covers every capability URL (`/meet/`, `/vote/`,
-  `/meet-form/edit/`, `/vote-form/edit/`) so link keys never reach the
-  log.
+  `/vote-img/`, `/meet-form/edit/`, `/vote-form/edit/`) so link keys
+  never reach the log.
 - **Expiry**: `Expires` is end-of-day (23:59:59) in the meeting's
   timezone; the form's `enddate` is optional and defaults to three
   months, so every poll has one. An ended poll answers with 410, mints
@@ -1142,6 +1294,105 @@ together): one under `@media (prefers-color-scheme: dark)` scoped to
   edit re-shapes stored answers via `pruneVoteAnswers`: to `yes` drops
   the `n`/`m` marks, to `yes-no` drops the `m` marks, to freetext
   drops the marks, from freetext drops the notes.
+- **Option images (vote options)**: a vote option may carry an image.
+  The form page's choice rows each pair a label input with an image
+  slot (drag & drop / click-to-pick, multi-file at once — the images
+  upload to `POST /vote-img` the moment they are dropped/picked and the
+  row keeps the stored image's ID in a hidden `choiceIMGN` field);
+  a row is valid while it carries a label *or* an image (both the
+  client's submit gate and the server's row loop enforce it — the
+  label is optional *only* while the row has an image), and the row
+  order is the answers table's column order. Identity:
+  `assignChoiceIDs` keeps a row's stable ID only while the option's
+  (label, image) pair is unchanged — a changed label *or* a swapped
+  image is a new option (a fresh ID, so the old option's answers are
+  pruned by `pruneVoteAnswers`); reordering carries every ID. The pair
+  is the identity because a label-less option *is* its image — a
+  photo swap keeping the old answers would silently point them at a
+  new picture. Ownership: on submit a row's image ID must be this
+  vote's own (on edit) or a never-attached upload — a hand-built form
+  borrowing another vote's image 400s (`voteChoiceImageIDs` +
+  `ReferencedVoteImageIDs`). Detach: an edit drops the images it
+  detached from the store right after the save lands (`diffImageIDs`
+  → `DeleteVoteImages`), `DeleteVote` cascades to the vote's images,
+  and the janitor sweeps *unreferenced* images after the 7-day
+  retention (`voteImageRetention` — the window for a half-filled
+  form's uploads, which stay unreferenced until the form submits;
+  see Finished-poll retention). The vote page: an image option's
+  column header (`th-img`) renders the label (while it has one) above
+  a ~64px thumbnail; clicking the thumbnail opens the full size in the
+  lightbox (`#lightbox` in `static/vote.html`, wired by `vote.js`:
+  `object-fit: contain` so the image is always completely visible, the
+  greyed backdrop, Esc / × / backdrop close with the focus
+  returned to the thumbnail, the ←/→ keys + the prev/next arrows
+  cycling through the image options). The controls are positioned by
+  JS (`placeControls`) around the *largest* image of the cycle — the
+  close just above + to the right of its top-right corner, the arrows
+  just outside its widest edges, a 4px gap off the image, clamped to
+  the viewport — computed from each image's *true* display size: the
+  stored full images are ≤ 1024px and the 96vw × 96vh box never
+  upscales them (`max-*`), so on a normal viewport an image renders at
+  its natural size, which the thumbnails' aspect ratios can't predict
+  (anchoring on the box-fitted size is what sent the controls hundreds
+  of px from the image); the sizes are learned as each full image loads
+  (a small up-front preload + the main image's `load` event, the anchor
+  re-placed on every arrival), so the arrows stay in one place while
+  cycling (a moving button is a moving target) and nothing ever overlays
+  an image; the arrows are hidden on a single-image vote. The buttons ride the
+  `--lb-ctl-*` tokens (a dark chip in light mode, a light chip in the
+  dark themes) so they read over the greyed backdrop in both. The form
+  page's drag landing line is
+  nearest-midpoint over the whole `#choice-rows` container, tracked on
+  the container (the rows + gaps bubble up to it): the rows' geometry
+  (the dragged row's own band + every other row's midpoint) is measured
+  *once* on pickup and re-measured on scroll/resize, so the
+  per-pointer-event target is pure math — re-reading the rows' rects on
+  every `dragover` forced a layout per event, and *that* is the line's
+  perceived delay. The line appears at the dragged row's own position
+  the moment the row is picked up, stays put while the pointer sits over
+  the dragged row itself, the row gaps, or off the list, and flips to
+  the neighbouring zone as soon as the pointer crosses a midpoint; the
+  mark class is only touched while its target row/side changes (a
+  clear+re-add churn flickers it), and the dragged row is never its own
+  target (a computed target there would just erase the line — that was
+  the "disappears while moving" judder). Don't "simplify" it back to an
+  `e.target`-based hit test — that is what created the dead zones + the
+  perceived delay.
+  The stored bytes are two re-encoded JPEGs per image
+  (`database.VoteImage`, composite PK `ID` + `Kind`) — the upload's
+  original bytes never reach the store.
+- **Image upload caps & pipeline**: `POST /vote-img` (on the create
+  rate limit — an unauthenticated write like the form submit it feeds)
+  takes the multipart `files` field with up to `maxUploadFiles`
+  (= `maxChoices`, 20) files of `maxUploadBytes` (10 MB) each — a
+  phone photo (10–16 MP) is the largest sensible source, everything
+  above is discarded by the resize; the app's `BodyLimit` is 50 MB so
+  a legal 20 × 10 MB upload is not cut short by the default 4 MB. Per
+  file: over 10 MB is rejected `too_large` before it is read;
+  `processUpload` reads the dimensions via a header-only
+  `image.DecodeConfig` first, so a side beyond `imageMaxSide` (20000px
+  — decoding one costs up to a couple of GiB of RGBA) is rejected
+  `too_big` *before* the full decode; anything the decoders can't read
+  is `not_image` (the blank `image/png` / `image/gif` /
+  `golang.org/x/image/webp` imports make the form's accepted formats
+  all decodable). The per-file outcomes come back as a JSON array in
+  file order (`imageResult`: `id` + source `w`/`h`, or the `err` code)
+  and the form maps the codes onto localized messages. On success the
+  upload is resized *shrink-only* into the two stored sizes (256px
+  thumb + 1024px full — a source at or below a target keeps its native
+  size, never upscaled), flattened over white (a transparent PNG must
+  not render black in the opaque JPEG output), and re-encoded as JPEG
+  q80 under a fresh `store.RandomKey(12)` ID. Don't move the 20000px
+  gate after the full decode, and don't raise a cap without checking
+  the body limit.
+- **The image picker snapshots a live `FileList`**: in `chooser.js`
+  the file input's `change` handler must snapshot `input.files`
+  (`Array.prototype.slice.call`) *before* clearing `input.value` —
+  the clear is what makes re-picking the same file re-fire `change`,
+  and `files` is a live list, so a read after the clear is empty in a
+  real browser and nothing uploads. jsdom's `FileList` is not live, so
+  jsdom can't catch this — `chooser_test.mjs`'s regression test fakes
+  a live list with a getter.
 - **Sticky table header (bounded scroll box)**: `.table-scroll` is the
   table's vertical scroller, too (`overflow: auto` + `max-height:
   clamp(320px, calc(100dvh − 18rem), 100dvh)`, `vh` fallback line), so a

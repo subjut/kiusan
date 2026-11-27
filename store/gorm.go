@@ -65,7 +65,7 @@ func openGorm(engine, dsn string) (Store, error) {
 	// AutoMigrate keeps the schema in sync at startup. It is additive-only:
 	// column additions and new tables. Destructive changes need explicit
 	// SQL migrations (none exist yet).
-	if err := db.AutoMigrate(&database.Meeting{}, &database.Vote{}); err != nil {
+	if err := db.AutoMigrate(&database.Meeting{}, &database.Vote{}, &database.VoteImage{}); err != nil {
 		if sqlDB, cerr := db.DB(); cerr == nil {
 			_ = sqlDB.Close()
 		}
@@ -308,8 +308,102 @@ func (g *gormStore) UpdateVote(v *database.Vote) error {
 	return nil
 }
 
+// DeleteVote removes the vote stored under key — and with it every image
+// its options carry (the janitor is the backstop for the abandoned-upload
+// case, not for a deleted vote).
 func (g *gormStore) DeleteVote(key string) error {
+	var v database.Vote
+	if err := g.db.Where("key = ?", key).Take(&v).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if ids := voteImageIDs(v.Choices); len(ids) > 0 {
+		if err := g.DeleteVoteImages(ids); err != nil {
+			return err
+		}
+	}
 	return g.db.Where("key = ?", key).Delete(&database.Vote{}).Error
+}
+
+// voteImageIDs collects the distinct image IDs a choice list names.
+func voteImageIDs(cs database.ChoiceList) []string {
+	seen := make(map[string]struct{}, len(cs))
+	var ids []string
+	for i := range cs {
+		if cs[i].Image == "" {
+			continue
+		}
+		if _, dup := seen[cs[i].Image]; dup {
+			continue
+		}
+		seen[cs[i].Image] = struct{}{}
+		ids = append(ids, cs[i].Image)
+	}
+	return ids
+}
+
+// PutVoteImage stores both sizes of one option image under id.
+func (g *gormStore) PutVoteImage(id string, thumb, full []byte, created time.Time) error {
+	rows := []database.VoteImage{
+		{ID: id, Kind: database.VoteImageKindThumb, Data: thumb, Created: created},
+		{ID: id, Kind: database.VoteImageKindFull, Data: full, Created: created},
+	}
+	return g.db.Create(&rows).Error
+}
+
+func (g *gormStore) GetVoteImage(id, kind string) ([]byte, error) {
+	var img database.VoteImage
+	res := g.db.Where("id = ? AND kind = ?", id, kind).Take(&img)
+	if errors.Is(res.Error, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	return img.Data, nil
+}
+
+// DeleteVoteImages removes both sizes of every image in ids; an empty
+// list is a no-op.
+func (g *gormStore) DeleteVoteImages(ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return g.db.Where("id IN ?", ids).Delete(&database.VoteImage{}).Error
+}
+
+// VoteImageInfos lists every stored image — one entry per ID (the thumb
+// row is always stored, so it carries the ID's upload moment).
+func (g *gormStore) VoteImageInfos() ([]VoteImageInfo, error) {
+	var rows []database.VoteImage
+	if err := g.db.Where("kind = ?", database.VoteImageKindThumb).
+		Select("id", "created").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	infos := make([]VoteImageInfo, 0, len(rows))
+	for _, r := range rows {
+		infos = append(infos, VoteImageInfo{ID: r.ID, Created: r.Created})
+	}
+	return infos, nil
+}
+
+// ReferencedVoteImageIDs returns the set of image IDs the stored votes'
+// choices currently name. The choices are a JSON document in a TEXT
+// column, so the set is built in Go — the query stays portable.
+func (g *gormStore) ReferencedVoteImageIDs() (map[string]struct{}, error) {
+	var votes []database.Vote
+	if err := g.db.Find(&votes).Error; err != nil {
+		return nil, err
+	}
+	refs := make(map[string]struct{})
+	for i := range votes {
+		for _, id := range voteImageIDs(votes[i].Choices) {
+			refs[id] = struct{}{}
+		}
+	}
+	return refs, nil
 }
 
 // PurgeFinishedVote is the vote's counterpart of PurgeFinished: finished

@@ -193,3 +193,202 @@ test("without must answer the submit is never gated", async (t) => {
 	assert.ok(!w.document.querySelector('button[type="submit"]').disabled);
 	assert.ok(!w.document.querySelector(".must-hint"));
 });
+
+// ---- the lightbox ----
+// The image options' thumbnails in the table header open the full size
+// over the greyed backdrop: Esc, the backdrop, the x, close it (focus
+// returns to the thumbnail); the prev/next arrows and the left/right
+// keys cycle through the image options. The controls are positioned
+// around the largest image of the cycle, so they never overlay one and
+// the arrows hold their place while cycling.
+
+function lightboxFixture(opts = {}) {
+	const thumb = (id, label) => `<th scope="col" class="th-choice th-img"><span class="choice-head">
+${label ? `<span class="choice-head-text">${label}</span>` : ""}
+<button type="button" class="choice-thumb" data-src="/vote-img/${id}">
+<img src="/vote-img/${id}/thumb" alt="${label || "Option"}" width="64" height="64">
+</button>
+</span></th>`;
+	const second = opts.single ? "" : thumb("img-bbbb2222", "");
+	return `<form id="answer-form" data-type="yes-no" data-single="false" data-must="false">
+<table class="answers-table vote-table">
+<thead><tr>
+<th scope="col" class="th-name">Name</th>
+${thumb("img-aaaa1111", "Pic")}
+<th scope="col" class="th-choice">Plain</th>
+${second}
+</tr></thead>
+<tbody><tr class="form-row"><td><input type="text" id="name" name="name"></td>
+<td class="cell form-cell" data-choice="c1" data-status=""><input type="hidden" name="ac1" value=""><div class="mark-stack"><button type="button" class="mark mark-g" aria-pressed="false">✓</button></div></td>
+<td class="cell form-cell" data-choice="c2" data-status=""><input type="hidden" name="ac2" value=""><div class="mark-stack"><button type="button" class="mark mark-g" aria-pressed="false">✓</button></div></td>
+${opts.single ? "" : '<td class="cell form-cell" data-choice="c3" data-status=""><input type="hidden" name="ac3" value=""><div class="mark-stack"><button type="button" class="mark mark-g" aria-pressed="false">✓</button></div></td>'}
+</tr></tbody>
+</table>
+</form>
+<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Option image">
+<img class="lightbox-img" alt="">
+<button type="button" class="lightbox-prev" aria-label="Previous image">‹</button>
+<button type="button" class="lightbox-next" aria-label="Next image">›</button>
+<button type="button" class="lightbox-close" aria-label="Close image">×</button>
+</div>`;
+}
+
+async function lightboxPage() {
+	const w = boot(lightboxFixture(), { scripts: ["page.js", "vote.js"] });
+	await settled(w);
+	return w;
+}
+
+const lb = (w) => w.document.getElementById("lightbox");
+const lbImg = (w) => lb(w).querySelector(".lightbox-img");
+
+const keydown = (w, k) =>
+w.document.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true }));
+
+test("clicking a thumbnail opens the full size over the backdrop", async (t) => {
+	const w = await lightboxPage();
+	const [t1, t2] = [...w.document.querySelectorAll(".choice-thumb")];
+	assert.ok(lb(w).hidden);
+	click(w, t1);
+	assert.ok(!lb(w).hidden);
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-aaaa1111");
+	assert.equal(lbImg(w).getAttribute("alt"), "Pic");
+	assert.equal(w.document.activeElement, lb(w).querySelector(".lightbox-close"));
+	// a text option has no thumbnail
+	assert.equal(w.document.querySelectorAll(".choice-thumb").length, 2);
+	click(w, t2);
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-bbbb2222");
+	assert.equal(lbImg(w).getAttribute("alt"), "Option");
+});
+
+test("the close button, the backdrop, and Escape all close (focus returns)", async (t) => {
+	const w = await lightboxPage();
+	const t1 = w.document.querySelector(".choice-thumb");
+	click(w, t1);
+	assert.ok(!lb(w).hidden);
+	// the x closes and hands focus back to the opener
+	click(w, lb(w).querySelector(".lightbox-close"));
+	assert.ok(lb(w).hidden);
+	assert.equal(w.document.activeElement, t1);
+
+	// the backdrop: only a click on the box itself closes it
+	click(w, t1);
+	assert.ok(!lb(w).hidden);
+	click(w, lbImg(w)); // a click on the image is not a backdrop click
+	assert.ok(!lb(w).hidden);
+	click(w, lb(w));
+	assert.ok(lb(w).hidden);
+
+	// Escape
+	click(w, t1);
+	assert.ok(!lb(w).hidden);
+	keydown(w, "Escape");
+	assert.ok(lb(w).hidden);
+	// a keydown while closed is a no-op
+	keydown(w, "ArrowRight");
+	assert.ok(lb(w).hidden);
+});
+
+test("the arrows cycle through the image options and wrap", async (t) => {
+	const w = await lightboxPage();
+	const t1 = w.document.querySelector(".choice-thumb");
+	click(w, t1);
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-aaaa1111");
+	keydown(w, "ArrowRight");
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-bbbb2222");
+	keydown(w, "ArrowRight"); // wraps around
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-aaaa1111");
+	keydown(w, "ArrowLeft"); // wraps the other way
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-bbbb2222");
+});
+
+test("the prev/next buttons cycle through the image options and wrap", async (t) => {
+	const w = await lightboxPage();
+	const t1 = w.document.querySelector(".choice-thumb");
+	click(w, t1);
+	const box = lb(w);
+	const prev = box.querySelector(".lightbox-prev");
+	const next = box.querySelector(".lightbox-next");
+	assert.ok(!prev.hidden);
+	assert.ok(!next.hidden);
+	click(w, next);
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-bbbb2222");
+	click(w, next); // wraps around
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-aaaa1111");
+	click(w, prev); // wraps the other way
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-bbbb2222");
+});
+
+// jsdom never loads images, so the intrinsic sizes are pinned by hand
+// (an own property shadows the prototype getter).
+function intrinsic(w, width, height) {
+	return function (img) {
+		Object.defineProperty(img, "naturalWidth", { value: width });
+		Object.defineProperty(img, "naturalHeight", { value: height });
+	};
+}
+
+test("the controls sit around the largest image of the cycle", async (t) => {
+	const w = await lightboxPage();
+	const [i1, i2] = [...w.document.querySelectorAll(".choice-thumb img")];
+	intrinsic(w, 1024, 512)(i1); // the wide one
+	intrinsic(w, 512, 1024)(i2); // the tall one
+	const t1 = w.document.querySelector(".choice-thumb");
+	click(w, t1);
+	const close = lb(w).querySelector(".lightbox-close");
+	const prev = lb(w).querySelector(".lightbox-prev");
+	const next = lb(w).querySelector(".lightbox-next");
+	// jsdom's viewport is 1024 x 768, so the 96vw x 96vh box is
+	// 983.04 x 737.28: the wide image fits 983.04 x 491.52, the tall
+	// one 368.64 x 737.28 — the union is 983.04 x 737.28. The close
+	// button sits above + right of its top-right corner (clamped to the
+	// viewport's 8px margin), the arrows just outside the widest
+	// image's edges, vertically centered.
+	assert.ok(Math.abs(parseFloat(close.style.left) - 972) < 0.01);
+	assert.ok(Math.abs(parseFloat(close.style.top) - 8) < 0.01);
+	assert.ok(Math.abs(parseFloat(prev.style.left) - 8) < 0.01);
+	assert.ok(Math.abs(parseFloat(next.style.left) - 972) < 0.01);
+	assert.ok(Math.abs(parseFloat(prev.style.top) - 362) < 0.01);
+	assert.ok(Math.abs(parseFloat(next.style.top) - 362) < 0.01);
+	// cycling keeps the controls in the same place
+	keydown(w, "ArrowRight");
+	assert.ok(Math.abs(parseFloat(prev.style.left) - 8) < 0.01);
+	assert.ok(Math.abs(parseFloat(next.style.left) - 972) < 0.01);
+	assert.ok(Math.abs(parseFloat(next.style.top) - 362) < 0.01);
+});
+
+test("images smaller than the box are not upscaled — the controls hug them", async (t) => {
+	const w = await lightboxPage();
+	const [i1, i2] = [...w.document.querySelectorAll(".choice-thumb img")];
+	intrinsic(w, 500, 500)(i1); // natural-size photos below the 1024 cap
+	intrinsic(w, 400, 400)(i2);
+	click(w, w.document.querySelector(".choice-thumb"));
+	const close = lb(w).querySelector(".lightbox-close");
+	const prev = lb(w).querySelector(".lightbox-prev");
+	const next = lb(w).querySelector(".lightbox-next");
+	// the 96vw x 96vh box (983.04 x 737.28) exceeds both images —
+	// max-width/max-height never upscale, so the anchor is the natural
+	// 500 x 500, not the box-fitted 735 x 735 the old math assumed
+	assert.ok(Math.abs(parseFloat(close.style.left) - 766) < 0.01);
+	assert.ok(Math.abs(parseFloat(close.style.top) - 86) < 0.01);
+	assert.ok(Math.abs(parseFloat(prev.style.left) - 214) < 0.01);
+	assert.ok(Math.abs(parseFloat(next.style.left) - 766) < 0.01);
+	assert.ok(Math.abs(parseFloat(next.style.top) - 362) < 0.01);
+});
+
+test("a single-image vote hides the prev/next arrows", async (t) => {
+	const w = boot(lightboxFixture({ single: true }), {
+		scripts: ["page.js", "vote.js"],
+	});
+	await settled(w);
+	const t1 = w.document.querySelector(".choice-thumb");
+	click(w, t1);
+	assert.ok(!lb(w).hidden);
+	assert.ok(lb(w).querySelector(".lightbox-prev").hidden);
+	assert.ok(lb(w).querySelector(".lightbox-next").hidden);
+	// keyboard cycling stays a no-op, Escape closes
+	keydown(w, "ArrowRight");
+	assert.equal(lbImg(w).getAttribute("src"), "/vote-img/img-aaaa1111");
+	keydown(w, "Escape");
+	assert.ok(lb(w).hidden);
+});

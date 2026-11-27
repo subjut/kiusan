@@ -93,3 +93,55 @@ func TestPurgeFinished(t *testing.T) {
 		t.Fatalf("post-compaction read: %v", err)
 	}
 }
+
+// TestPurgeFinishedImageSweep pins the janitor's unreferenced-image sweep:
+// an image a stored vote names survives, an abandoned upload (past the 7
+// day window) is purged, and a fresh upload (a half-filled form's, whose
+// window has not closed) survives.
+func TestPurgeFinishedImageSweep(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	newTestApp(t)
+
+	now := time.Now()
+	referenced, abandoned, fresh := "img-ref1234567", "img-old1234567", "img-new1234567"
+	if err := db.PutVoteImage(referenced, []byte("t"), []byte("f"), now); err != nil {
+		t.Fatalf("storing referenced image: %v", err)
+	}
+	if err := db.PutVoteImage(abandoned, []byte("t"), []byte("f"), now.Add(-8*24*time.Hour)); err != nil {
+		t.Fatalf("storing abandoned image: %v", err)
+	}
+	if err := db.PutVoteImage(fresh, []byte("t"), []byte("f"), now.Add(-time.Hour)); err != nil {
+		t.Fatalf("storing fresh image: %v", err)
+	}
+
+	// The referenced image is named by a live vote's choice.
+	v := &database.Vote{
+		Title: "t", Description: "d", Email: "e@e.com",
+		VoteType: database.VoteTypeYesNo,
+		Choices:  database.ChoiceList{{ID: "c1", Text: "A", Image: referenced}},
+		Expires:  now.AddDate(0, 1, 0),
+	}
+	if _, err := db.CreateVote(v); err != nil {
+		t.Fatalf("creating vote: %v", err)
+	}
+
+	purgeFinished(db, now, 6)
+
+	if _, err := db.GetVoteImage(abandoned, database.VoteImageKindThumb); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("the abandoned upload must be purged: %v", err)
+	}
+	for _, id := range []string{referenced, fresh} {
+		if _, err := db.GetVoteImage(id, database.VoteImageKindThumb); err != nil {
+			t.Fatalf("surviving image %q: %v", id, err)
+		}
+	}
+}
+
+// TestRunJanitor starts the maintenance loop (one pass at start, then the
+// 24 h ticker) against a throwaway store — the pass is a no-op on empty
+// data, and the loop's goroutine is harmless past the test's end.
+func TestRunJanitor(t *testing.T) {
+	withStore(t, "sqlite", ":memory:")
+	newTestApp(t)
+	runJanitor(db, 6)
+}

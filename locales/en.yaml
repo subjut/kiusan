@@ -131,3 +131,22 @@ page.copy: "Copy"
 page.copied: "Copied!"
 page.deleteWithName: "Delete {name}'s answer?"
 page.deleteThis: "Delete this answer?"
+# The option rows' image slot (vote form): the slot's picker, the corner
+# remove, the reorder buttons, and the submit gate's hint (every row
+# needs a label, an image, or both) + the upload failures.
+form.uploadImage: "Upload image"
+form.removeImage: "Remove image"
+form.moveUp: "Move option up"
+form.moveDown: "Move option down"
+form.optionHint: "Every option needs a label, an image, or both."
+form.imagesFull: "All 20 options already have images"
+form.fileTooLarge: "Image too large (max 10 MB)"
+form.fileType: "Not a supported image format"
+form.uploadFailed: "Upload failed — please try again"
+# The image option's column header (the label-less option's alt text) and
+# the lightbox it opens (dialog label + close / prev / next buttons).
+vote.optionAlt: "Option"
+vote.lightbox: "Option image"
+vote.lightboxClose: "Close image"
+vote.lightboxPrev: "Previous image"
+vote.lightboxNext: "Next image"

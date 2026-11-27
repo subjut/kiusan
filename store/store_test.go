@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -363,5 +364,201 @@ func TestMaintenance(t *testing.T) {
 	}
 	if _, err := s.Get(key); err != nil {
 		t.Fatalf("Get after maintenance: %v", err)
+	}
+}
+
+// TestVoteImageLifecycle pins the option-image storage: both sizes under
+// one ID, the lookups (incl. the ErrNotFound branches), the one-entry-per-
+// ID info list with its upload moment, the reference set across votes,
+// and the delete of both sizes (an empty list is a no-op, a missing ID a
+// silent skip).
+func TestVoteImageLifecycle(t *testing.T) {
+	s := openTestStore(t)
+	now := time.Now()
+	old := now.Add(-48 * time.Hour)
+
+	if err := s.PutVoteImage("img-a", []byte("thumb-a"), []byte("full-a"), old); err != nil {
+		t.Fatalf("PutVoteImage img-a: %v", err)
+	}
+	if err := s.PutVoteImage("img-b", []byte("thumb-b"), []byte("full-b"), now); err != nil {
+		t.Fatalf("PutVoteImage img-b: %v", err)
+	}
+
+	for _, tc := range []struct {
+		id, kind string
+		want     []byte
+	}{
+		{"img-a", database.VoteImageKindThumb, []byte("thumb-a")},
+		{"img-a", database.VoteImageKindFull, []byte("full-a")},
+		{"img-b", database.VoteImageKindThumb, []byte("thumb-b")},
+		{"img-b", database.VoteImageKindFull, []byte("full-b")},
+	} {
+		got, err := s.GetVoteImage(tc.id, tc.kind)
+		if err != nil {
+			t.Fatalf("GetVoteImage(%s, %s): %v", tc.id, tc.kind, err)
+		}
+		if !bytes.Equal(got, tc.want) {
+			t.Fatalf("GetVoteImage(%s, %s) = %q, want %q", tc.id, tc.kind, got, tc.want)
+		}
+	}
+	if _, err := s.GetVoteImage("img-a", "no-such-kind"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown kind: got %v, want ErrNotFound", err)
+	}
+	if _, err := s.GetVoteImage("no-such-id", database.VoteImageKindThumb); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unknown ID: got %v, want ErrNotFound", err)
+	}
+
+	infos, err := s.VoteImageInfos()
+	if err != nil {
+		t.Fatalf("VoteImageInfos: %v", err)
+	}
+	if len(infos) != 2 {
+		t.Fatalf("one info per image ID (not per row), got %d: %+v", len(infos), infos)
+	}
+	byID := make(map[string]time.Time, len(infos))
+	for _, in := range infos {
+		byID[in.ID] = in.Created
+	}
+	if !byID["img-a"].Equal(old) {
+		t.Fatalf("img-a created %v, want %v", byID["img-a"], old)
+	}
+	if !byID["img-b"].Equal(now) {
+		t.Fatalf("img-b created %v, want %v", byID["img-b"], now)
+	}
+
+	// The reference set: only what the stored votes' choices name.
+	v := &database.Vote{
+		Title: "t", Description: "d", Email: "e@e.com",
+		VoteType: database.VoteTypeYesNo,
+		Choices:  database.ChoiceList{{ID: "c1", Text: "A", Image: "img-a"}, {ID: "c2", Text: "B"}},
+		Expires:  now.Add(48 * time.Hour),
+	}
+	if _, err := s.CreateVote(v); err != nil {
+		t.Fatalf("CreateVote: %v", err)
+	}
+	refs, err := s.ReferencedVoteImageIDs()
+	if err != nil {
+		t.Fatalf("ReferencedVoteImageIDs: %v", err)
+	}
+	if _, ok := refs["img-a"]; !ok {
+		t.Fatalf("the vote's image must be referenced: %+v", refs)
+	}
+	if _, ok := refs["img-b"]; ok {
+		t.Fatalf("the unattached image must not be referenced: %+v", refs)
+	}
+
+	if err := s.DeleteVoteImages(nil); err != nil {
+		t.Fatalf("DeleteVoteImages(nil) must be a no-op: %v", err)
+	}
+	if err := s.DeleteVoteImages([]string{"img-b", "no-such-id"}); err != nil {
+		t.Fatalf("DeleteVoteImages: %v", err)
+	}
+	for _, kind := range []string{database.VoteImageKindThumb, database.VoteImageKindFull} {
+		if _, err := s.GetVoteImage("img-b", kind); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("deleted image %s: got %v, want ErrNotFound", kind, err)
+		}
+	}
+	if _, err := s.GetVoteImage("img-a", database.VoteImageKindThumb); err != nil {
+		t.Fatalf("the untouched image must survive: %v", err)
+	}
+}
+
+// TestDeleteVoteCascadesImages pins the delete's image cleanup: every
+// image the vote's options name (deduplicated) leaves the store with the
+// row, and deleting a missing key is a no-op.
+func TestDeleteVoteCascadesImages(t *testing.T) {
+	s := openTestStore(t)
+	now := time.Now()
+	for _, id := range []string{"img-x", "img-y"} {
+		if err := s.PutVoteImage(id, []byte("t"), []byte("f"), now); err != nil {
+			t.Fatalf("PutVoteImage %s: %v", id, err)
+		}
+	}
+	v := &database.Vote{
+		Title: "t", Description: "d", Email: "e@e.com",
+		VoteType: database.VoteTypeYesNo,
+		Choices: database.ChoiceList{
+			{ID: "c1", Text: "A", Image: "img-x"},
+			{ID: "c2", Image: "img-y"},
+			{ID: "c3", Text: "C", Image: "img-x"}, // the same image twice
+			{ID: "c4", Text: "D"},
+		},
+		Expires: now.Add(48 * time.Hour),
+	}
+	key, err := s.CreateVote(v)
+	if err != nil {
+		t.Fatalf("CreateVote: %v", err)
+	}
+	if err := s.DeleteVote(key); err != nil {
+		t.Fatalf("DeleteVote: %v", err)
+	}
+	for _, id := range []string{"img-x", "img-y"} {
+		if _, err := s.GetVoteImage(id, database.VoteImageKindThumb); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("deleted vote's image %s must be gone: %v", id, err)
+		}
+	}
+	if err := s.DeleteVote(key); err != nil {
+		t.Fatalf("deleting a missing vote must be a no-op: %v", err)
+	}
+}
+
+// TestPurgeFinishedVote mirrors the meeting retention sweep for votes:
+// finished (closed or expired) rows are removed only once they finished
+// at least the given months ago, everything younger survives — including
+// a closed row whose closure is recent and a legacy closed row without a
+// stamp (it falls back to the end date).
+func TestPurgeFinishedVote(t *testing.T) {
+	s := openTestStore(t)
+	now := time.Now()
+	stamp := func(dt time.Time) *time.Time { return &dt }
+	mk := func(title string, closed bool, closedAt *time.Time, expires time.Time) string {
+		t.Helper()
+		v := &database.Vote{
+			Title: title, Description: "d", Email: "e@example.com",
+			VoteType: database.VoteTypeYesNo,
+			Choices:  database.ChoiceList{{ID: "c1", Text: "A"}},
+			Expires:  expires,
+		}
+		key, err := s.CreateVote(v)
+		if err != nil {
+			t.Fatalf("CreateVote %q: %v", title, err)
+		}
+		if closed || closedAt != nil {
+			got, err := s.GetVote(key)
+			if err != nil {
+				t.Fatalf("GetVote %q: %v", title, err)
+			}
+			got.Closed = closed
+			got.ClosedAt = closedAt
+			if err := s.UpdateVote(got); err != nil {
+				t.Fatalf("UpdateVote %q: %v", title, err)
+			}
+		}
+		return key
+	}
+
+	open := mk("open", false, nil, now.AddDate(0, 1, 0))
+	closedFresh := mk("closed-fresh", true, stamp(now.AddDate(0, -1, 0)), now.AddDate(0, 1, 0))
+	closedOld := mk("closed-old", true, stamp(now.AddDate(0, -7, 0)), now.AddDate(0, 1, 0))
+	legacy := mk("legacy-closed", true, nil, now.AddDate(0, -7, 0))
+	expiredOld := mk("expired-old", false, nil, now.AddDate(0, -7, 0))
+	expiredFresh := mk("expired-fresh", false, nil, now.AddDate(0, -1, 0))
+
+	n, err := s.PurgeFinishedVote(now, 6)
+	if err != nil {
+		t.Fatalf("PurgeFinishedVote: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("PurgeFinishedVote removed %d, want 3 (closed-old, legacy-closed, expired-old)", n)
+	}
+	for _, key := range []string{closedOld, legacy, expiredOld} {
+		if _, err := s.GetVote(key); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("purged vote %q: err %v, want ErrNotFound", key, err)
+		}
+	}
+	for _, key := range []string{open, closedFresh, expiredFresh} {
+		if _, err := s.GetVote(key); err != nil {
+			t.Fatalf("surviving vote %q: %v", key, err)
+		}
 	}
 }

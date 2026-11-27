@@ -27,7 +27,22 @@
 		<tr>
 			<th scope="col" class="th-name"><span data-i18n="meet.nameCol">{{.T "meet.nameCol"}}</span>{{if or $.FormNew $.FormID}}<span class="req" aria-hidden="true">*</span>{{end}}</th>
 			{{range $c := .Choices}}
-			<th scope="col" class="th-choice{{if final $.Final $c.ID}} final final-top{{end}}">{{ $c.Text }}</th>
+			<th scope="col" class="th-choice{{if $c.Image}} th-img{{end}}{{if final $.Final $c.ID}} final final-top{{end}}">
+				{{if $c.Image}}
+				{{/* an image option: the label (while it has one) above the
+				     thumbnail, the column's whole width sized to the 64px
+				     image; clicking the thumbnail opens the lightbox (the
+				     full size) in the page template */}}
+				<span class="choice-head">
+					{{if $c.Text}}<span class="choice-head-text">{{ $c.Text }}</span>{{end}}
+					<button type="button" class="choice-thumb" data-src="/vote-img/{{ $c.Image }}">
+						<img src="/vote-img/{{ $c.Image }}/thumb" alt="{{if $c.Text}}{{ $c.Text}}{{else}}{{ $.T "vote.optionAlt" }}{{end}}" width="64" height="64" loading="lazy">
+					</button>
+				</span>
+				{{else}}
+				{{ $c.Text }}
+				{{end}}
+			</th>
 			{{end}}
 		</tr>
 		</thead>

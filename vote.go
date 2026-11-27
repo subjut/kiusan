@@ -152,30 +152,38 @@ func saveVote(key string, byAdmin bool, mutate func(v *database.Vote)) (*databas
 }
 
 // choiceRow is one option row of a vote form submission: the option's
-// text and, on edit, the ID the row was rendered with ("" on create).
+// text and image (a label-less image-only option has empty text; an
+// image-less one has an empty image), and, on edit, the ID the row was
+// rendered with ("" on create).
 type choiceRow struct {
 	text  string
+	image string
 	oldID string
 }
 
 // assignChoiceIDs mints the stable IDs of a vote's options: a row keeps
-// its ID only while its text is unchanged from the stored vote — a
-// changed text is a new option (a fresh ID, so the old option's answers
-// are pruned by pruneVoteAnswers), a deleted row drops its ID, and a new
-// row mints one. Reordering carries every ID, so the answers travel with
-// their option.
+// its ID only while its (text, image) pair is unchanged from the stored
+// vote — a changed label *or* a swapped image is a new option (a fresh
+// ID, so the old option's answers are pruned by pruneVoteAnswers), a
+// deleted row drops its ID, and a new row mints one. Reordering carries
+// every ID, so the answers travel with their option. The pair is the
+// identity because a label-less option *is* its image — letting a photo
+// swap keep the old answers would silently point them at a new picture.
 func assignChoiceIDs(old database.ChoiceList, rows []choiceRow) (database.ChoiceList, error) {
-	kept := make(map[string]string, len(old))
+	type spec struct{ text, image string }
+	kept := make(map[string]spec, len(old))
 	for i := range old {
-		kept[old[i].ID] = old[i].Text
+		kept[old[i].ID] = spec{old[i].Text, old[i].Image}
 	}
 	taken := make(map[string]struct{}, len(rows))
 	choices := make(database.ChoiceList, 0, len(rows))
 	for i := range rows {
 		id := ""
-		if oldID := rows[i].oldID; oldID != "" && kept[oldID] == rows[i].text {
-			if _, dup := taken[oldID]; !dup {
-				id = oldID
+		if oldID := rows[i].oldID; oldID != "" {
+			if s, ok := kept[oldID]; ok && s.text == rows[i].text && s.image == rows[i].image {
+				if _, dup := taken[oldID]; !dup {
+					id = oldID
+				}
 			}
 		}
 		if id == "" {
@@ -191,9 +199,69 @@ func assignChoiceIDs(old database.ChoiceList, rows []choiceRow) (database.Choice
 			}
 		}
 		taken[id] = struct{}{}
-		choices = append(choices, database.Choice{ID: id, Text: rows[i].text})
+		choices = append(choices, database.Choice{ID: id, Text: rows[i].text, Image: rows[i].image})
 	}
 	return choices, nil
+}
+
+// voteChoiceImageIDs collects the distinct image IDs a vote's choices
+// name (an absent vote contributes nothing).
+func voteChoiceImageIDs(v *database.Vote) []string {
+	if v == nil {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(v.Choices))
+	var ids []string
+	for i := range v.Choices {
+		if v.Choices[i].Image == "" {
+			continue
+		}
+		if _, dup := seen[v.Choices[i].Image]; dup {
+			continue
+		}
+		seen[v.Choices[i].Image] = struct{}{}
+		ids = append(ids, v.Choices[i].Image)
+	}
+	return ids
+}
+
+// anyRowHasImage reports whether a submission carries at least one image
+// ID — the gate for the store's reference-set lookup (no lookup needed
+// on an image-less form).
+func anyRowHasImage(rows []choiceRow) bool {
+	for i := range rows {
+		if rows[i].image != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// diffImageIDs returns the image IDs the old choices named that the new
+// ones no longer do — the images an edit dropped (they are removed from
+// the store right after the save lands).
+func diffImageIDs(old, new database.ChoiceList) []string {
+	keep := make(map[string]struct{}, len(new))
+	for i := range new {
+		if new[i].Image != "" {
+			keep[new[i].Image] = struct{}{}
+		}
+	}
+	seen := make(map[string]struct{}, len(old))
+	var dropped []string
+	for i := range old {
+		if old[i].Image == "" {
+			continue
+		}
+		if _, dup := seen[old[i].Image]; dup {
+			continue
+		}
+		seen[old[i].Image] = struct{}{}
+		if _, kept := keep[old[i].Image]; !kept {
+			dropped = append(dropped, old[i].Image)
+		}
+	}
+	return dropped
 }
 
 // pruneVoteAnswers drops stored marks and notes for choices the vote no

@@ -220,6 +220,7 @@ func TestAssignChoiceIDs(t *testing.T) {
 		{ID: "a1", Text: "A"},
 		{ID: "b2", Text: "B"},
 		{ID: "c3", Text: "C"},
+		{ID: "i1", Image: "img-a"},
 	}
 	minted := func(cs database.ChoiceList) {
 		t.Helper()
@@ -236,7 +237,10 @@ func TestAssignChoiceIDs(t *testing.T) {
 	}
 
 	t.Run("reordering carries the IDs", func(t *testing.T) {
-		got, err := assignChoiceIDs(old, []choiceRow{{"B", "b2"}, {"A", "a1"}, {"C", "c3"}})
+		got, err := assignChoiceIDs(old, []choiceRow{
+			{text: "B", oldID: "b2"}, {text: "A", oldID: "a1"},
+			{text: "C", oldID: "c3"}, {text: "", image: "img-a", oldID: "i1"},
+		})
 		if err != nil {
 			t.Fatalf("assignChoiceIDs: %v", err)
 		}
@@ -245,7 +249,9 @@ func TestAssignChoiceIDs(t *testing.T) {
 		}
 	})
 	t.Run("a changed text is a new option", func(t *testing.T) {
-		got, err := assignChoiceIDs(old, []choiceRow{{"A2", "a1"}, {"B", "b2"}})
+		got, err := assignChoiceIDs(old, []choiceRow{
+			{text: "A2", oldID: "a1"}, {text: "B", oldID: "b2"},
+		})
 		if err != nil {
 			t.Fatalf("assignChoiceIDs: %v", err)
 		}
@@ -257,7 +263,9 @@ func TestAssignChoiceIDs(t *testing.T) {
 		}
 	})
 	t.Run("deleted rows drop, new rows mint", func(t *testing.T) {
-		got, err := assignChoiceIDs(old, []choiceRow{{"B", "b2"}, {"D", ""}})
+		got, err := assignChoiceIDs(old, []choiceRow{
+			{text: "B", oldID: "b2"}, {text: "D"},
+		})
 		if err != nil {
 			t.Fatalf("assignChoiceIDs: %v", err)
 		}
@@ -274,7 +282,9 @@ func TestAssignChoiceIDs(t *testing.T) {
 		}
 	})
 	t.Run("a claimed ID twice keeps it for the first row only", func(t *testing.T) {
-		got, err := assignChoiceIDs(old, []choiceRow{{"B", "b2"}, {"B", "b2"}})
+		got, err := assignChoiceIDs(old, []choiceRow{
+			{text: "B", oldID: "b2"}, {text: "B", oldID: "b2"},
+		})
 		if err != nil {
 			t.Fatalf("assignChoiceIDs: %v", err)
 		}
@@ -283,7 +293,7 @@ func TestAssignChoiceIDs(t *testing.T) {
 		}
 	})
 	t.Run("an unknown oldID mints fresh", func(t *testing.T) {
-		got, err := assignChoiceIDs(old, []choiceRow{{"B", "nope"}})
+		got, err := assignChoiceIDs(old, []choiceRow{{text: "B", oldID: "nope"}})
 		if err != nil {
 			t.Fatalf("assignChoiceIDs: %v", err)
 		}
@@ -291,13 +301,84 @@ func TestAssignChoiceIDs(t *testing.T) {
 			t.Fatalf("an ID the stored vote never had must not be trusted: %+v", got)
 		}
 	})
-	t.Run("create mints every ID", func(t *testing.T) {
-		got, err := assignChoiceIDs(nil, []choiceRow{{"A", ""}, {"B", ""}})
+	t.Run("a swapped image is a new option", func(t *testing.T) {
+		got, err := assignChoiceIDs(old, []choiceRow{
+			{text: "", image: "img-b", oldID: "i1"}, // the label-less option's picture swapped
+			{text: "", image: "img-a", oldID: "i1"}, // the original pair, claimed again
+		})
+		if err != nil {
+			t.Fatalf("assignChoiceIDs: %v", err)
+		}
+		if got[0].ID == "i1" {
+			t.Fatalf("a swapped image must get a fresh minted ID: %+v", got)
+		}
+		if got[1].ID != "i1" || got[1].Image != "img-a" {
+			t.Fatalf("the unchanged (label, image) pair must keep its ID: %+v", got)
+		}
+	})
+	t.Run("create mints every ID (text rows and image-only rows)", func(t *testing.T) {
+		got, err := assignChoiceIDs(nil, []choiceRow{
+			{text: "A"}, {text: "", image: "img-x"},
+		})
 		if err != nil {
 			t.Fatalf("assignChoiceIDs: %v", err)
 		}
 		minted(got)
+		if got[1].Image != "img-x" {
+			t.Fatalf("the image ID must ride along with the row: %+v", got)
+		}
 	})
+}
+
+func TestVoteChoiceImageIDs(t *testing.T) {
+	if ids := voteChoiceImageIDs(nil); ids != nil {
+		t.Fatalf("a nil vote contributes no image IDs: %+v", ids)
+	}
+	v := &database.Vote{Choices: database.ChoiceList{
+		{ID: "a", Image: "img-1"},
+		{ID: "b", Text: "no image"},
+		{ID: "c", Image: "img-1"}, // the same image twice
+		{ID: "d", Image: "img-2"},
+	}}
+	ids := voteChoiceImageIDs(v)
+	if len(ids) != 2 || ids[0] != "img-1" || ids[1] != "img-2" {
+		t.Fatalf("distinct image IDs in choice order, want [img-1 img-2], got %+v", ids)
+	}
+}
+
+func TestAnyRowHasImage(t *testing.T) {
+	if anyRowHasImage(nil) {
+		t.Fatal("no rows, no image")
+	}
+	if anyRowHasImage([]choiceRow{{text: "A"}, {text: "B"}}) {
+		t.Fatal("text-only rows carry no image")
+	}
+	if !anyRowHasImage([]choiceRow{{text: "A"}, {image: "img"}}) {
+		t.Fatal("an image row must count")
+	}
+}
+
+func TestDiffImageIDs(t *testing.T) {
+	old := database.ChoiceList{
+		{ID: "a", Image: "img-1"},
+		{ID: "b", Image: "img-2"},
+		{ID: "c", Image: "img-2"}, // duplicated in the old list
+		{ID: "d", Text: "plain"},
+	}
+	newList := database.ChoiceList{
+		{ID: "a", Image: "img-1"},
+		{ID: "e", Image: "img-3"},
+	}
+	dropped := diffImageIDs(old, newList)
+	if len(dropped) != 1 || dropped[0] != "img-2" {
+		t.Fatalf("the only dropped image is img-2, got %+v", dropped)
+	}
+	if got := diffImageIDs(old, old); len(got) != 0 {
+		t.Fatalf("no change drops nothing: %+v", got)
+	}
+	if got := diffImageIDs(nil, nil); got != nil {
+		t.Fatalf("no images drop nothing: %+v", got)
+	}
 }
 
 func TestPruneVoteAnswers(t *testing.T) {
