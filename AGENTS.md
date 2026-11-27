@@ -645,7 +645,14 @@ N, choiceIDN)` triples — a row is present while it carries a label,
   `Voting type:` radio group, the hide-totals checkbox, and the
   choice-row picker — each row a drag & drop / click-to-pick image
   slot (the `chooser.js` target, a hidden `multiple` file input) beside
-  a label input + the add-option button —),
+  a label input + the add-option button —); both form templates end
+  with a `.form-actions` submit/cancel bar — the submit input plus,
+  in edit mode only (gated on the stored admin key,
+  `.MeetForm.MeetingKey` / `.VoteForm.VoteKey`), a `btn-secondary`
+  cancel link back to the poll's admin page (`/meet/<key>` /
+  `/vote/<key>`) that discards the unsubmitted DOM edits (the
+  `text-decoration: none` on `.btn-secondary` makes the link read as a
+  button),
   `static/vote.html` — the vote page (incl. the `#lightbox` dialog —
   the image option's full size over the greyed backdrop + the close /
   prev/next arrow buttons, all positioned by `vote.js` around the

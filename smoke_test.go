@@ -132,6 +132,9 @@ func runSmokeSuite(t *testing.T) {
 		t.Fatalf("GET /meet-form: status %d", rf.StatusCode)
 	}
 	fb := body(rf)
+	if strings.Contains(fb, `data-i18n="form.cancel"`) {
+		t.Fatalf("GET /meet-form: the create form must not carry a cancel link")
+	}
 	selStart := strings.Index(fb, `<select id="timezone" name="timezone">`)
 	if selStart < 0 {
 		t.Fatalf("GET /meet-form: timezone <select> not found in body")

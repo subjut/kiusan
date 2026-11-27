@@ -111,7 +111,12 @@
 			<span class="choice-count" id="choice-count"></span>
 		</fieldset>
 
-		<input type="submit" value="{{.VoteForm.SubmitLabel}}">
+		<div class="form-actions">
+			<input type="submit" value="{{.VoteForm.SubmitLabel}}">
+			{{if .VoteForm.VoteKey}}
+			<a class="btn-secondary" href="/vote/{{.VoteForm.VoteKey}}" data-i18n="form.cancel">{{.T "form.cancel"}}</a>
+			{{end}}
+		</div>
 	</form>
 	<script src="/chooser.js"></script>
 </div>

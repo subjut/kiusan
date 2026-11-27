@@ -70,7 +70,12 @@
 
 		<div id="slot-preview"></div>
 
-		<input type="submit" value="{{.MeetForm.SubmitLabel}}">
+		<div class="form-actions">
+			<input type="submit" value="{{.MeetForm.SubmitLabel}}">
+			{{if .MeetForm.MeetingKey}}
+			<a class="btn-secondary" href="/meet/{{.MeetForm.MeetingKey}}" data-i18n="form.cancel">{{.T "form.cancel"}}</a>
+			{{end}}
+		</div>
 	</form>
 	<script src="/dater.js"></script>
 </div>

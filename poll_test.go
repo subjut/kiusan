@@ -530,6 +530,7 @@ func runPollSuite(t *testing.T) {
 		// the edit page is GET-only; the form must POST to /meet-form
 		// (without the action, a browser edit lands on 404)
 		`action="/meet-form"`,
+		"href=\"/meet/" + adminA + "\" data-i18n=\"form.cancel\"",
 	} {
 		if !strings.Contains(bEdForm, want) {
 			t.Fatalf("edit form missing %q", want)

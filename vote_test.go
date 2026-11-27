@@ -60,6 +60,9 @@ func TestVoteFormRender(t *testing.T) {
 			t.Errorf("GET /vote-form: missing %q in body", want)
 		}
 	}
+	if strings.Contains(body, `data-i18n="form.cancel"`) {
+		t.Errorf("GET /vote-form: the create form must not carry a cancel link")
+	}
 }
 
 func TestVoteFormCreate(t *testing.T) {
@@ -204,6 +207,7 @@ func TestVoteFormEdit(t *testing.T) {
 		`name="must-answer" value="true" disabled`,
 		`name="hide-users" value="true" checked`,
 		`name="hide-totals" value="true" checked`,
+		`href="/vote/` + adminKey + `" data-i18n="form.cancel"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("GET /vote-form/edit: missing %q in body", want)
